@@ -80,6 +80,11 @@ export const GAMES = {
   'dua-bam': { name: 'Đua Bấm Nút', desc: '10 giây bấm thật nhiều', rounds: 3 },
   'nho-mau': { name: 'Nhớ Màu', desc: 'Nhớ và bấm lại dãy màu', rounds: 5 },
   'day-ra': { name: 'Đẩy Ra Khỏi Sàn', desc: 'Gamepad: đẩy hết đối thủ khỏi sàn tròn!', rounds: 1 },
+  'ne-dan': { name: 'Né Đạn', desc: 'Gamepad: né đạn pháo, sống sót đến cuối!', rounds: 1 },
+  'keo-co': { name: 'Kéo Co', desc: 'Hai đội bấm nút B, kéo nút thắt về phía mình!', rounds: 1 },
+  // Rounds for Chia Hay Cướp are dynamic: one round per seated player
+  // (pairs rotate, see beginRound), so `rounds` here is only nominal.
+  'chia-cuop': { name: 'Chia Hay Cướp', desc: 'Thương lượng 60 giây rồi chọn bí mật: Chia hay Cướp?', rounds: 4 },
 };
 
 // Bot behaviour per difficulty. Bots are simulated server-side from plans
@@ -98,6 +103,15 @@ const RACE_COUNTDOWN_MS = 3000, RACE_MS = 10000, RACE_PAUSE_MS = 3000;
 const MEMORY_INPUT_MS = 12000, MEMORY_PAUSE_MS = 3000;
 const ARENA_R0 = 10, ARENA_RMIN = 4, ARENA_MS = 90000, ARENA_LIVES = 3, TICK_MS = 500;
 const SHOVE_RANGE = 2.7, SHOVE_FORCE = 2.7;
+// Né Đạn: same tick engine + walled arena (no shrinking, no ring-out).
+const DODGE_MS = 75000, DODGE_LIVES = 3, BALL_SPEED = 1.15, BALL_HIT_DIST = 1.35;
+// Kéo Co: knot = TUG_STEP * (presses of even seats - presses of odd seats);
+// first side to |knot| >= TUG_WIN within TUG_MS wins, else the leader at
+// time out wins (exact tie = draw). Bots add BOT_TUG presses per tick.
+const TUG_MS = 20000, TUG_WIN = 84, TUG_STEP = 3;
+const BOT_TUG = { de: 1, vua: 2, kho: 3 };
+// Chia Hay Cướp: negotiation then secret choice; pot per round, final ×2.
+const TALK_MS = 60000, CHOOSE_MS = 15000, POT = 400;
 
 // ---------------------------------------------------------------------------
 // Small utilities
@@ -196,10 +210,15 @@ function createGame(room, gameId) {
     points: {}, streaks: {}, inputs: {}, botPlan: {}, reveal: null, lastRound: null, rankMoves: {},
     order: null, current: null, seq: null, greenAt: 0, qStart: 0, raceStart: 0, inputStart: 0,
     pad: {}, padPrev: {}, blobs: null, arenaR: 0, tickCount: 0, nextTickAt: 0, elimOrder: [], botIntent: {}, dashCd: {}, shoveCd: {},
+    balls: null, spawnIn: 0, invuln: {}, elimTick: {},
+    presses: {}, knot: 0, teams: null, winnerTeam: null,
+    pair: null, chat: {},
   };
   room.players.forEach((p) => { game.points[p.seat] = 0; game.streaks[p.seat] = 0; });
   if (gameId === 'do-vui') game.order = shuffle(QUIZ_BANK.map((_, i) => i)).slice(0, meta.rounds);
   if (gameId === 'doan-so') game.order = shuffle(EST_BANK.map((_, i) => i)).slice(0, meta.rounds);
+  // Chia Hay Cướp rotates pairs across the table: one round per player.
+  if (gameId === 'chia-cuop') game.totalRounds = Math.max(2, room.players.length);
   room.game = game;
   room.phase = 'playing';
   room.prevRanks = ranksOf(room);
@@ -234,6 +253,20 @@ function roundPoints(g, pts) { return isFinalRound(g) ? pts * 2 : pts; }
 // Round setup (runs when the 3-2-1 countdown expires) + bot plans
 // ---------------------------------------------------------------------------
 function botDelay(diff, range) { return Math.round(rand(range[0], range[1])); }
+// Chia Hay Cướp bot personalities are deliberately deterministic so a
+// bot's word can be read at the table: Dễ bots always split, Khó bots
+// always steal, Vừa bots split on odd rounds and steal on even rounds.
+function chiaBotChoice(diff, round) {
+  if (diff === 'de') return 'chia';
+  if (diff === 'kho') return 'cuop';
+  return round % 2 === 1 ? 'chia' : 'cuop';
+}
+const NEGOT_LINES = [
+  'Chia đôi cho lành nhé!',
+  'Tin tui đi, chia là chắc ăn nhất.',
+  'Cướp là tui không nể đâu nha.',
+  'Thương lượng đàng hoàng nè, chia nhé?',
+];
 function beginRound(room) {
   const g = room.game; const t = now();
   g.inputs = {}; g.botPlan = {}; g.reveal = null;
@@ -294,6 +327,44 @@ function beginRound(room) {
       };
       g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0;
     });
+  } else if (g.id === 'ne-dan') {
+    g.phase = 'dodge';
+    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + DODGE_MS;
+    g.blobs = {}; g.balls = []; g.spawnIn = 3; g.elimOrder = []; g.elimTick = {};
+    g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; g.pad = {}; g.padPrev = {}; g.invuln = {};
+    room.players.forEach((p, i) => {
+      const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
+      g.blobs[p.seat] = {
+        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * 100) / 100,
+        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * 100) / 100,
+        lives: DODGE_LIVES, alive: true,
+      };
+      g.dashCd[p.seat] = 0; g.invuln[p.seat] = 0;
+    });
+  } else if (g.id === 'keo-co') {
+    g.phase = 'pull';
+    g.endsAt = t + TUG_MS; g.tickCount = 0; g.nextTickAt = t + TICK_MS;
+    g.presses = {}; g.knot = 0; g.winnerTeam = null; g.pad = {}; g.padPrev = {};
+    const teamA = [], teamB = [];
+    room.players.forEach((p) => {
+      g.presses[p.seat] = 0;
+      (p.seat % 2 === 1 ? teamA : teamB).push(p.seat);
+    });
+    g.teams = { A: teamA, B: teamB };
+  } else if (g.id === 'chia-cuop') {
+    // Pairs rotate around the table: round r pairs seats[(r-1) mod n] with
+    // seats[r mod n]; everyone else sits out and watches the negotiation.
+    const seats = room.players.map((p) => p.seat).sort((x, y) => x - y);
+    const n = seats.length;
+    g.pair = [seats[(g.round - 1) % n], seats[g.round % n]];
+    g.phase = 'talk'; g.endsAt = t + TALK_MS; g.chat = {};
+    g.pair.forEach((seat) => {
+      const p = playerAt(room, seat);
+      if (p && p.type === 'bot') {
+        g.botPlan[seat] = { choice: chiaBotChoice(p.difficulty, g.round) };
+        g.chat[seat] = { text: NEGOT_LINES[(g.round + seat) % NEGOT_LINES.length], at: t };
+      }
+    });
   }
 }
 
@@ -319,6 +390,9 @@ function step(room) {
   if (g.id === 'dua-bam') return stepRace(room, t);
   if (g.id === 'nho-mau') return stepMemory(room, t);
   if (g.id === 'day-ra') return stepArena(room, t);
+  if (g.id === 'ne-dan') return stepDodge(room, t);
+  if (g.id === 'keo-co') return stepTug(room, t);
+  if (g.id === 'chia-cuop') return stepChia(room, t);
   return false;
 }
 function humansAllIn(room, has) {
@@ -652,6 +726,223 @@ function finishArena(room) {
   endGame(room);
 }
 
+// --- Game 7: Né Đạn (tick arena survival, walled arena) ---------------------
+// Same tick simulation + pad held-state as Đẩy Ra Khỏi Sàn, but the arena
+// has walls (blobs clamp inside, no ring-out, no shrinking). Cannonballs
+// spawn from the edges on ticks and cross the field; a hit costs 1 of 3
+// lives and grants 4 ticks of invulnerability so one ball can never
+// multi-hit. Ranking: survivors first (most lives), then by elimination
+// tick (eliminated later = better). Placement awarded once per match
+// (300/200/100/50) like the other arena game — the ×2 rule is rounds-only.
+function stepDodge(room, t) {
+  const g = room.game;
+  if (g.phase !== 'dodge') return false;
+  if (t >= g.endsAt) { finishDodge(room); return true; }
+  if (t >= g.nextTickAt) {
+    simulateDodgeTick(room);
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync after long gaps
+    return true;
+  }
+  return false;
+}
+function botBrainDodge(room, p) {
+  const g = room.game;
+  const every = p.difficulty === 'kho' ? 1 : p.difficulty === 'vua' ? 2 : 3;
+  const prev = g.botIntent[p.seat];
+  if (prev && (g.tickCount + p.seat) % every !== 0) return prev;
+  const me = g.blobs[p.seat];
+  let tx = -me.x * 0.4, ty = -me.y * 0.4; // drift back towards the centre
+  let ball = null, bd = 1e9;
+  (g.balls || []).forEach((b) => {
+    const d = Math.hypot(b.x - me.x, b.y - me.y);
+    if (d < bd) { bd = d; ball = b; }
+  });
+  if (ball && bd < 6.5) { tx = me.x - ball.x; ty = me.y - ball.y; } // run away
+  const intent = { x: Math.abs(tx) > 0.4 ? Math.sign(tx) : 0, y: Math.abs(ty) > 0.4 ? Math.sign(ty) : 0 };
+  g.botIntent[p.seat] = intent;
+  return intent;
+}
+function simulateDodgeTick(room) {
+  const g = room.game;
+  g.tickCount += 1;
+  const moves = {};
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat];
+    if (!b || !b.alive) return;
+    const mv = { x: 0, y: 0, dash: false };
+    if (p.type === 'human') {
+      const pad = g.pad[p.seat] || {};
+      mv.x = (pad.r ? 1 : 0) - (pad.l ? 1 : 0);
+      mv.y = (pad.d ? 1 : 0) - (pad.u ? 1 : 0);
+      mv.dash = !!pad.b && !(g.padPrev[p.seat] || {}).b;
+    } else {
+      const intent = botBrainDodge(room, p);
+      mv.x = intent.x; mv.y = intent.y;
+    }
+    moves[p.seat] = mv;
+  });
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat]; const mv = moves[p.seat];
+    if (!b || !b.alive || !mv) return;
+    if (g.dashCd[p.seat] > 0) g.dashCd[p.seat] -= 1;
+    let stepMul = 1;
+    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { stepMul = 3; g.dashCd[p.seat] = 6; }
+    b.x += mv.x * stepMul; b.y += mv.y * stepMul;
+    const d = Math.hypot(b.x, b.y); const maxR = ARENA_R0 - 0.8;
+    if (d > maxR) { b.x *= maxR / d; b.y *= maxR / d; } // the wall stops you
+  });
+  // Cannonballs: spawn on a cadence that tightens as the match goes on.
+  g.spawnIn -= 1;
+  if (g.spawnIn <= 0) {
+    const R = ARENA_R0 + 2;
+    const side = randInt(0, 3); const along = rand(-8, 8);
+    let x = 0, y = 0;
+    if (side === 0) { x = -R; y = along; } else if (side === 1) { x = R; y = along; }
+    else if (side === 2) { x = along; y = -R; } else { x = along; y = R; }
+    const tx = rand(-5, 5), ty = rand(-5, 5);
+    const dx = tx - x, dy = ty - y; const dd = Math.hypot(dx, dy) || 1;
+    g.balls.push({ x, y, vx: (dx / dd) * BALL_SPEED, vy: (dy / dd) * BALL_SPEED });
+    g.spawnIn = Math.max(3, 7 - Math.floor(g.tickCount / 24));
+  }
+  g.balls.forEach((b) => { b.x += b.vx; b.y += b.vy; });
+  g.balls = g.balls.filter((b) => Math.hypot(b.x, b.y) <= 15);
+  // Hits.
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat];
+    if (!b || !b.alive) return;
+    if (g.invuln[p.seat] > 0) { g.invuln[p.seat] -= 1; return; }
+    const idx = g.balls.findIndex((ball) => Math.hypot(ball.x - b.x, ball.y - b.y) < BALL_HIT_DIST);
+    if (idx < 0) return;
+    g.balls.splice(idx, 1);
+    b.lives -= 1;
+    g.invuln[p.seat] = 4;
+    if (b.lives <= 0) { b.alive = false; g.elimOrder.push(p.seat); g.elimTick[p.seat] = g.tickCount; }
+  });
+  const snap = {};
+  room.players.forEach((p) => { if (p.type === 'human') snap[p.seat] = Object.assign({}, g.pad[p.seat] || {}); });
+  g.padPrev = snap;
+  const aliveCount = room.players.filter((p) => g.blobs[p.seat] && g.blobs[p.seat].alive).length;
+  if (aliveCount <= 1) finishDodge(room);
+}
+function finishDodge(room) {
+  const g = room.game;
+  const aliveRanked = room.players.filter((p) => g.blobs[p.seat] && g.blobs[p.seat].alive)
+    .sort((a, b) => (g.blobs[b.seat].lives - g.blobs[a.seat].lives) || (a.seat - b.seat));
+  const elimRanked = g.elimOrder.slice()
+    .sort((x, y) => ((g.elimTick[y] || 0) - (g.elimTick[x] || 0)) || (x - y))
+    .map((seat) => playerAt(room, seat)).filter(Boolean);
+  const ranking = aliveRanked.concat(elimRanked);
+  const entries = ranking.map((p, i) => ({
+    seat: p.seat, points: PLACEMENT_POINTS[Math.min(i, 3)],
+    lives: g.blobs[p.seat].lives, alive: g.blobs[p.seat].alive, elimTick: g.elimTick[p.seat] || null,
+  }));
+  entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
+  g.lastRound = { round: 1, entries };
+  endGame(room);
+}
+
+// --- Game 8: Kéo Co (team tug of war) ---------------------------------------
+// Teams are fixed by seat parity: odd seats = team A, even seats = team B.
+// Scoring rule (uniform for every team size): each member of the winning
+// team scores 300, each member of the losing team scores 200; an exact
+// tie at time out is a draw and everyone scores 200. Single match, so no
+// final-round ×2. Human presses are counted at action time on the rising
+// edge of the pad's B button; bots accumulate BOT_TUG presses per tick.
+function tugKnot(room) {
+  const g = room.game;
+  let a = 0, b = 0;
+  room.players.forEach((p) => {
+    const n = g.presses[p.seat] || 0;
+    if (p.seat % 2 === 1) a += n; else b += n;
+  });
+  return TUG_STEP * (b - a);
+}
+function stepTug(room, t) {
+  const g = room.game;
+  if (g.phase !== 'pull') return false;
+  const knot = tugKnot(room);
+  g.knot = knot;
+  if (Math.abs(knot) >= TUG_WIN) { finishTug(room, knot > 0 ? 'B' : 'A'); return true; }
+  if (t >= g.endsAt) { finishTug(room, knot > 0 ? 'B' : knot < 0 ? 'A' : null); return true; }
+  if (t >= g.nextTickAt) {
+    room.players.filter((p) => p.type === 'bot').forEach((p) => {
+      g.presses[p.seat] = (g.presses[p.seat] || 0) + BOT_TUG[p.difficulty];
+    });
+    g.tickCount += 1;
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    return true;
+  }
+  return false;
+}
+function finishTug(room, winnerTeam) {
+  const g = room.game;
+  g.winnerTeam = winnerTeam;
+  g.knot = tugKnot(room);
+  const entries = room.players.map((p) => {
+    const team = p.seat % 2 === 1 ? 'A' : 'B';
+    const points = winnerTeam === null ? 200 : (team === winnerTeam ? 300 : 200);
+    return { seat: p.seat, team, presses: g.presses[p.seat] || 0, points };
+  });
+  entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
+  g.lastRound = { round: 1, entries, knot: g.knot, winnerTeam };
+  endGame(room);
+}
+
+// --- Game 9: Chia Hay Cướp (negotiate, then a secret split-or-steal) --------
+// Per round: 'talk' (TALK_MS, the pair can post chat bubbles the host
+// shows) -> 'choose' (CHOOSE_MS, both lock a secret choice; bots lock
+// theirs the moment the phase opens) -> 'reveal' (choices exposed one at
+// a time via revealAt). Choices live only in g.inputs on the server and
+// are NEVER put into any view before the reveal phase. A player who does
+// not choose in time defaults to Chia. Pot is POT, doubled on the final
+// round: both Chia = half each, lone Cướp takes all, both Cướp = 0.
+function stepChia(room, t) {
+  const g = room.game;
+  if (g.phase === 'talk') {
+    if (t >= g.endsAt) { enterChiaChoose(room); return true; }
+    return false;
+  }
+  if (g.phase === 'choose') {
+    const both = (g.pair || []).every((s) => !!g.inputs[s]);
+    if (both || t >= g.endsAt) { resolveChia(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'reveal') {
+    if (t >= g.endsAt) { nextRoundOrEnd(room); return true; }
+  }
+  return false;
+}
+function enterChiaChoose(room) {
+  const g = room.game; const t = now();
+  g.phase = 'choose'; g.endsAt = t + CHOOSE_MS;
+  (g.pair || []).forEach((seat) => {
+    const p = playerAt(room, seat);
+    if (p && p.type === 'bot') { const plan = g.botPlan[seat]; if (plan) g.inputs[seat] = { choice: plan.choice, at: t }; }
+  });
+}
+function resolveChia(room, t) {
+  const g = room.game;
+  const pot = isFinalRound(g) ? POT * 2 : POT;
+  const sa = g.pair[0], sb = g.pair[1];
+  const ca = (g.inputs[sa] && g.inputs[sa].choice) || 'chia';
+  const cb = (g.inputs[sb] && g.inputs[sb].choice) || 'chia';
+  const won = {};
+  won[sa] = 0; won[sb] = 0;
+  if (ca === 'chia' && cb === 'chia') { won[sa] = pot / 2; won[sb] = pot / 2; }
+  else if (ca === 'cuop' && cb === 'chia') won[sa] = pot;
+  else if (ca === 'chia' && cb === 'cuop') won[sb] = pot;
+  const entries = [sa, sb].map((seat, i) => ({
+    seat, choice: seat === sa ? ca : cb, points: won[seat], revealAt: t + 700 + i * 1500,
+  }));
+  const ptsAll = {};
+  room.players.forEach((p) => { ptsAll[p.seat] = won[p.seat] || 0; g.points[p.seat] = (g.points[p.seat] || 0) + ptsAll[p.seat]; });
+  g.reveal = { pot, entries };
+  g.lastRound = { round: g.round, points: ptsAll, pair: g.pair.slice() };
+  finishTimedRound(room, 'reveal', t + 700 + 2 * 1500 + 900);
+}
+
 // ---------------------------------------------------------------------------
 // Views (filtered per role; quiz answers are never exposed before reveal)
 // ---------------------------------------------------------------------------
@@ -722,6 +1013,31 @@ function gameView(room, role, seat, t) {
       const b = g.blobs ? g.blobs[p.seat] : null;
       if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
     });
+  } else if (g.id === 'ne-dan') {
+    v.arenaR = ARENA_R0;
+    v.blobs = {};
+    room.players.forEach((p) => {
+      const b = g.blobs ? g.blobs[p.seat] : null;
+      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
+    });
+    v.balls = (g.balls || []).map((b) => ({ x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100 }));
+  } else if (g.id === 'keo-co') {
+    v.teams = g.teams;
+    v.presses = g.presses;
+    v.knot = tugKnot(room);
+    v.phaseDur = TUG_MS;
+  } else if (g.id === 'chia-cuop') {
+    v.pair = g.pair;
+    v.pot = isFinalRound(g) ? POT * 2 : POT;
+    v.phaseDur = g.phase === 'talk' ? TALK_MS : g.phase === 'choose' ? CHOOSE_MS : 0;
+    v.chat = (g.pair || []).filter((s) => g.chat && g.chat[s]).map((s) => ({ seat: s, text: g.chat[s].text }));
+    const chosen = {};
+    (g.pair || []).forEach((s) => { chosen[s] = !!g.inputs[s]; });
+    v.chosen = chosen;
+    // Secrecy rule: no choice values in ANY view before the reveal phase;
+    // a player only ever sees that they themselves have locked in.
+    if (g.phase === 'reveal') v.reveal = g.reveal;
+    if (seat) v.mineChosen = !!(g.pair && g.pair.indexOf(seat) >= 0 && g.inputs[seat]);
   } else if (g.id === 'nho-mau') {
     v.len = g.seq ? g.seq.length : 0;
     const statuses = {};
@@ -836,9 +1152,37 @@ function playerAction(room, player, body) {
   if (room.phase !== 'playing' || !g) return 'Chưa vào game.';
   const seat = player.seat; const t = now(); const a = body.action;
   if (a === 'pad') {
-    if (g.id !== 'day-ra') return null;
+    if (g.id !== 'day-ra' && g.id !== 'ne-dan' && g.id !== 'keo-co' && g.id !== 'chia-cuop') return null;
     const pd = body.pad || {};
-    g.pad[seat] = { u: !!pd.u, d: !!pd.d, l: !!pd.l, r: !!pd.r, a: !!pd.a, b: !!pd.b };
+    const np = { u: !!pd.u, d: !!pd.d, l: !!pd.l, r: !!pd.r, a: !!pd.a, b: !!pd.b };
+    const prev = g.pad[seat] || {};
+    // Kéo Co: a press is the rising edge of B, counted the moment it lands.
+    if (g.id === 'keo-co' && g.phase === 'pull' && np.b && !prev.b) {
+      g.presses[seat] = (g.presses[seat] || 0) + 1;
+    }
+    // Chia Hay Cướp on the gamepad: A (the X position) = Chia, B = Cướp,
+    // rising edge only, and only for the pair during the choose phase.
+    if (g.id === 'chia-cuop' && g.phase === 'choose' && g.pair && g.pair.indexOf(seat) >= 0 && !g.inputs[seat]) {
+      if (np.a && !prev.a) g.inputs[seat] = { choice: 'chia', at: t };
+      else if (np.b && !prev.b) g.inputs[seat] = { choice: 'cuop', at: t };
+    }
+    g.pad[seat] = np;
+    return null;
+  }
+  if (a === 'choose') {
+    if (g.id !== 'chia-cuop' || g.phase !== 'choose') return 'Chưa đến lúc chọn.';
+    if (!g.pair || g.pair.indexOf(seat) < 0) return 'Vòng này bạn ngồi ngoài, chỉ xem thôi.';
+    if (g.inputs[seat]) return null;
+    if (body.choice !== 'chia' && body.choice !== 'cuop') return 'Lựa chọn không hợp lệ.';
+    g.inputs[seat] = { choice: body.choice, at: t };
+    return null;
+  }
+  if (a === 'chat') {
+    if (g.id !== 'chia-cuop' || g.phase !== 'talk') return 'Chỉ trò chuyện được trong lúc thương lượng.';
+    if (!g.pair || g.pair.indexOf(seat) < 0) return 'Chỉ hai người trong cặp mới thương lượng.';
+    const text = String(body.text || '').trim().slice(0, 60);
+    if (!text) return 'Hãy nhập lời nhắn.';
+    g.chat[seat] = { text, at: t };
     return null;
   }
   if (a === 'tap') {
@@ -1091,6 +1435,18 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .cdwrap { text-align: center; padding: 30px 0; }
 .cdnum { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 150px; line-height: 1; color: #fff; text-shadow: 0 8px 0 rgba(0,0,0,.18); animation: pop .45s ease; }
 .g-day-ra { background: linear-gradient(160deg, #FFB35C, #E84F4F); }
+.g-ne-dan { background: linear-gradient(160deg, #8E2DE2, #E84F4F); }
+.g-keo-co { background: linear-gradient(160deg, #0E9B8B, #2FA36B); }
+.g-chia-cuop { background: linear-gradient(160deg, #B06AB3, #4568DC); }
+.aball { position: absolute; width: 26px; height: 26px; border-radius: 50%; z-index: 1;
+  background: radial-gradient(circle at 35% 32%, #9a9a9a, #1d1d1d); transform: translate(-50%, -50%);
+  transition: left .45s linear, top .45s linear; box-shadow: 0 4px 8px rgba(0,0,0,.35); }
+.rope { position: relative; height: 40px; border-radius: 999px; margin: 16px 0;
+  background: linear-gradient(90deg, #4FA8E8 0 50%, #F77FB0 50% 100%); box-shadow: inset 0 -6px 0 rgba(0,0,0,.18); }
+.rope .mid { position: absolute; left: 50%; top: -6px; bottom: -6px; width: 4px; background: #fff; transform: translateX(-50%); border-radius: 2px; }
+.rope .knot { position: absolute; top: 50%; width: 34px; height: 34px; border-radius: 50%; background: #FFC93D;
+  border: 4px solid #fff; transform: translate(-50%, -50%); box-shadow: 0 6px 12px rgba(0,0,0,.3); transition: left .3s; }
+.chatrow { display: flex; gap: 8px; align-items: center; background: rgba(255,255,255,.22); border-radius: 14px; padding: 7px 12px; margin: 6px 0; font-weight: 700; text-align: left; }
 .afield { position: relative; width: min(86vw, 540px); aspect-ratio: 1; margin: 12px auto; }
 .aring { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%;
   background: radial-gradient(circle, rgba(255,255,255,.38), rgba(255,255,255,.12));
@@ -1243,13 +1599,16 @@ function act(body, cb) {
 }
 function serverNow() { return Date.now() + S.serverOffset; }
 
-var DUR = { 'do-vui': 15000, 'doan-so': 20000, 'dua-bam': 10000, 'nho-mau': 12000 };
+var DUR = { 'do-vui': 15000, 'doan-so': 20000, 'dua-bam': 10000, 'nho-mau': 12000, 'keo-co': 20000 };
 var GCOLORS = {
   'nhanh-tay': 'linear-gradient(160deg,#FFD93D,#FF8C42)', 'do-vui': 'linear-gradient(160deg,#6BCBFF,#4F7BE8)',
   'doan-so': 'linear-gradient(160deg,#7BE0B8,#2FA36B)', 'dua-bam': 'linear-gradient(160deg,#FF9DE2,#B45FE8)',
   'nho-mau': 'linear-gradient(160deg,#A8C0FF,#6A5FE8)',
-  'day-ra': 'linear-gradient(160deg,#FFB35C,#E84F4F)'
+  'day-ra': 'linear-gradient(160deg,#FFB35C,#E84F4F)',
+  'ne-dan': 'linear-gradient(160deg,#8E2DE2,#E84F4F)', 'keo-co': 'linear-gradient(160deg,#0E9B8B,#2FA36B)',
+  'chia-cuop': 'linear-gradient(160deg,#B06AB3,#4568DC)'
 };
+function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co'; }
 function topbarHTML(v, isHost) {
   var h = '<div class="topbar"><span class="baloo" style="font-size:24px">Nảy Party</span>';
   h += '<span class="chip cool">Phòng ' + esc(v.code) + '</span>';
@@ -1337,13 +1696,13 @@ function hostHTML(v) {
   return h + '<div class="card center"><h2>Đang tải…</h2></div>';
 }
 function countdownHTML(g) {
-  return '<div class="cdwrap"><div class="baloo" style="font-size:30px">Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && g.id !== 'day-ra' ? ' · VÒNG QUYẾT ĐỊNH ×2' : '') + '</div>'
+  return '<div class="cdwrap"><div class="baloo" style="font-size:30px">Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · VÒNG QUYẾT ĐỊNH ×2' : '') + '</div>'
     + '<div class="cdnum" id="cdnum">3</div><div class="baloo" style="font-size:24px">Chuẩn bị…</div></div>';
 }
 function hostStage(v) {
   var g = v.game;
   if (g.phase === 'countdown') return countdownHTML(g);
-  var h = '<h2>' + esc(g.name) + ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && g.id !== 'day-ra' ? ' · ×2' : '') + '</h2>';
+  var h = '<h2>' + esc(g.name) + ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '') + '</h2>';
   var t = serverNow();
   if (g.id === 'nhanh-tay') {
     if (g.phase === 'wait') h += '<div class="bigcircle wait">Đợi màu xanh…</div>';
@@ -1435,6 +1794,51 @@ function hostStage(v) {
       h += '</div>';
       h += '<p class="center">Rơi khỏi vòng là mất 1 mạng · Hết mạng là bị loại · Người trụ lại cuối cùng thắng!</p>';
     }
+  } else if (g.id === 'ne-dan') {
+    if (g.phase === 'dodge') {
+      h += '<div class="baloo" style="font-size:25px">Né hết đạn pháo! Trúng là mất 1 mạng…</div>';
+      h += '<div class="afield"><div class="aring" id="aring"></div>';
+      for (var nI = 0; nI < (g.balls ? g.balls.length : 0); nI++) h += '<div class="aball" id="nball-' + nI + '"></div>';
+      for (var dI = 0; dI < v.players.length; dI++) { var dp = v.players[dI]; h += '<div class="ablob" id="ablob-' + dp.seat + '" style="left:50%;top:50%">' + blobSVG(dp.color, dp.mood, 46) + '<div class="aname">' + esc(dp.name) + '</div><div class="alives" id="alives-' + dp.seat + '"></div></div>'; }
+      h += '</div>';
+      h += '<p class="center">Đạn bay càng lúc càng dày · Hết mạng là bị loại · Người sống sót cuối cùng thắng!</p>';
+    }
+  } else if (g.id === 'keo-co') {
+    if (g.phase === 'pull') {
+      h += '<div class="baloo" style="font-size:25px">Đội A (ghế lẻ) ⟵ KÉO! ⟶ Đội B (ghế chẵn)</div>';
+      var kpct = Math.max(3, Math.min(97, 50 + (g.knot / 84) * 46));
+      h += '<div class="rope"><div class="mid"></div><div class="knot" style="left:' + kpct + '%"></div></div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 20000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      h += '<div class="scorebar">';
+      for (var tI = 0; tI < v.players.length; tI++) { var tp = v.players[tI]; var tm = tp.seat % 2 === 1 ? 'A' : 'B'; h += '<span class="scorechip">' + blobSVG(tp.color, tp.mood, 28) + ' ' + esc(tp.name) + ' · Đội ' + tm + ' · ' + (g.presses ? (g.presses[tp.seat] || 0) : 0) + ' lần kéo</span>'; }
+      h += '</div>';
+      h += '<p class="center">Kéo nút thắt vàng chạm mép phía đội mình là thắng ngay!</p>';
+    }
+  } else if (g.id === 'chia-cuop') {
+    var pa = g.pair ? playerOf(v, g.pair[0]) : null; var pb = g.pair ? playerOf(v, g.pair[1]) : null;
+    if (pa && pb) {
+      h += '<div class="center"><span class="blobbob">' + blobSVG(pa.color, pa.mood, 74) + '</span> <span class="baloo" style="font-size:26px"> ' + esc(pa.name) + ' ⚔ ' + esc(pb.name) + ' </span> <span class="blobbob">' + blobSVG(pb.color, pb.mood, 74) + '</span></div>';
+      h += '<div class="center baloo" style="font-size:23px">Nồi điểm vòng này: ' + fmt(g.pot || 400) + ' điểm' + (g.finalRound ? ' (VÒNG CUỐI ×2!)' : '') + '</div>';
+    }
+    if (g.phase === 'talk') {
+      h += '<div class="baloo" style="font-size:24px">Đang thương lượng… hai người cứ thuyết phục nhau đi!</div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 60000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      if (g.chat) for (var cI2 = 0; cI2 < g.chat.length; cI2++) { var cp = playerOf(v, g.chat[cI2].seat); h += '<div class="chatrow">' + blobSVG(cp ? cp.color : 'blue', 'cuoi', 26) + ' <b>' + esc(cp ? cp.name : '') + ':</b> ' + esc(g.chat[cI2].text) + '</div>'; }
+      h += '<p class="center">Hết giờ thương lượng sẽ tới lúc chọn bí mật: CHIA hay CƯỚP…</p>';
+    } else if (g.phase === 'choose') {
+      h += '<div class="baloo" style="font-size:26px">Đang chọn bí mật… không ai biết ai chọn gì!</div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 15000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      h += '<div class="scorebar">';
+      if (g.pair) for (var sI = 0; sI < g.pair.length; sI++) { var sp = playerOf(v, g.pair[sI]); h += '<span class="scorechip">' + blobSVG(sp.color, sp.mood, 28) + ' ' + esc(sp.name) + ' ' + (g.chosen && g.chosen[sp.seat] ? 'đã khoá ✓' : 'đang nghĩ…') + '</span>'; }
+      h += '</div>';
+    } else if (g.phase === 'reveal' && g.reveal) {
+      h += '<div class="baloo" style="font-size:27px">Công bố!</div><div class="rows">';
+      for (var vI = 0; vI < g.reveal.entries.length; vI++) {
+        var ve = g.reveal.entries[vI]; var vp = playerOf(v, ve.seat);
+        h += '<div class="rrow rev" data-reveal="' + ve.revealAt + '">' + blobSVG(vp.color, vp.mood, 34) + ' ' + esc(vp.name) + '<span class="chip ' + (ve.choice === 'cuop' ? 'hot' : 'cool') + '">' + (ve.choice === 'cuop' ? 'CƯỚP!' : 'CHIA') + '</span><span class="pts">+' + fmt(ve.points) + '</span></div>';
+      }
+      h += '</div>';
+    }
   }
   return h;
 }
@@ -1488,6 +1892,14 @@ function viewSig(v) {
       var ak = '';
       if (g.blobs) for (var bs in g.blobs) ak += bs + (g.blobs[bs].alive ? '1' : '0');
       gp = [g.id, g.phase, ak, g.lastRound];
+    } else if (g.id === 'ne-dan') {
+      var ak2 = '';
+      if (g.blobs) for (var bs2 in g.blobs) ak2 += bs2 + (g.blobs[bs2].alive ? '1' : '0') + g.blobs[bs2].lives;
+      gp = [g.id, g.phase, ak2, g.balls ? g.balls.length : 0, g.lastRound];
+    } else if (g.id === 'keo-co') {
+      gp = [g.id, g.phase, g.knot, g.presses, g.lastRound];
+    } else if (g.id === 'chia-cuop') {
+      gp = [g.id, g.phase, g.round, g.points, g.chosen, g.chat, g.reveal, g.mineChosen, g.lastRound];
     } else {
       gp = [g.id, g.phase, g.round, g.points, g.lastRound, g.reveal, g.status, g.answered, g.guessed, g.statuses, g.mine];
     }
@@ -1595,7 +2007,7 @@ function tick() {
     var mc = el('mycount');
     if (mc && S.role === 'player') mc.textContent = g.counts[S.seat] || 0;
   }
-  if (g && g.id === 'day-ra' && g.blobs) {
+  if (g && (g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) {
     for (var bSeat in g.blobs) {
       var bb = g.blobs[bSeat];
       var bn = el('ablob-' + bSeat);
@@ -1611,6 +2023,15 @@ function tick() {
     if (ring && g.arenaR) { var pct = (g.arenaR * 2 / 24 * 100) + '%'; ring.style.width = pct; ring.style.height = pct; }
     var ml = el('mylives');
     if (ml && g.blobs[S.seat]) ml.textContent = '❤'.repeat(g.blobs[S.seat].lives);
+  }
+  if (g && g.id === 'ne-dan' && g.balls) {
+    for (var nbi = 0; nbi < g.balls.length; nbi++) {
+      var nb = el('nball-' + nbi);
+      if (nb) {
+        nb.style.left = ((g.balls[nbi].x + 12) / 24 * 100) + '%';
+        nb.style.top = ((g.balls[nbi].y + 12) / 24 * 100) + '%';
+      }
+    }
   }
   var rows = document.querySelectorAll('.rev');
   for (var ri = 0; ri < rows.length; ri++) {
@@ -1635,7 +2056,7 @@ function homeHTML() {
   h += '</div>';
   h += '<p><input type="text" id="joinName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
   h += '<p><button class="btn pink" data-cmd="join" style="font-size:22px">Vào phòng</button></p></div>';
-  h += '<p class="center muted small" style="margin-top:14px">6 game: Nhanh Tay · Đố Vui Tốc Độ · Đoán Số Chuẩn · Đua Bấm Nút · Nhớ Màu · Đẩy Ra Khỏi Sàn — vòng cuối luôn ×2 điểm!</p>';
+  h += '<p class="center muted small" style="margin-top:14px">9 game: Nhanh Tay · Đố Vui Tốc Độ · Đoán Số Chuẩn · Đua Bấm Nút · Nhớ Màu · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp — vòng cuối luôn ×2 điểm!</p>';
   return h;
 }
 function playerHTML(v) {
@@ -1660,7 +2081,7 @@ function playerGame(v) {
   var me = playerOf(v, S.seat);
   var h = '<div class="stage g-' + g.id + '">';
   if (g.phase === 'countdown') { h += '<div class="center baloo" style="font-size:26px">' + esc(g.name) + '</div>' + countdownHTML(g) + '</div>'; return h; }
-  h += '<h2>' + esc(g.name) + ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && g.id !== 'day-ra' ? ' · ×2' : '') + '</h2>';
+  h += '<h2>' + esc(g.name) + ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '') + '</h2>';
   if (g.id === 'nhanh-tay') {
     if (g.phase === 'wait') {
       if (g.mine === 'early') h += '<div class="center"><div class="baloo" style="font-size:30px">Bạn bấm sớm!</div><p>−100 điểm vòng này. Đợi vòng sau nhé.</p></div>';
@@ -1744,9 +2165,9 @@ function playerGame(v) {
       var mp2 = g.lastRound.points[S.seat] || 0;
       h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, mp2 > 0 ? 'reo' : 'buon', 100) + '</span><div class="baloo" style="font-size:27px">' + (mp2 > 0 ? 'Nhớ siêu quá!' : 'Chưa thuộc dãy này') + '</div><div class="baloo" style="font-size:23px">+' + fmt(mp2) + ' điểm</div></div>';
     }
-  } else if (g.id === 'day-ra') {
+  } else if (g.id === 'day-ra' || g.id === 'ne-dan') {
     var myB = g.blobs ? g.blobs[S.seat] : null;
-    if (g.phase === 'arena') {
+    if (g.phase === 'arena' || g.phase === 'dodge') {
       if (myB && !myB.alive) {
         h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, 'buon', 100) + '</span><div class="baloo" style="font-size:27px">Bạn đã bị loại!</div><p>Xem TV đợi kết quả nhé…</p></div>';
       } else {
@@ -1756,8 +2177,56 @@ function playerGame(v) {
           + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
           + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
           + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>Lướt</span></button><button class="abtn abtnA" data-pad="a">A<span>ĐẨY</span></button></div></div>';
-        h += '<p class="center small">Giữ D-pad để di chuyển · A: đẩy đối thủ · B: lướt nhanh</p>';
+        h += '<p class="center small">' + (g.id === 'ne-dan' ? 'Giữ D-pad để né đạn · B: lướt nhanh' : 'Giữ D-pad để di chuyển · A: đẩy đối thủ · B: lướt nhanh') + '</p>';
       }
+    }
+  } else if (g.id === 'keo-co') {
+    var myTeam = S.seat % 2 === 1 ? 'A' : 'B';
+    if (g.phase === 'pull') {
+      h += '<div class="center baloo" style="font-size:24px">BẠN Ở ĐỘI ' + myTeam + ' — BẤM NÚT B LIÊN TỤC!</div>';
+      var kpct2 = Math.max(3, Math.min(97, 50 + (g.knot / 84) * 46));
+      h += '<div class="rope"><div class="mid"></div><div class="knot" style="left:' + kpct2 + '%"></div></div>';
+      h += '<div class="center baloo" style="font-size:21px">Bạn đã kéo: ' + (g.presses ? (g.presses[S.seat] || 0) : 0) + ' lần</div>';
+      h += '<div class="padwrap"><div class="dpad">'
+        + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
+        + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
+        + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
+        + '<div class="abtns"><button class="abtn" data-pad="b" style="background:#E84F4F;width:92px;height:92px;font-size:30px">B<span>KÉO!</span></button></div></div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 20000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    }
+  } else if (g.id === 'chia-cuop') {
+    var inPair = g.pair && g.pair.indexOf(S.seat) >= 0;
+    var foeSeat = inPair ? g.pair[g.pair[0] === S.seat ? 1 : 0] : null;
+    var foe = foeSeat ? playerOf(v, foeSeat) : null;
+    if (g.phase === 'talk') {
+      h += '<div class="center baloo" style="font-size:23px">Nồi ' + fmt(g.pot || 400) + ' điểm' + (g.finalRound ? ' · VÒNG CUỐI ×2' : '') + '</div>';
+      if (g.chat) for (var pI = 0; pI < g.chat.length; pI++) { var pp2 = playerOf(v, g.chat[pI].seat); h += '<div class="chatrow">' + blobSVG(pp2 ? pp2.color : 'blue', 'cuoi', 24) + ' <b>' + esc(pp2 ? pp2.name : '') + ':</b> ' + esc(g.chat[pI].text) + '</div>'; }
+      if (inPair) {
+        h += '<p class="center">Bạn đấu với <b>' + esc(foe ? foe.name : '') + '</b>. Nói gì cũng được — lát nữa chọn mới là thật!</p>';
+        h += '<p class="center"><input type="text" id="chatText" maxlength="60" placeholder="Lời thương lượng…" style="width:min(70vw,300px)"> <button class="btn small blue" data-cmd="chatSend">Gửi</button></p>';
+      } else {
+        var w1 = g.pair ? playerOf(v, g.pair[0]) : null; var w2 = g.pair ? playerOf(v, g.pair[1]) : null;
+        h += '<p class="center">Vòng này ' + esc(w1 ? w1.name : '') + ' và ' + esc(w2 ? w2.name : '') + ' thương lượng — bạn ngồi ngoài xem.</p>';
+      }
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 60000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    } else if (g.phase === 'choose') {
+      if (!inPair) {
+        h += '<div class="center baloo" style="font-size:25px">Hai người kia đang chọn bí mật…</div><p class="center">Xem TV đoán thử ai sẽ cướp!</p>';
+      } else if (g.mineChosen) {
+        h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, 'ngacnhien', 100) + '</span><div class="baloo" style="font-size:26px">Đã khoá lựa chọn!</div><p>Bí mật đến phút công bố — đợi đối thủ…</p></div>';
+      } else {
+        h += '<div class="center baloo" style="font-size:25px">CHỌN BÍ MẬT ĐI!</div>';
+        h += '<p class="center">Cả hai CHIA: mỗi người một nửa nồi · Một người CƯỚP: cướp hết · Cả hai CƯỚP: mất trắng!</p>';
+        h += '<p class="center"><button class="btn green" data-cmd="choose" data-c="chia" style="font-size:23px">X · CHIA</button></p>';
+        h += '<p class="center"><button class="btn pink" data-cmd="choose" data-c="cuop" style="font-size:23px">B · CƯỚP</button></p>';
+        h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 15000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      }
+    } else if (g.phase === 'reveal' && g.reveal) {
+      var myE2 = null; for (var qI = 0; qI < g.reveal.entries.length; qI++) if (g.reveal.entries[qI].seat === S.seat) myE2 = g.reveal.entries[qI];
+      h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, myE2 && myE2.points > 0 ? 'reo' : 'buon', 100) + '</span>';
+      if (myE2) h += '<div class="baloo" style="font-size:27px">Bạn đã ' + (myE2.choice === 'cuop' ? 'CƯỚP' : 'CHIA') + ' · +' + fmt(myE2.points) + ' điểm</div>';
+      else h += '<div class="baloo" style="font-size:25px">Xem kết quả trên TV!</div>';
+      h += '</div>';
     }
   }
   return h + '</div>';
@@ -1768,6 +2237,24 @@ function saveSession() {
 function clearSession() {
   try { sessionStorage.removeItem('np_session'); } catch (e) {}
   S.role = null; S.code = null; S.token = null; S.seat = null; S.view = null; S.sig = ''; render();
+}
+// Rooms live in KV, which is eventually consistent: a room created seconds
+// ago may not be visible yet at the edge location serving this phone, and
+// the join then answers "room not found". Retry ONLY that error every 2s
+// for ~20s before bothering the user; every other error (room playing,
+// room full, name problems) surfaces immediately.
+var JOIN_RETRY_MS = 2000, JOIN_RETRY_MAX = 10;
+function tryJoin(code, name, attempt) {
+  api('/api/rooms/' + code + '/join', { name: name }, function (v) {
+    if (v && v.ok) { S.role = 'player'; S.code = code; S.token = v.playerToken; S.seat = v.seat; saveSession(); S.sig = ''; poll(); return; }
+    var err = v && v.error ? v.error : '';
+    if (err.indexOf('Không thấy phòng này') >= 0 && attempt < JOIN_RETRY_MAX) {
+      toast('Đang tìm phòng…');
+      setTimeout(function () { tryJoin(code, name, attempt + 1); }, JOIN_RETRY_MS);
+      return;
+    }
+    toast(err || 'Không vào được phòng.');
+  });
 }
 document.addEventListener('click', function (ev) {
   var node = ev.target;
@@ -1785,10 +2272,7 @@ document.addEventListener('click', function (ev) {
     var nameEl = el('joinName'); var name = nameEl ? nameEl.value.trim() : '';
     if (code.length !== 6) { toast('Nhập đủ mã phòng 6 số nhé.'); return; }
     if (!name) { toast('Nhập tên của bạn trước nhé.'); return; }
-    api('/api/rooms/' + code + '/join', { name: name }, function (v) {
-      if (v && v.ok) { S.role = 'player'; S.code = code; S.token = v.playerToken; S.seat = v.seat; saveSession(); S.sig = ''; poll(); }
-      else toast(v && v.error ? v.error : 'Không vào được phòng.');
-    });
+    tryJoin(code, name, 0);
   } else if (cmd === 'sound') {
     S.muted = !S.muted;
     try { localStorage.setItem('np_muted', S.muted ? '1' : '0'); } catch (e) {}
@@ -1830,6 +2314,14 @@ document.addEventListener('click', function (ev) {
     if (!S.guess) { toast('Nhập số đoán trước đã.'); return; }
     var val = +S.guess; S.guess = '';
     act({ action: 'guess', value: val });
+  } else if (cmd === 'choose') {
+    sfxTap();
+    act({ action: 'choose', choice: node.getAttribute('data-c') });
+  } else if (cmd === 'chatSend') {
+    var ct = el('chatText'); var txt = ct ? ct.value.trim() : '';
+    if (!txt) { toast('Nhập lời nhắn trước đã.'); return; }
+    if (ct) ct.value = '';
+    act({ action: 'chat', text: txt });
   }
 });
 document.addEventListener('input', function (ev) {
@@ -1884,7 +2376,7 @@ window.addEventListener('blur', function () {
   setInterval(tick, 150);
   setInterval(function () {
     var v = S.view;
-    if (v && v.game && ((v.game.id === 'nhanh-tay' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena'))) poll();
+    if (v && v.game && ((v.game.id === 'nhanh-tay' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull'))) poll();
   }, 220);
 })();
 </script>

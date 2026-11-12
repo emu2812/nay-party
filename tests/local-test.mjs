@@ -4,6 +4,8 @@
 // - Plays a full match: lobby/bots -> Đố Vui (streak + ×2 verified exactly)
 //   -> Đoán Số (×2 verified) -> Nhớ Màu (×2 verified) -> Đua Bấm Nút (+ replay)
 //   -> Nhanh Tay (ms gaps) -> Đẩy Ra Khỏi Sàn (gamepad held-state arena)
+//   -> Né Đạn (tick arena survival) -> Kéo Co (team knot math, exact)
+//   -> Chia Hay Cướp (secret choices, rotating pairs, exact totals)
 //   -> podium/final, and checks cumulative totals == sum of per-game points.
 // Run: node tests/local-test.mjs
 import worker, { QUIZ_BANK, EST_BANK } from '../worker.mjs';
@@ -202,11 +204,113 @@ async function playArena() {
   return v;
 }
 
+async function playDodge() {
+  console.log('Game: Né Đạn (tick arena survival, walled arena)');
+  await toGame('ne-dan');
+  let v = await pump(200, (s) => s.game && s.game.phase === 'dodge', 'dodge begins');
+  const start = v.game.blobs[P1.seat];
+  assert(start && start.alive && start.lives === 3, 'dodge: human blob spawns alive with 3 lives');
+  assert(Array.isArray(v.game.balls), 'dodge: cannonball field is exposed in the host view');
+  await pAct({ action: 'pad', pad: { l: true } }); // hold D-pad left
+  for (let i = 0; i < 6; i++) { tick(500); await hState(); }
+  v = await hState();
+  const moved = Math.abs(v.game.blobs[P1.seat].x - start.x) + Math.abs(v.game.blobs[P1.seat].y - start.y);
+  assert(moved >= 1, 'dodge: held D-pad state moves the blob on server ticks (moved ' + moved + ')');
+  await pAct({ action: 'pad', pad: {} }); // release
+  v = await pump(1000, (s) => s.phase === 'results', 'dodge results', 300);
+  const pts = Object.values(v.lastGame.points).sort((a, b) => b - a);
+  assert(JSON.stringify(pts) === JSON.stringify([300, 200, 100]), 'dodge placements are exactly 300/200/100, got ' + pts.join('/'));
+  return v;
+}
+
+async function playTug() {
+  console.log('Game: Kéo Co (team tug of war, knot = 3 x net presses)');
+  await toGame('keo-co');
+  let v = await pump(250, (s) => s.game && s.game.phase === 'pull', 'tug pull begins');
+  assert(v.game.teams && v.game.teams.A.join(',') === '1,3' && v.game.teams.B.join(',') === '2',
+    'tug: teams split by seat parity (odd = A: P1+P3, even = B: P2)');
+  // Fake time is frozen between actions, so no bot tick can sneak in: both
+  // bots are Vừa and would cancel out anyway. 27 human B presses (rising
+  // edge) must move the knot to exactly 3 * -27 = -81.
+  for (let i = 0; i < 27; i++) {
+    await pAct({ action: 'pad', pad: { b: true } });
+    await pAct({ action: 'pad', pad: {} });
+  }
+  v = await hState();
+  assert(v.game && v.game.presses[P1.seat] === 27, 'tug: server counted exactly 27 rising-edge B presses, got ' + (v.game ? v.game.presses[P1.seat] : '?'));
+  assert(v.game && v.game.knot === -81, 'tug: knot == -81 after 27 net presses for team A, got ' + (v.game ? v.game.knot : '?'));
+  await pAct({ action: 'pad', pad: { b: true } }); // 28th press: knot hits -84
+  await pAct({ action: 'pad', pad: {} });
+  v = await hState();
+  assert(v.phase === 'results' && v.lastGame && v.lastGame.id === 'keo-co', 'tug: |knot| reaching 84 ends the match at once');
+  assert(v.lastGame.points[1] === 300 && v.lastGame.points[3] === 300 && v.lastGame.points[2] === 200,
+    'tug: winning team scores 300 each, losing team 200, got ' + JSON.stringify(v.lastGame.points));
+  return v;
+}
+
+async function playChia() {
+  console.log('Game: Chia Hay Cướp (negotiation, secret choices, rotating pairs)');
+  const v0 = await toGame('chia-cuop');
+  assert(v0.game.totalRounds === 3, 'chia: rounds == number of players (3), got ' + v0.game.totalRounds);
+  // Round 1 — pair P1+P2. Bot Vừa splits on odd rounds, so Chia/Chia = 200 each.
+  let v = await pump(250, (s) => s.game && s.game.phase === 'talk' && s.game.round === 1, 'chia talk r1');
+  assert(v.game.pair.join(',') === '1,2', 'chia r1: pair is P1+P2');
+  await pAct({ action: 'chat', text: 'Chia đôi cho lành nhé!' });
+  v = await hState();
+  assert(JSON.stringify(v.game.chat).indexOf('Chia đôi cho lành nhé!') >= 0, 'chia: negotiation bubble shows on the host during talk');
+  tick(60000);
+  v = await pump(250, (s) => s.game && s.game.phase === 'choose' && s.game.round === 1, 'chia choose r1');
+  assert(v.game.choices === undefined, 'chia: host state exposes no choices during the choose phase');
+  let pv = await pState();
+  assert(pv.game.choices === undefined && pv.game.mineChosen === false, 'chia: phone state hides choices too (mineChosen=false before picking)');
+  await pAct({ action: 'choose', choice: 'chia' });
+  pv = await pState();
+  assert(pv.game.mineChosen === true && pv.game.choices === undefined, 'chia: after picking, the phone shows only mineChosen=true, never the value');
+  v = await pump(250, (s) => s.game && s.game.phase === 'reveal' && s.game.round === 1, 'chia reveal r1');
+  const m1 = Object.fromEntries(v.game.reveal.entries.map((e) => [e.seat, e]));
+  assert(m1[1].choice === 'chia' && m1[1].points === 200 && m1[2].choice === 'chia' && m1[2].points === 200,
+    'chia r1: both Chia -> 200 each, got ' + JSON.stringify(v.game.reveal.entries));
+  // Round 2 — pair P2+P3, the human sits out. Both Vừa bots steal on even
+  // rounds -> both Cướp = 0 each. The sit-out human cannot choose.
+  v = await pump(250, (s) => s.game && s.game.phase === 'talk' && s.game.round === 2, 'chia talk r2');
+  assert(v.game.pair.join(',') === '2,3', 'chia r2: pair rotates to P2+P3, human sits out');
+  const bad = await pAct({ action: 'choose', choice: 'cuop' });
+  assert(bad.ok === false, 'chia: a sit-out player cannot choose');
+  tick(60000);
+  v = await pump(250, (s) => s.game && s.game.phase === 'reveal' && s.game.round === 2, 'chia reveal r2');
+  const m2 = Object.fromEntries(v.game.reveal.entries.map((e) => [e.seat, e]));
+  assert(m2[2].choice === 'cuop' && m2[3].choice === 'cuop' && m2[2].points === 0 && m2[3].points === 0,
+    'chia r2: both bots Cướp -> 0 each, got ' + JSON.stringify(v.game.reveal.entries));
+  // Round 3 — final round, pot doubled to 800. Pair P3+P1: bot splits (odd
+  // round), the human steals and takes the whole 800.
+  v = await pump(250, (s) => s.game && s.game.phase === 'talk' && s.game.round === 3, 'chia talk r3');
+  assert(v.game.pair.join(',') === '3,1', 'chia r3: pair rotates to P3+P1');
+  tick(60000);
+  v = await pump(250, (s) => s.game && s.game.phase === 'choose' && s.game.round === 3, 'chia choose r3');
+  assert(v.game.pot === 800, 'chia r3: final-round pot is doubled to 800, got ' + v.game.pot);
+  await pAct({ action: 'choose', choice: 'cuop' });
+  v = await pump(250, (s) => s.game && s.game.phase === 'reveal' && s.game.round === 3, 'chia reveal r3');
+  const m3 = Object.fromEntries(v.game.reveal.entries.map((e) => [e.seat, e]));
+  assert(m3[1].choice === 'cuop' && m3[1].points === 800 && m3[3].choice === 'chia' && m3[3].points === 0,
+    'chia r3: lone Cướp takes the doubled pot (800), got ' + JSON.stringify(v.game.reveal.entries));
+  v = await pump(250, (s) => s.phase === 'results', 'chia results');
+  assert(v.lastGame.points[1] === 1000 && v.lastGame.points[2] === 200 && v.lastGame.points[3] === 0,
+    'chia match totals == P1 1000 / P2 200 / P3 0, got ' + JSON.stringify(v.lastGame.points));
+  return v;
+}
+
 async function main() {
   console.log('== Nảy Party — local worker test ==');
   const home = await call('GET', '/');
   assert(home.status === 200 && home.text.indexOf('Nảy Party') >= 0, 'GET / serves the game page');
   assert(home.text.indexOf('Nhanh Tay') >= 0 && home.text.indexOf('Đẩy Ra Khỏi Sàn') >= 0, 'page lists all games incl. the arena');
+  assert(home.text.indexOf('Né Đạn') >= 0 && home.text.indexOf('Kéo Co') >= 0 && home.text.indexOf('Chia Hay Cướp') >= 0, 'page lists the 3 new games (Né Đạn, Kéo Co, Chia Hay Cướp)');
+  // KV is eventually consistent, so the join handler must auto-retry ONLY
+  // the room-not-found error (2s interval, bounded attempts, subtle status).
+  assert(home.text.indexOf('JOIN_RETRY_MS = 2000') >= 0 && home.text.indexOf('JOIN_RETRY_MAX = 10') >= 0
+    && home.text.indexOf('function tryJoin(') >= 0 && home.text.indexOf('Đang tìm phòng…') >= 0
+    && home.text.indexOf("indexOf('Không thấy phòng này')") >= 0,
+    'join flow auto-retries room-not-found for KV propagation (2s x 10, "Đang tìm phòng…")');
 
   const created = (await call('POST', '/api/rooms', {})).data;
   assert(created.ok && /^[0-9]{6}$/.test(created.code), 'room created with a 6-digit code');
@@ -248,6 +352,9 @@ async function main() {
   raceResults.forEach(collect);
   collect(await playReact());
   collect(await playArena());
+  collect(await playDodge());
+  collect(await playTug());
+  collect(await playChia());
 
   await hAct({ action: 'continue' });
   v = await hState();
