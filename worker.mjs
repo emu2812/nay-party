@@ -1319,7 +1319,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     if (!path.startsWith('/api/')) {
-      return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
     }
     try {
       if (path === '/api/rooms' && request.method === 'POST') {
