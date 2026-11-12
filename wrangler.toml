@@ -9,3 +9,10 @@ workers_dev = true
 binding = "ROOMS"
 id = "48b2f1adf27a4a869bb05f3e7ea32b28"
 preview_id = "48b2f1adf27a4a869bb05f3e7ea32b28"
+
+[durable_objects]
+bindings = [{ name = "ROOMS_DO", class_name = "RoomStore" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomStore"]

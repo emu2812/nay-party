@@ -1,5 +1,8 @@
 // Local test for the Nảy Party Cloudflare worker.
-// - Stubs the ROOMS KV namespace in memory.
+// - Storage: env carries a ROOMS_DO fake (the real RoomStore class, one
+//   instance per room code, backed by in-memory Maps) so the whole suite
+//   exercises the Durable Object path in loadRoom/saveRoom. The old KV stub
+//   stays in env as a spy: with ROOMS_DO present it must see ZERO traffic.
 // - Uses a fake clock (Date.now patched) so timed phases run instantly.
 // - Plays a full match: lobby/bots -> Đố Vui (streak + ×2 verified exactly)
 //   -> Đoán Số (×2 verified) -> Nhớ Màu (×2 verified) -> Đua Bấm Nút (+ replay)
@@ -8,19 +11,51 @@
 //   -> Chia Hay Cướp (secret choices, rotating pairs, exact totals)
 //   -> podium/final, and checks cumulative totals == sum of per-game points.
 // Run: node tests/local-test.mjs
-import worker, { QUIZ_BANK, EST_BANK } from '../worker.mjs';
+import worker, { QUIZ_BANK, EST_BANK, RoomStore } from '../worker.mjs';
 
 let now = 1700000000000;
 Date.now = () => now;
 function tick(ms) { now += ms; }
 
 class KVStub {
-  constructor() { this.m = new Map(); }
-  async get(k) { return this.m.has(k) ? this.m.get(k) : null; }
-  async put(k, v) { this.m.set(k, String(v)); }
+  constructor() { this.m = new Map(); this.getCount = 0; this.putCount = 0; }
+  async get(k) { this.getCount += 1; return this.m.has(k) ? this.m.get(k) : null; }
+  async put(k, v) { this.putCount += 1; this.m.set(k, String(v)); }
   async delete(k) { this.m.delete(k); }
 }
-const env = { ROOMS: new KVStub() };
+// Durable Object fake: idFromName/get return REAL RoomStore instances whose
+// state.storage is an in-memory Map, one instance per room code — exactly
+// the semantics loadRoom/saveRoom rely on (GET/PUT/POST /get//put//delete).
+// fetch is wrapped only to normalize (string, init) into a Request like a
+// real DO stub does, and to count PUTs for the storage-routing assertions.
+class DOStorageFake {
+  constructor() { this.m = new Map(); }
+  async get(k) { return this.m.has(k) ? this.m.get(k) : undefined; }
+  async put(k, v) { this.m.set(k, v); }
+  async delete(k) { this.m.delete(k); }
+}
+class RoomNamespaceFake {
+  constructor() { this.records = new Map(); this.putCount = 0; }
+  idFromName(name) { return String(name); }
+  get(id) {
+    const code = String(id);
+    if (!this.records.has(code)) {
+      const state = { storage: new DOStorageFake() };
+      const inst = new RoomStore(state, {});
+      const rawFetch = inst.fetch.bind(inst);
+      const ns = this;
+      inst.fetch = async (input, init) => {
+        const req = typeof input === 'string' ? new Request(input, init) : input;
+        if (req.method === 'PUT') ns.putCount += 1;
+        return rawFetch(req);
+      };
+      this.records.set(code, { state, inst });
+    }
+    return this.records.get(code).inst;
+  }
+}
+const doFake = new RoomNamespaceFake();
+const env = { ROOMS: new KVStub(), ROOMS_DO: doFake };
 const ctx = { waitUntil() {} };
 
 let passed = 0;
@@ -311,6 +346,19 @@ async function main() {
     && home.text.indexOf('function tryJoin(') >= 0 && home.text.indexOf('Đang tìm phòng…') >= 0
     && home.text.indexOf("indexOf('Không thấy phòng này')") >= 0,
     'join flow auto-retries room-not-found for KV propagation (2s x 10, "Đang tìm phòng…")');
+  // NEON ARENA overhaul: action games must ship the fighter-orb renderer,
+  // the K.O. banner markup, the FX engine and its hooks in the served page.
+  assert(home.text.indexOf('function orbSVG(') >= 0 && home.text.indexOf('ko-banner') >= 0
+    && home.text.indexOf('id="kobanner"') >= 0 && home.text.indexOf('ko-big') >= 0,
+    'NEON ARENA: fighter orbs + K.O. banner ship in the page');
+  assert(home.text.indexOf('function arenaFX(') >= 0 && home.text.indexOf('fx-spark') >= 0
+    && home.text.indexOf('fx-ghost') >= 0 && home.text.indexOf('fx-trail') >= 0
+    && home.text.indexOf('awarn') >= 0 && home.text.indexOf('hitflash') >= 0,
+    'NEON ARENA: arenaFX engine + spark/ghost/trail/warn/hitflash hooks ship in the page');
+  assert(home.text.indexOf('function sfxThud(') >= 0 && home.text.indexOf('function sfxBoom(') >= 0
+    && home.text.indexOf('function sfxWhoosh(') >= 0 && home.text.indexOf('function sfxDash(') >= 0
+    && home.text.indexOf('neon-stage') >= 0 && home.text.indexOf('.aring.danger') >= 0,
+    'NEON ARENA: impact/dash/boom/whoosh sfx + neon stage + danger ring ship in the page');
 
   const created = (await call('POST', '/api/rooms', {})).data;
   assert(created.ok && /^[0-9]{6}$/.test(created.code), 'room created with a 6-digit code');
@@ -373,6 +421,28 @@ async function main() {
   await hAct({ action: 'playAgain' });
   v = await hState();
   assert(v.phase === 'lobby' && v.players.every((p) => p.score === 0), 'play-again resets scores and returns to the lobby');
+
+  // --- Storage routing: with ROOMS_DO bound, everything above must have
+  // gone through the Durable Objects and the KV fallback must be untouched.
+  console.log('Storage: Durable Object routing + expiry');
+  assert(env.ROOMS.putCount === 0 && env.ROOMS.getCount === 0,
+    'KV fallback saw zero reads/writes while ROOMS_DO is bound (spy counters)');
+  assert(doFake.putCount > 0, 'room saves were written to the Durable Objects (' + doFake.putCount + ' PUTs)');
+  const mainRec = doFake.records.get(CODE);
+  const mainEntry = mainRec && await mainRec.state.storage.get('room');
+  assert(!!mainEntry && JSON.parse(mainEntry.json).code === CODE,
+    'the played room is stored inside its own Durable Object');
+  const created2 = (await call('POST', '/api/rooms', {})).data;
+  assert(created2.ok && created2.code !== CODE, 'second room created for the DO expiry check');
+  const st2 = await call('GET', '/api/rooms/' + created2.code + '/state?role=host&token=' + created2.hostToken);
+  assert(st2.status === 200 && st2.data && st2.data.phase === 'lobby', 'unexpired room loads through the DO path');
+  const rec2 = doFake.records.get(created2.code);
+  assert(rec2 && !!(await rec2.state.storage.get('room')), 'second room is stored in its Durable Object');
+  tick((6 * 3600 + 60) * 1000); // beyond ROOM_TTL_SECONDS (6h)
+  const st3 = await call('GET', '/api/rooms/' + created2.code + '/state?role=host&token=' + created2.hostToken);
+  assert(st3.status === 404 && st3.data && st3.data.error.indexOf('Không thấy phòng này') >= 0,
+    'expired room loads as missing through the DO path');
+  assert(!(await rec2.state.storage.get('room')), 'expired DO entry is deleted on read');
 
   console.log('\nALL TESTS PASSED — ' + passed + ' assertions');
 }
