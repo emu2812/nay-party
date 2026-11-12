@@ -396,12 +396,77 @@ async function playChia() {
   return v;
 }
 
+async function playSteal() {
+  console.log('Game: Cướp Sao (bank stars, golden = 3, placements)');
+  await toGame('cuop-sao');
+  let v = await pump(250, (s) => s.game && s.game.phase === 'steal', 'steal begins');
+  assert(Array.isArray(v.game.stars) && v.game.stars.length >= 2, 'steal: at least 2 stars are kept on the field');
+  assert(v.game.banked && v.game.banked[P1.seat] === 0, 'steal: bank starts at 0');
+  v = await pump(1000, (s) => s.phase === 'results', 'steal results', 300);
+  const pts = Object.values(v.lastGame.points).sort((a, b) => b - a);
+  assert(JSON.stringify(pts) === JSON.stringify([300, 200, 100]), 'steal placements are exactly 300/200/100, got ' + pts.join('/'));
+  return v;
+}
+
+async function playCrown() {
+  console.log('Game: Giữ Vương Miện (hold points, placements)');
+  await toGame('giu-vuong-mien');
+  let v = await pump(250, (s) => s.game && s.game.phase === 'crown', 'crown begins');
+  assert(v.game.crown && v.game.crown.holder === null && v.game.crown.x === 0 && v.game.crown.y === 0, 'crown: the crown rests at the centre at the start');
+  assert(v.game.hold && v.game.hold[P1.seat] === 0, 'crown: hold points start at 0');
+  v = await pump(1000, (s) => s.phase === 'results', 'crown results', 300);
+  const pts = Object.values(v.lastGame.points).sort((a, b) => b - a);
+  assert(JSON.stringify(pts) === JSON.stringify([300, 200, 100]), 'crown placements are exactly 300/200/100, got ' + pts.join('/'));
+  return v;
+}
+
+async function playSplat() {
+  console.log('Game: Sơn Sàn (paint grid, placements)');
+  await toGame('son-san');
+  let v = await pump(250, (s) => s.game && s.game.phase === 'splat', 'splat begins');
+  assert(Array.isArray(v.game.grid) && v.game.grid.length === 144, 'splat: the 12x12 floor grid is exposed');
+  for (let i = 0; i < 8; i++) { tick(1000); await hState(); }
+  v = await hState();
+  const total = Object.values(v.game.counts || {}).reduce((a, b) => a + b, 0);
+  assert(total > 0 && total <= 144, 'splat: painted cells are counted live and bounded by the grid (' + total + ')');
+  v = await pump(1000, (s) => s.phase === 'results', 'splat results', 300);
+  const pts = Object.values(v.lastGame.points).sort((a, b) => b - a);
+  assert(JSON.stringify(pts) === JSON.stringify([300, 200, 100]), 'splat placements are exactly 300/200/100, got ' + pts.join('/'));
+  return v;
+}
+
+async function playDuel() {
+  console.log('Game: Cao Bồi (draw duel, receipt order, final x2)');
+  await toGame('cao-boi');
+  for (let r = 1; r <= 5; r++) {
+    const vGo = await pump(150, (s) => s.phase === 'results' || (s.game && s.game.phase === 'go' && s.game.round === r), 'duel go r' + r);
+    if (vGo.phase === 'results') break;
+    await pAct({ action: 'tap' });
+    const v = await pump(200, (s) => s.phase === 'results' || (s.game && s.game.phase === 'roundEnd' && s.game.round === r), 'duel end r' + r);
+    if (v.game && v.game.lastRound) {
+      const mine = v.game.lastRound.entries.find((e) => e.seat === P1.seat);
+      assert(mine && mine.status === 'fired', 'duel r' + r + ': the human draw registers as fired');
+      const allowed = r === 5 ? [400, 200, 100, 0] : [200, 100, 50, 0];
+      assert(v.game.lastRound.entries.every((e) => e.status !== 'fired' || allowed.indexOf(e.points) >= 0),
+        'duel r' + r + ': draw points follow 200/100/50/0' + (r === 5 ? ' with the final round x2' : ''));
+    }
+    if (v.phase !== 'results') await pump(200, (s) => s.phase === 'results' || (s.game && s.game.phase !== 'roundEnd'), 'duel drain r' + r);
+  }
+  return pump(300, (s) => s.phase === 'results', 'duel results');
+}
+
 async function main() {
   console.log('== Nảy Party — local worker test ==');
   const home = await call('GET', '/');
   assert(home.status === 200 && home.text.indexOf('Nảy Party') >= 0, 'GET / serves the game page');
   assert(home.text.indexOf('Nhanh Tay') >= 0 && home.text.indexOf('Đẩy Ra Khỏi Sàn') >= 0, 'page lists all games incl. the arena');
   assert(home.text.indexOf('Né Đạn') >= 0 && home.text.indexOf('Kéo Co') >= 0 && home.text.indexOf('Chia Hay Cướp') >= 0, 'page lists the 3 new games (Né Đạn, Kéo Co, Chia Hay Cướp)');
+  assert(home.text.indexOf('Cướp Sao') >= 0 && home.text.indexOf('Giữ Vương Miện') >= 0 && home.text.indexOf('Sơn Sàn') >= 0 && home.text.indexOf('Cao Bồi') >= 0, 'page lists the 4 newest games (Cướp Sao, Giữ Vương Miện, Sơn Sàn, Cao Bồi)');
+  assert(home.text.indexOf('Đấu với nhau') >= 0 && home.text.indexOf('Hợp tác') >= 0 && home.text.indexOf('Sắp ra mắt') < 0, 'game chooser is grouped by category: Đấu với nhau + Hợp tác, placeholder tile GONE (co-op wave shipped)');
+  assert(home.text.indexOf('Chung Một Thân') >= 0 && home.text.indexOf('Đẩy Hộp Về Đích') >= 0 && home.text.indexOf('Chèo Thuyền') >= 0, 'page lists the 3 co-op games (Chung Một Thân, Đẩy Hộp Về Đích, Chèo Thuyền)');
+  assert(home.text.indexOf('16 game') >= 0, 'homepage footer counts all 16 games');
+  assert(home.text.indexOf('astar') >= 0 && home.text.indexOf('acrown') >= 0 && home.text.indexOf('splatgrid') >= 0 && home.text.indexOf('duel-bang') >= 0, 'new-game renderers ship in the page (star / crown / splat grid / duel banner)');
+  assert(home.text.indexOf('sharedblob') >= 0 && home.text.indexOf('acrate') >= 0 && home.text.indexOf('agoal') >= 0 && home.text.indexOf('aboat') >= 0 && home.text.indexOf('teambanner') >= 0 && home.text.indexOf('function sharedOrbSVG(') >= 0, 'co-op renderers ship in the page (shared orb / crate / goal / boat / team banner)');
   // A freshly created room can briefly be invisible somewhere, so the join
   // handler must auto-retry ONLY the room-not-found error (2s interval,
   // bounded attempts, subtle status).
@@ -454,6 +519,9 @@ async function main() {
   P1 = { seat: joined.seat, token: joined.playerToken };
   v = await hState();
   assert(v.players.length === 3, 'room has 3 filled seats (1 human + 2 bots)');
+  assert(v.games && v.games.length === 16, 'lobby game list carries all 16 games');
+  assert(v.games.filter((gm) => gm.cat === 'versus').length === 13, 'exactly 13 games are categorized versus');
+  assert(v.games.filter((gm) => gm.cat === 'coop').map((gm) => gm.id).sort().join(',') === 'cheo-thuyen,chung-mot-than,day-hop', 'co-op group is exactly the 3 new games (chung-mot-than, day-hop, cheo-thuyen)');
   assert(v.players.every((p) => typeof p.mood === 'string' && p.mood.length > 0), 'every player blob carries a mood/expression');
 
   collect(await playQuiz());
@@ -466,6 +534,10 @@ async function main() {
   collect(await playDodge());
   collect(await playTug());
   collect(await playChia());
+  collect(await playSteal());
+  collect(await playCrown());
+  collect(await playSplat());
+  collect(await playDuel());
 
   await hAct({ action: 'continue' });
   v = await hState();
@@ -711,8 +783,614 @@ async function main() {
   const rbStart = await rb.act({ action: 'startGame', game: 'nhanh-tay' });
   assert(rbStart.ok === true && rbStart.phase === 'playing', 'recycled room can start a game normally');
 
+  // =====================================================================
+  // Audit I: the four new games, driven deterministically in 2-human
+  // rooms (no bots -> no bot RNG). Every expectation below is computed
+  // by hand from the engine constants: spawn ring radius 5.5 (seat 1 at
+  // (5.5,0), seat 2 at (-5.5,0)), MOVE_STEP 0.5/tick, pickup radius 1.3,
+  // SHOVE_RANGE 2.7. Splat cell indices account for IEEE reality:
+  // 9.6/1.6 == 5.999999999999999, so y=0 lands in row 5, not row 6.
+  console.log('Audit I: new games — hand-computed deterministic drives');
+  async function padTicks(drv, tok, pad, n) {
+    let v = null;
+    for (let i = 0; i < n; i++) { await drv.pAct(tok, { action: 'pad', pad }); tick(250); v = await drv.state(); }
+    return v;
+  }
+  // Steer one human's blob toward a (possibly moving) target using the
+  // live host view, one 250ms tick per step, until `until(view)` holds.
+  async function driveSeat(drv, tok, seat, targetFn, opts) {
+    const o = opts || {};
+    for (let i = 0; i < (o.max || 90); i++) {
+      const v = await drv.state();
+      if (o.until && o.until(v)) { await drv.pAct(tok, { action: 'pad', pad: {} }); return v; }
+      const b = v.game && v.game.blobs ? v.game.blobs[seat] : null;
+      if (!b) throw new Error('driveSeat: no blob for seat ' + seat);
+      const tgt = targetFn(v);
+      const dx = tgt.x - b.x, dy = tgt.y - b.y;
+      if (Math.hypot(dx, dy) <= (o.tol || 0.3)) { await drv.pAct(tok, { action: 'pad', pad: {} }); return v; }
+      const pad = {};
+      if (dx > 0.25) pad.r = true; else if (dx < -0.25) pad.l = true;
+      if (dy > 0.25) pad.d = true; else if (dy < -0.25) pad.u = true;
+      await drv.pAct(tok, { action: 'pad', pad });
+      tick(250);
+    }
+    throw new Error('driveSeat timeout (seat ' + seat + ')');
+  }
+
+  // --- Cướp Sao: star values, the golden star, and the shove drop -----
+  // Star spawns are forced by a random queue. Draw order in spawnStar is
+  // angle then radius; rand(0,2PI)/rand(2,8.5) map the queue values to:
+  // star1 (4,0), star2 (-4,0), respawn (0,-7), golden@tick48 (0,3),
+  // respawn (0,7) — deliberately far from (-9.2,0), where the shove
+  // below lands H2, so the landing cannot re-bank a star in the same
+  // tick — and golden@tick96: attempts on (0,-7) and (0,7) are rejected
+  // (too close to stars sitting there), the third lands at (4,0).
+  const stDrv = await newDrv();
+  const st1 = await stDrv.join('Mot');
+  const stP2 = await stDrv.join('Hai');
+  await stDrv.act({ action: 'startGame', game: 'cuop-sao' });
+  await withRandomQueue(
+    [0.0, 0.3077, 0.5, 0.3077, 0.75, 0.7692, 0.25, 0.1538, 0.25, 0.7692, 0.75, 0.7692, 0.25, 0.7692, 0.0, 0.3077],
+    async () => {
+      let v = await pumpD(stDrv, 250, (s) => s.game && s.game.phase === 'steal', 'steal begins');
+      const byId = v.game.stars.slice().sort((a, b) => a.id - b.id);
+      assert(byId.length === 2 && byId[0].x === 4 && byId[0].y === 0 && byId[1].x === -4 && byId[1].y === 0 && !byId[0].gold && !byId[1].gold,
+        'steal: forced spawns land at (4,0) and (-4,0), got ' + JSON.stringify(v.game.stars));
+      // H1 at (5.5,0): one tick left puts it at (5.0,0), 1.0 from star1
+      // (pickup radius 1.3) -> banks exactly 1.
+      v = await padTicks(stDrv, st1.playerToken, { l: true }, 1);
+      await stDrv.pAct(st1.playerToken, { action: 'pad', pad: {} });
+      assert(v.game.banked[1] === 1 && v.game.banked[2] === 0, 'steal: flying over a normal star banks exactly 1');
+      // Golden star spawns on tick 48 at (0,3).
+      v = await pumpD(stDrv, 250, (s) => s.game && s.game.stars && s.game.stars.some((x) => x.gold), 'steal golden spawns', 200);
+      const gold = v.game.stars.find((x) => x.gold);
+      assert(Math.abs(gold.x) <= 0.01 && Math.abs(gold.y - 3) <= 0.01, 'steal: golden star spawns at (0,3), got ' + JSON.stringify(gold));
+      v = await driveSeat(stDrv, st1.playerToken, 1,
+        (s) => { const gs = s.game.stars.find((x) => x.gold); return gs ? { x: gs.x, y: gs.y } : { x: 0, y: 3 }; },
+        { until: (s) => s.game.banked[1] === 4 });
+      assert(v.game.banked[1] === 4, 'steal: the golden star banks exactly 3 (total 1 + 3 = 4)');
+      // H2 at (-5.5,0) steps right onto star2 at (-4,0).
+      v = await driveSeat(stDrv, stP2.playerToken, 2, () => ({ x: -4, y: 0 }), { until: (s) => s.game.banked[2] === 1 });
+      assert(v.game.banked[2] === 1, 'steal: H2 banks star2 for exactly 1');
+      // H1 closes to shove range (<= 2.4) and shoves: H2 must drop its
+      // banked point as a loose star where it stood.
+      v = await driveSeat(stDrv, st1.playerToken, 1,
+        (s) => ({ x: s.game.blobs[2].x, y: s.game.blobs[2].y }),
+        { until: (s) => Math.hypot(s.game.blobs[1].x - s.game.blobs[2].x, s.game.blobs[1].y - s.game.blobs[2].y) <= 2.4 });
+      const h2pos = { x: v.game.blobs[2].x, y: v.game.blobs[2].y };
+      v = await padTicks(stDrv, st1.playerToken, { a: true }, 1);
+      await stDrv.pAct(st1.playerToken, { action: 'pad', pad: {} });
+      assert(v.game.banked[2] === 0 && v.game.banked[1] === 4, 'steal: a shove knocks exactly 1 banked point out of the victim');
+      assert(v.game.stars.some((s) => !s.gold && Math.hypot(s.x - h2pos.x, s.y - h2pos.y) <= 1.2),
+        'steal: the dropped point lies as a loose star where the victim stood');
+      v = await pumpD(stDrv, 250, (s) => s.phase === 'results', 'steal results', 400);
+      assert(v.lastGame.points[1] === 300 && v.lastGame.points[2] === 200,
+        'steal: final placements 300/200 for banked 4 vs 0, got ' + JSON.stringify(v.lastGame.points));
+    });
+  const stRes = await stDrv.state();
+  assert(stRes.phase === 'results' && stRes.lastGame.points[1] === 300 && stRes.lastGame.points[2] === 200, 'steal: results stand after the random queue is restored');
+  const xemSt = await stDrv.join('Xem');
+  assert(xemSt.ok === true && xemSt.seat === 3, 'spectator can join at steal results');
+
+  // --- Giữ Vương Miện: pickup, holder speed, hold accrual, drop lock --
+  const crDrv = await newDrv();
+  const cr1 = await crDrv.join('Mot');
+  const cr2 = await crDrv.join('Hai');
+  await crDrv.act({ action: 'startGame', game: 'giu-vuong-mien' });
+  let cv = await pumpD(crDrv, 250, (s) => s.game && s.game.phase === 'crown', 'crown begins');
+  assert(cv.game.crown.holder === null && cv.game.crown.x === 0 && cv.game.crown.y === 0, 'crown: rests at the centre, unheld');
+  // H1 walks left 0.5/tick: at x=1.0 (tick 9) it is 1.0 from the crown
+  // -> pickup, and the pickup tick itself scores +1.
+  cv = await driveSeat(crDrv, cr1.playerToken, 1, () => ({ x: 0, y: 0 }), { until: (s) => s.game.crown.holder === 1 });
+  assert(Math.abs(cv.game.blobs[1].x - 1.0) <= 0.01 && cv.game.hold[1] === 1, 'crown: pickup at x=1.0 and the pickup tick scores +1 (hold == 1)');
+  // Holder speed is 0.9 x 0.5 = 0.45/tick: 10 ticks right from x=1.0.
+  cv = await padTicks(crDrv, cr1.playerToken, { r: true }, 10);
+  await crDrv.pAct(cr1.playerToken, { action: 'pad', pad: {} });
+  assert(Math.abs(cv.game.blobs[1].x - 5.5) <= 0.02, 'crown: holder moves at 0.45/tick (x == 5.5 after 10 ticks), got ' + cv.game.blobs[1].x);
+  const holdBefore = cv.game.hold[1];
+  cv = await padTicks(crDrv, cr1.playerToken, {}, 20);
+  assert(cv.game.hold[1] - holdBefore === 20, 'crown: 20 quiet ticks as holder add exactly 20 hold points');
+  // H2 walks right along y=0 to shove range of the holder.
+  cv = await driveSeat(crDrv, cr2.playerToken, 2,
+    (s) => ({ x: s.game.blobs[1].x, y: s.game.blobs[1].y }),
+    { until: (s) => Math.hypot(s.game.blobs[1].x - s.game.blobs[2].x, s.game.blobs[1].y - s.game.blobs[2].y) <= 2.6 });
+  cv = await padTicks(crDrv, cr2.playerToken, { a: true }, 1);
+  await crDrv.pAct(cr2.playerToken, { action: 'pad', pad: {} });
+  // The crown drops 1.6 past the victim along the shove line: (7.1, 0).
+  assert(cv.game.crown.holder === null && Math.abs(cv.game.crown.x - 7.1) <= 0.05 && Math.abs(cv.game.crown.y) <= 0.05,
+    'crown: a shove drops the crown at (7.1, 0), got ' + JSON.stringify(cv.game.crown));
+  // Lockout is 4 ticks: still unheld after 3 more ticks, re-grabbed by
+  // H1 (standing 1.1 away at x=8.2) on the 4th.
+  cv = await padTicks(crDrv, cr1.playerToken, {}, 3);
+  assert(cv.game.crown.holder === null, 'crown: pickup lockout still holds 3 ticks after the drop');
+  cv = await padTicks(crDrv, cr1.playerToken, {}, 1);
+  assert(cv.game.crown.holder === 1, 'crown: H1 re-grabs the crown once the lockout lapses');
+  cv = await pumpD(crDrv, 250, (s) => s.phase === 'results', 'crown results', 400);
+  assert(cv.lastGame.points[1] === 300 && cv.lastGame.points[2] === 200, 'crown: placements 300/200, got ' + JSON.stringify(cv.lastGame.points));
+  assert(cv.players.find((p) => p.seat === 1).score === 300, 'crown: winner banked the 300 placement points');
+
+  // --- Sơn Sàn: scripted paths paint hand-counted cells ---------------
+  const spDrv = await newDrv();
+  const sp1 = await spDrv.join('Mot');
+  const sp2 = await spDrv.join('Hai');
+  await spDrv.act({ action: 'startGame', game: 'son-san' });
+  let sv2 = await pumpD(spDrv, 250, (s) => s.game && s.game.phase === 'splat', 'splat begins');
+  tick(250); sv2 = await spDrv.state(); // tick 1: spawn cells paint
+  assert(sv2.game.grid[69] === 1 && sv2.game.grid[62] === 2, 'splat: tick 1 paints the spawn cells (69 for H1, 62 for H2)');
+  assert(sv2.game.counts[1] === 1 && sv2.game.counts[2] === 1, 'splat: counts start at 1 cell each');
+  // Right x4: x = 6.0 (cell 69 again), 6.5/7.0/7.5 (cell 70) -> 2 cells.
+  sv2 = await padTicks(spDrv, sp1.playerToken, { r: true }, 4);
+  assert(sv2.game.counts[1] === 2, 'splat: walking right 4 ticks owns exactly 2 cells, got ' + sv2.game.counts[1]);
+  // Down x4: y = 0.5/1.0/1.5 (cell 82), 2.0 (cell 94) -> 4 cells.
+  sv2 = await padTicks(spDrv, sp1.playerToken, { d: true }, 4);
+  assert(sv2.game.counts[1] === 4, 'splat: walking down 4 ticks owns exactly 4 cells, got ' + sv2.game.counts[1]);
+  // Burst at cell 94 (row 7, col 10): 3x3 = rows 6-8 x cols 9-11; two
+  // already owned (82, 94) -> +7 = 11 cells.
+  sv2 = await padTicks(spDrv, sp1.playerToken, { a: true }, 1);
+  await spDrv.pAct(sp1.playerToken, { action: 'pad', pad: {} });
+  assert(sv2.game.counts[1] === 11, 'splat: the 3x3 burst brings H1 to exactly 11 cells, got ' + sv2.game.counts[1]);
+  // A second burst inside the 2s cooldown paints nothing.
+  sv2 = await padTicks(spDrv, sp1.playerToken, { a: true }, 1);
+  await spDrv.pAct(sp1.playerToken, { action: 'pad', pad: {} });
+  assert(sv2.game.counts[1] === 11 && sv2.game.counts[2] === 1, 'splat: burst is blocked during its cooldown; idle H2 still owns 1');
+  sv2 = await pumpD(spDrv, 250, (s) => s.phase === 'results', 'splat results', 400);
+  assert(sv2.lastGame.points[1] === 300 && sv2.lastGame.points[2] === 200, 'splat: placements 300/200 for 11 vs 1 cells, got ' + JSON.stringify(sv2.lastGame.points));
+
+  // --- Cao Bồi: foul / receipt order / silent player / final x2 -------
+  // Hand totals: r1 P2 200, P1 foul -100; r2 P2 200, P1 100; r3 P1 200
+  // (P2 never fires); r4 P2 200, P1 foul -100; r5 x2: P1 400, P2 200.
+  // Match totals: P1 = 500, P2 = 800.
+  const duDrv = await newDrv();
+  const du1 = await duDrv.join('Mot');
+  const du2 = await duDrv.join('Hai');
+  await duDrv.act({ action: 'startGame', game: 'cao-boi' });
+  const duelRound = async (r, script) => {
+    await pumpD(duDrv, 100, (s) => s.game && s.game.phase === 'wait' && s.game.round === r, 'duel wait r' + r);
+    await script();
+    return pumpD(duDrv, 100, (s) => s.game && s.game.phase === 'roundEnd' && s.game.round === r, 'duel roundEnd r' + r);
+  };
+  const ptsOf = (v, seat) => v.game.lastRound.entries.find((e) => e.seat === seat).points;
+  let duv = await duelRound(1, async () => {
+    await duDrv.pAct(du1.playerToken, { action: 'tap' }); // foul: before BẮN!
+    await pumpD(duDrv, 100, (s) => s.game && s.game.phase === 'go' && s.game.round === 1, 'duel go r1');
+    await duDrv.pAct(du2.playerToken, { action: 'tap' });
+  });
+  assert(ptsOf(duv, 2) === 200 && ptsOf(duv, 1) === -100, 'duel r1: lone legal draw scores 200, the foul scores -100');
+  duv = await duelRound(2, async () => {
+    await pumpD(duDrv, 100, (s) => s.game && s.game.phase === 'go' && s.game.round === 2, 'duel go r2');
+    await duDrv.pAct(du2.playerToken, { action: 'tap' });
+    tick(10);
+    await duDrv.pAct(du1.playerToken, { action: 'tap' });
+  });
+  assert(ptsOf(duv, 2) === 200 && ptsOf(duv, 1) === 100, 'duel r2: receipt order pays 200 then 100 (10ms apart)');
+  duv = await duelRound(3, async () => {
+    await pumpD(duDrv, 100, (s) => s.game && s.game.phase === 'go' && s.game.round === 3, 'duel go r3');
+    await duDrv.pAct(du1.playerToken, { action: 'tap' });
+  });
+  assert(ptsOf(duv, 1) === 200 && ptsOf(duv, 2) === 0, 'duel r3: the window closes on a silent player (200 / 0)');
+  duv = await duelRound(4, async () => {
+    await duDrv.pAct(du1.playerToken, { action: 'tap' }); // foul again
+    await pumpD(duDrv, 100, (s) => s.game && s.game.phase === 'go' && s.game.round === 4, 'duel go r4');
+    await duDrv.pAct(du2.playerToken, { action: 'tap' });
+  });
+  assert(ptsOf(duv, 2) === 200 && ptsOf(duv, 1) === -100, 'duel r4: foul -100 again, clean draw 200');
+  duv = await duelRound(5, async () => {
+    await pumpD(duDrv, 100, (s) => s.game && s.game.phase === 'go' && s.game.round === 5, 'duel go r5');
+    await duDrv.pAct(du1.playerToken, { action: 'tap' });
+    tick(10);
+    await duDrv.pAct(du2.playerToken, { action: 'tap' });
+  });
+  assert(ptsOf(duv, 1) === 400 && ptsOf(duv, 2) === 200, 'duel r5: the final round doubles draw points (400 / 200)');
+  duv = await pumpD(duDrv, 250, (s) => s.phase === 'results', 'duel results');
+  assert(duv.lastGame.points[1] === 500 && duv.lastGame.points[2] === 800,
+    'duel: hand-computed match totals are P1 500 / P2 800, got ' + JSON.stringify(duv.lastGame.points));
+
+
+  // =====================================================================
+  // Audit J: the three co-op games. Co-op scoring has NO placement: a
+  // team result (score + tier) pays EVERY player the same pointsEach
+  // (Vàng 300 / Bạc 200 / Đồng 100 / below 50). All expectations are
+  // hand-computed from the engine constants: MOVE_STEP 0.5/tick, shared
+  // checkpoint radius 1.3, ball speed 0.4/tick, crate step 0.3/tick,
+  // rowing fullStroke 10m over 45 beats (perfect team = 450m).
+  console.log('Audit J: co-op games — team tiers, split steering, crate, rowing');
+  // Set both humans' pads once, then run n ticks (pads are held-state).
+  async function bothTicks(drv, tokA, padA, tokB, padB, n) {
+    await drv.pAct(tokA, { action: 'pad', pad: padA });
+    await drv.pAct(tokB, { action: 'pad', pad: padB });
+    let v = null;
+    for (let i = 0; i < n; i++) { tick(250); v = await drv.state(); }
+    return v;
+  }
+  async function sharedPads(drv, tokV, padV, tokH, padH) {
+    await drv.pAct(tokV, { action: 'pad', pad: padV });
+    await drv.pAct(tokH, { action: 'pad', pad: padH });
+  }
+  // Steer the Chung Một Thân blob: tokV's owner sends the vertical
+  // component, tokH's owner the horizontal one (2P dealing).
+  async function driveShared(drv, tokV, tokH, targetFn, opts) {
+    const o = opts || {};
+    for (let i = 0; i < (o.max || 120); i++) {
+      const v = await drv.state();
+      if (o.until && o.until(v)) { await sharedPads(drv, tokV, {}, tokH, {}); return v; }
+      const b = v.game && v.game.shared;
+      if (!b) throw new Error('driveShared: no shared blob');
+      const tgt = targetFn(v);
+      const dx = tgt.x - b.x, dy = tgt.y - b.y;
+      if (!o.until && Math.hypot(dx, dy) <= (o.tol || 0.3)) { await sharedPads(drv, tokV, {}, tokH, {}); return v; }
+      const pv = {}, ph = {};
+      if (dx > 0.25) ph.r = true; else if (dx < -0.25) ph.l = true;
+      if (dy > 0.25) pv.d = true; else if (dy < -0.25) pv.u = true;
+      await sharedPads(drv, tokV, pv, tokH, ph);
+      tick(250);
+    }
+    throw new Error('driveShared timeout');
+  }
+  // Slide one player horizontally on a FIXED pad until its centre
+  // crosses targetX. Used for under-crate crossings: the pad never
+  // gains a second axis (driveSeat would add one once the body-block
+  // projection moves the player off the target line), so the intent
+  // inside the contact band stays a pure axis push of magnitude 1.
+  async function slideX(drv, tok, seat, targetX, pad) {
+    await drv.pAct(tok, { action: 'pad', pad });
+    let v = null;
+    for (let i = 0; i < 60; i++) {
+      tick(250);
+      v = await drv.state();
+      const b = v.game.blobs[seat];
+      if ((pad.r && b.x >= targetX) || (pad.l && b.x <= targetX)) break;
+    }
+    await drv.pAct(tok, { action: 'pad', pad: {} });
+    return v;
+  }
+  // Walk one box-game player into the crate's contact band (<= 2.44;
+  // the body-block floor is exactly 2.4). The approach is AXIS-ALIGNED
+  // (vertical first, then horizontal): a diagonal intent has magnitude
+  // sqrt(2) >= 1.2, so diagonal homing would legally PUSH the crate
+  // (with the other player in contact) and the band would never close.
+  async function boxHome(drv, tok, seat) {
+    for (let i = 0; i < 40; i++) {
+      const v = await drv.state();
+      const b = v.game.blobs[seat]; const c = v.game.crate;
+      const dx = c.x - b.x, dy = c.y - b.y;
+      if (Math.hypot(dx, dy) <= 2.44) { await drv.pAct(tok, { action: 'pad', pad: {} }); return v; }
+      const pad = {};
+      if (Math.abs(dy) > 0.25) { if (dy > 0) pad.d = true; else pad.u = true; }
+      else if (dx > 0.25) pad.r = true; else if (dx < -0.25) pad.l = true;
+      await drv.pAct(tok, { action: 'pad', pad });
+      tick(250);
+    }
+    throw new Error('boxHome timeout seat ' + seat);
+  }
+
+  // --- J1: direction dealing for 2/3/4-player rooms -------------------
+  const shDrv = await newDrv();
+  const sh1 = await shDrv.join('Mot');
+  const sh2 = await shDrv.join('Hai');
+  await shDrv.act({ action: 'startGame', game: 'chung-mot-than' });
+  let jv = await pumpD(shDrv, 250, (s) => s.game && s.game.phase === 'shared', 'shared begins (2P)');
+  assert(JSON.stringify(jv.game.owners) === JSON.stringify({ u: 1, r: 2, d: 1, l: 2 }),
+    'shared dealing 2P: P1 owns up+down, P2 owns right+left, got ' + JSON.stringify(jv.game.owners));
+  const shPv1 = await shDrv.pState(sh1.playerToken);
+  const shPv2 = await shDrv.pState(sh2.playerToken);
+  assert(JSON.stringify(shPv1.game.myDirs) === JSON.stringify(['u', 'd']), 'shared phone view: P1 sees myDirs [u, d]');
+  assert(JSON.stringify(shPv2.game.myDirs) === JSON.stringify(['r', 'l']), 'shared phone view: P2 sees myDirs [r, l]');
+  const sh3Drv = await newDrv();
+  await sh3Drv.join('Mot');
+  await sh3Drv.act({ action: 'addBot', seat: 2 });
+  await sh3Drv.act({ action: 'addBot', seat: 3 });
+  await sh3Drv.act({ action: 'startGame', game: 'chung-mot-than' });
+  jv = await pumpD(sh3Drv, 250, (s) => s.game && s.game.phase === 'shared', 'shared begins (3P)');
+  assert(JSON.stringify(jv.game.owners) === JSON.stringify({ u: 1, r: 2, d: 3, l: 1 }),
+    'shared dealing 3P: P1 up+left, P2 right, P3 down, got ' + JSON.stringify(jv.game.owners));
+  const sh4Drv = await newDrv();
+  await sh4Drv.join('Mot');
+  await sh4Drv.act({ action: 'addBot', seat: 2 });
+  await sh4Drv.act({ action: 'addBot', seat: 3 });
+  await sh4Drv.act({ action: 'addBot', seat: 4 });
+  await sh4Drv.act({ action: 'startGame', game: 'chung-mot-than' });
+  jv = await pumpD(sh4Drv, 250, (s) => s.game && s.game.phase === 'shared', 'shared begins (4P)');
+  assert(JSON.stringify(jv.game.owners) === JSON.stringify({ u: 1, r: 2, d: 3, l: 4 }),
+    'shared dealing 4P: one direction each, got ' + JSON.stringify(jv.game.owners));
+
+  // --- J2: server filtering — non-owned directions do nothing ---------
+  // Same 2-human room as J1; the blob starts at (0,0), no ticks elapsed.
+  jv = await padTicks(shDrv, sh2.playerToken, { u: true }, 4);
+  assert(jv.game.shared.x === 0 && jv.game.shared.y === 0, 'shared filter: P2 holding UP (not owned) moves nothing');
+  jv = await padTicks(shDrv, sh1.playerToken, { r: true }, 4);
+  assert(jv.game.shared.x === 0 && jv.game.shared.y === 0, 'shared filter: P1 holding RIGHT (not owned) moves nothing');
+  jv = await padTicks(shDrv, sh1.playerToken, { u: true }, 4);
+  assert(jv.game.shared.x === 0 && jv.game.shared.y === -2, 'shared filter: P1 UP x4 ticks moves the blob to y == -2 exactly, got ' + JSON.stringify(jv.game.shared));
+  await shDrv.pAct(sh1.playerToken, { action: 'pad', pad: {} }); // release P1's held pad before P2's turn
+  jv = await padTicks(shDrv, sh2.playerToken, { l: true }, 4);
+  assert(jv.game.shared.x === -2 && jv.game.shared.y === -2, 'shared filter: P2 LEFT x4 ticks moves the blob to x == -2 exactly, got ' + JSON.stringify(jv.game.shared));
+  await shDrv.pAct(sh1.playerToken, { action: 'pad', pad: {} });
+  await shDrv.pAct(sh2.playerToken, { action: 'pad', pad: {} });
+
+  // --- J3: scripted checkpoint + hearts end the game ------------------
+  // Queue 0.5: every star spawns at (-5.5, 0); every cannonball spawns
+  // at (0,-12) flying straight at (0,0) at 0.4/tick (27 ticks to reach
+  // the parked blob). Drive out, touch the star once (checks == 1),
+  // drive home to (0,0), release: balls land at ~ticks 37/53/69, the
+  // third empties the 3 shared hearts long before the 60s timeout.
+  const cpDrv = await newDrv();
+  const cp1 = await cpDrv.join('Mot');
+  const cp2 = await cpDrv.join('Hai');
+  await withRandomQueue(new Array(600).fill(0.5), async () => {
+    const t0 = now;
+    await cpDrv.act({ action: 'startGame', game: 'chung-mot-than' });
+    await pumpD(cpDrv, 250, (s) => s.game && s.game.phase === 'shared', 'shared begins (J3)');
+    await driveShared(cpDrv, cp1.playerToken, cp2.playerToken, (s) => s.game.star, { until: (s) => s.game.checks >= 1 });
+    await driveShared(cpDrv, cp1.playerToken, cp2.playerToken, () => ({ x: 0, y: 0 }), {});
+    const parked = await cpDrv.state();
+    assert(parked.game.checks === 1, 'shared: one scripted checkpoint touch scores exactly 1, got ' + parked.game.checks);
+    const res = await pumpD(cpDrv, 250, (s) => s.phase === 'results', 'shared hearts end', 200);
+    assert(now - t0 < 45000, 'shared: the game ended by HEARTS, not the 60s timeout (elapsed ' + (now - t0) + 'ms)');
+    const tr = res.lastGame.teamResult;
+    assert(tr && tr.score === 1 && tr.tier === 'none' && tr.pointsEach === 50,
+      'shared: 1 checkpoint is below Đồng -> team tier none, +50 each, got ' + JSON.stringify(tr));
+    assert(res.lastGame.points[1] === 50 && res.lastGame.points[2] === 50,
+      'shared: both players bank the equal 50 team points, got ' + JSON.stringify(res.lastGame.points));
+  });
+
+  // --- J4: checkpoint tiers 3/5/8 -> Đồng/Bạc/Vàng ---------------------
+  // Queue 0.999: the star always (re)spawns at ~(8.49,-0.05) — right
+  // where the blob parks against it, so checks tick up exactly 1/tick;
+  // cannonballs fly a path that misses the parked blob by ~5 units.
+  // The moment checks hit N the clock jumps past endsAt: stepShared
+  // finishes on time BEFORE any further sim tick, freezing checks at N.
+  for (const [need, tier, pts] of [[3, 'dong', 100], [5, 'bac', 200], [8, 'vang', 300]]) {
+    const tDrv = await newDrv();
+    const t1 = await tDrv.join('Mot');
+    const t2 = await tDrv.join('Hai');
+    await withRandomQueue(new Array(2000).fill(0.999), async () => {
+      await tDrv.act({ action: 'startGame', game: 'chung-mot-than' });
+      await pumpD(tDrv, 250, (s) => s.game && s.game.phase === 'shared', 'shared begins (tier ' + need + ')');
+      await driveShared(tDrv, t1.playerToken, t2.playerToken, () => ({ x: 12, y: 0 }), { until: (s) => s.game.checks >= need });
+      tick(61000);
+      const res = await tDrv.state();
+      const tr = res.lastGame && res.lastGame.teamResult;
+      assert(res.phase === 'results' && tr && tr.score === need && tr.tier === tier && tr.pointsEach === pts,
+        'shared tier: exactly ' + need + ' checkpoints -> ' + tier + ' (+' + pts + ' each), got ' + JSON.stringify(tr));
+      assert(res.lastGame.points[1] === pts && res.lastGame.points[2] === pts,
+        'shared tier ' + need + ': equal banked points ' + pts + '/' + pts);
+    });
+  }
+
+  // --- J5: Đẩy Hộp — solo / aligned / opposed / delivery --------------
+  // Layout 0: crate (-6,0), goal x 6.5..9.5 / y -1.5..1.5. P2 spawns at
+  // (-5.5,0) — 0.5 to the RIGHT of the crate centre — so tick 1's
+  // body-block parks it at exactly (-3.6,0): right-side contact. One
+  // player's push sums to magnitude 1 < 1.2, so even with the other
+  // player incidentally in contact the crate cannot move until BOTH
+  // players push the same way (sum 2 -> the crate slides 0.3/tick).
+  const bxDrv = await newDrv();
+  const bx1 = await bxDrv.join('Mot');
+  const bx2 = await bxDrv.join('Hai');
+  await bxDrv.act({ action: 'startGame', game: 'day-hop' });
+  let bv = await pumpD(bxDrv, 250, (s) => s.game && s.game.phase === 'box', 'box begins');
+  assert(bv.game.crate.x === -6 && bv.game.crate.y === 0 && bv.game.layout === 0, 'box: layout 0 opens with the crate at (-6,0)');
+  // Solo: P1 dives UNDER the crate on a fixed {l} slide (inside the
+  // contact band its intent is a pure axis push of magnitude 1, and
+  // P2 idles in right-side contact with intent 0, so the crossing
+  // cannot move the crate either), rises on the far left and homes
+  // into the pure-left contact point. It then pushes right alone —
+  // the sum is still only magnitude 1.
+  await padTicks(bxDrv, bx1.playerToken, { d: true }, 3);
+  await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: {} });
+  await slideX(bxDrv, bx1.playerToken, 1, -8.7, { l: true });
+  await padTicks(bxDrv, bx1.playerToken, { u: true }, 4);
+  await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: {} });
+  await boxHome(bxDrv, bx1.playerToken, 1);
+  const crateA = (await bxDrv.state()).game.crate;
+  bv = await padTicks(bxDrv, bx1.playerToken, { r: true }, 10);
+  await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: {} });
+  assert(bv.game.crate.x === crateA.x && bv.game.crate.y === crateA.y,
+    'box: ONE player pushing alone never moves the crate (sum 1 < 1.2), got ' + JSON.stringify(bv.game.crate));
+  // Opposed: no routing at all — P2 has been parked in right-side
+  // contact since tick 1 and P1 sits at the pure-left point, so both
+  // push radially into the crate (P1 right, P2 left) and the sums
+  // cancel exactly; radial presses keep both projected in place.
+  const crateC = (await bxDrv.state()).game.crate;
+  bv = await bothTicks(bxDrv, bx1.playerToken, { r: true }, bx2.playerToken, { l: true }, 10);
+  await bothTicks(bxDrv, bx1.playerToken, {}, bx2.playerToken, {}, 0);
+  assert(bv.game.crate.x === crateC.x && bv.game.crate.y === crateC.y,
+    'box: two players pushing against each other cancel — crate byte-identical, got ' + JSON.stringify(bv.game.crate));
+  // Aligned + delivery: both pushers are placed at ~±23° around the
+  // crate's left point. The angle matters: a pressing player's angle
+  // steepens ~x1.26/tick (in tan) as its steps shorten the radial
+  // gap while the tangential offset persists, so from ±23° it stays
+  // in contact for ~20 ticks, and the two spots are ~46° apart so
+  // blob separation never fires. P1 (which the opposed hold orbited
+  // over the top) walks back along the top lane, drops to the y=-0.9
+  // lane and steps in; P2 comes under the crate and steps in from
+  // the y=+0.9 lane. Every crossing/entry intent here is a pure axis
+  // push with the other player idle in contact (sum 1), so the
+  // crate is still at (-6,0) when the aligned push starts.
+  await slideX(bxDrv, bx1.playerToken, 1, -8.6, { l: true });
+  await padTicks(bxDrv, bx1.playerToken, { d: true }, 3);
+  await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: {} });
+  await padTicks(bxDrv, bx1.playerToken, { r: true }, 1);
+  await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: {} });
+  await padTicks(bxDrv, bx2.playerToken, { d: true }, 3);
+  await bxDrv.pAct(bx2.playerToken, { action: 'pad', pad: {} });
+  await slideX(bxDrv, bx2.playerToken, 2, -8.6, { l: true });
+  await padTicks(bxDrv, bx2.playerToken, { u: true }, 3);
+  await bxDrv.pAct(bx2.playerToken, { action: 'pad', pad: {} });
+  await padTicks(bxDrv, bx2.playerToken, { r: true }, 1);
+  await bxDrv.pAct(bx2.playerToken, { action: 'pad', pad: {} });
+  const crateB = (await bxDrv.state()).game.crate;
+  bv = await bothTicks(bxDrv, bx1.playerToken, { r: true }, bx2.playerToken, { r: true }, 10);
+  assert(Math.abs(bv.game.crate.x - (crateB.x + 3.0)) <= 0.05 && Math.abs(bv.game.crate.y - crateB.y) <= 0.05,
+    'box: two players aligned move the crate +3.0 in 10 ticks (0.3/tick), got ' + JSON.stringify(bv.game.crate));
+  // Delivery: keep pushing with STEERED pads. A pusher holding a
+  // fixed direction orbits the crate and falls out of contact, so
+  // each tick every in-contact player pushes right plus a vertical
+  // correction toward the crate's centre line (the two corrections
+  // cancel in the push sum when the formation is symmetric), and an
+  // out-of-contact player re-homes axis-aligned to the crate's left
+  // point, so a re-entry tick carries a single-axis intent.
+  let delivered = null;
+  for (let i = 0; i < 100 && !delivered; i++) {
+    const s = await bxDrv.state();
+    if (!s.game) break; // the 75s clock ran out mid-push: delivered stays null and the assert below reports it
+    if (s.game.deliveries >= 1) { delivered = s; break; }
+    const c = s.game.crate;
+    // Each player owns a pusher spot at ±23° around the crate's left
+    // point (P1 above, P2 below — the aligned formation). Homing both
+    // to the SAME left point deadlocks: the first arrival occupies
+    // it and blob separation keeps the second player out of the band.
+    const mkPad = (seat) => {
+      const b = s.game.blobs[seat];
+      const rx = b.x - c.x, ry = b.y - c.y;
+      const dist = Math.hypot(rx, ry);
+      const spot = { x: c.x - 2.22, y: c.y + (seat === 1 ? -0.95 : 0.95) };
+      if (dist <= 2.45 && rx <= 0.3) {
+        // In contact on the pushing side: push right, correcting
+        // toward my own spot's lane (the two corrections cancel in
+        // the push sum when both players ride their lanes).
+        const pad = { r: true };
+        if (b.y < spot.y - 0.3) pad.d = true;
+        else if (b.y > spot.y + 0.3) pad.u = true;
+        return pad;
+      }
+      if (dist <= 2.45) return ry <= 0 ? { u: true } : { d: true }; // wrong side: escape tangentially
+      if (rx > 0.3 && Math.abs(ry) < 3.0) return ry <= 0 ? { u: true } : { d: true }; // clear the flank before crossing
+      // Home to my spot (tight deadband — a 0.25 one strands the
+      // player just outside the band); if already at the spot but
+      // still out of the band, press straight in.
+      const dx = spot.x - b.x, dy = spot.y - b.y;
+      if (Math.hypot(dx, dy) <= 0.3) return { r: true };
+      const pad = {};
+      if (Math.abs(dx) >= Math.abs(dy)) { if (dx > 0.05) pad.r = true; else if (dx < -0.05) pad.l = true; }
+      else { if (dy > 0.05) pad.d = true; else if (dy < -0.05) pad.u = true; }
+      return pad;
+    };
+    await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: mkPad(1) });
+    await bxDrv.pAct(bx2.playerToken, { action: 'pad', pad: mkPad(2) });
+    tick(250);
+  }
+  if (!delivered) {
+    const s = await bxDrv.state();
+    if (s.game && s.game.deliveries >= 1) delivered = s;
+  }
+  await bothTicks(bxDrv, bx1.playerToken, {}, bx2.playerToken, {}, 0);
+  assert(!!delivered && delivered.game.deliveries === 1 && delivered.game.layout === 1,
+    'box: the push delivers the crate (deliveries == 1) and rotates to layout 1');
+  assert(delivered.game.crate.x === -6.5 && delivered.game.crate.y === -5
+    && delivered.game.goal.x === 6 && delivered.game.goal.y === 3.5,
+    'box: layout 1 loads its own crate (-6.5,-5) and goal (6,3.5), got crate ' + JSON.stringify(delivered.game.crate));
+  await bothTicks(bxDrv, bx1.playerToken, {}, bx2.playerToken, {}, 0);
+  tick(76000);
+  const bres = await bxDrv.state();
+  const btr = bres.lastGame && bres.lastGame.teamResult;
+  assert(bres.phase === 'results' && btr && btr.score === 1 && btr.tier === 'dong' && btr.pointsEach === 100
+    && bres.lastGame.points[1] === 100 && bres.lastGame.points[2] === 100,
+    'box: 1 delivery -> Đồng, +100 each, got ' + JSON.stringify(btr));
+
+  // --- J6: Chèo Thuyền — windows, splashes, tier thresholds -----------
+  // 2 humans: each in-window stroke adds 10/2 = 5m. Presses are sent at
+  // exact fake-clock beat times (rowStart + k*1000).
+  async function rowRoom() {
+    const d = await newDrv();
+    const h1 = await d.join('Mot');
+    const h2 = await d.join('Hai');
+    await d.act({ action: 'startGame', game: 'cheo-thuyen' });
+    const v = await pumpD(d, 250, (s) => s.game && s.game.phase === 'row', 'row begins');
+    return { d, h1, h2, rowStart: v.game.rowStart };
+  }
+  async function pressAt(d, tok, tAbs) { if (tAbs > now) tick(tAbs - now); await d.pAct(tok, { action: 'tap' }); }
+  {
+    const { d, h1, h2, rowStart } = await rowRoom();
+    await pressAt(d, h1.playerToken, rowStart);
+    await pressAt(d, h2.playerToken, rowStart);
+    let rv = await d.state();
+    assert(rv.game.distance === 10 && rv.game.hits[1] === 1 && rv.game.hits[2] === 1,
+      'row: beat 0 with both players in-window advances the full 10m, got ' + rv.game.distance);
+    await pressAt(d, h1.playerToken, rowStart + 1000);
+    rv = await d.state();
+    assert(rv.game.distance === 15, 'row: a lone stroke advances half (5m) -> 15m, got ' + rv.game.distance);
+    await pressAt(d, h1.playerToken, rowStart + 1500); // midway: outside every window
+    rv = await d.state();
+    assert(rv.game.splash[1] === 1 && rv.game.distance === 15,
+      'row: an off-window press splashes (miss counted, 0 advance), got splash ' + rv.game.splash[1] + ' / ' + rv.game.distance + 'm');
+    for (let k = 2; k <= 40; k++) { await pressAt(d, h1.playerToken, rowStart + k * 1000); await pressAt(d, h2.playerToken, rowStart + k * 1000); }
+    tick(rowStart + 45000 - now);
+    rv = await d.state();
+    const tr = rv.lastGame && rv.lastGame.teamResult;
+    // 10 + 5 + 39*10 = 405m = exactly 90.0% of the 450m perfect distance.
+    assert(rv.phase === 'results' && tr && tr.score === 405 && tr.tier === 'vang' && tr.pointsEach === 300,
+      'row: 405m = 90% of perfect -> Vàng, +300 each, got ' + JSON.stringify(tr));
+    assert(rv.lastGame.points[1] === 300 && rv.lastGame.points[2] === 300, 'row: Vàng banks 300/300');
+  }
+  {
+    const { d, h1, h2, rowStart } = await rowRoom();
+    for (let k = 0; k <= 31; k++) { await pressAt(d, h1.playerToken, rowStart + k * 1000); await pressAt(d, h2.playerToken, rowStart + k * 1000); }
+    tick(rowStart + 45000 - now);
+    const rv = await d.state();
+    const tr = rv.lastGame && rv.lastGame.teamResult;
+    // 32 beats x 10m = 320m = 71.1% -> Bạc.
+    assert(tr && tr.score === 320 && tr.tier === 'bac' && tr.pointsEach === 200,
+      'row: 320m = 71% of perfect -> Bạc, +200 each, got ' + JSON.stringify(tr));
+  }
+  {
+    const { d, h1, rowStart } = await rowRoom();
+    for (let k = 0; k <= 40; k++) await pressAt(d, h1.playerToken, rowStart + k * 1000);
+    tick(rowStart + 45000 - now);
+    const rv = await d.state();
+    const tr = rv.lastGame && rv.lastGame.teamResult;
+    // One player alone: 41 strokes x 5m = 205m = 45.6% -> Đồng.
+    assert(tr && tr.score === 205 && tr.tier === 'dong' && tr.pointsEach === 100,
+      'row: 205m = 46% of perfect -> Đồng, +100 each, got ' + JSON.stringify(tr));
+  }
+  {
+    const { d, rowStart } = await rowRoom();
+    tick(rowStart + 45000 - now);
+    const rv = await d.state();
+    const tr = rv.lastGame && rv.lastGame.teamResult;
+    assert(tr && tr.score === 0 && tr.tier === 'none' && tr.pointsEach === 50
+      && rv.lastGame.points[1] === 50 && rv.lastGame.points[2] === 50,
+      'row: a silent team rows 0m -> participation +50 each, got ' + JSON.stringify(tr));
+  }
+
+  // --- J7: mixed session — co-op banks equal, versus banks placement --
+  const mxDrv = await newDrv();
+  const mx1 = await mxDrv.join('Mot');
+  const mx2 = await mxDrv.join('Hai');
+  await withRandomQueue(new Array(600).fill(0.5), async () => {
+    await mxDrv.act({ action: 'startGame', game: 'chung-mot-than' });
+    await pumpD(mxDrv, 250, (s) => s.game && s.game.phase === 'shared', 'mixed shared begins');
+    // Nobody steers: the blob sits at (0,0) in the cannonballs' path.
+    const res = await pumpD(mxDrv, 250, (s) => s.phase === 'results', 'mixed shared results', 200);
+    const tr = res.lastGame.teamResult;
+    assert(tr && tr.score === 0 && tr.tier === 'none' && tr.pointsEach === 50,
+      'mixed: idle co-op run scores 0 checkpoints -> +50 each, got ' + JSON.stringify(tr));
+    assert(res.lastGame.points[1] === 50 && res.lastGame.points[2] === 50, 'mixed: co-op points are equal (50/50)');
+  });
+  await mxDrv.act({ action: 'continue' });
+  let mv = await mxDrv.state();
+  assert(mv.phase === 'podium' && mv.players.find((p) => p.seat === 1).score === 50 && mv.players.find((p) => p.seat === 2).score === 50,
+    'mixed: podium after the co-op game shows 50/50 banked');
+  await mxDrv.act({ action: 'toChoosing' });
+  await mxDrv.act({ action: 'startGame', game: 'keo-co' });
+  await pumpD(mxDrv, 250, (s) => s.game && s.game.phase === 'pull', 'mixed tug begins');
+  // P1 (team A, odd seat) presses B 28 times: knot = 3*(0 - 28) = -84,
+  // |knot| >= TUG_WIN -> team A wins outright: A banks 300, B banks 200.
+  for (let i = 0; i < 28; i++) {
+    await mxDrv.pAct(mx1.playerToken, { action: 'pad', pad: { b: true } });
+    await mxDrv.pAct(mx1.playerToken, { action: 'pad', pad: {} });
+  }
+  mv = await pumpD(mxDrv, 250, (s) => s.phase === 'results', 'mixed tug results');
+  assert(mv.lastGame.id === 'keo-co' && mv.lastGame.teamResult === null
+    && mv.lastGame.points[1] === 300 && mv.lastGame.points[2] === 200,
+    'mixed: the versus game banks normal placement (300/200) with NO teamResult, got ' + JSON.stringify(mv.lastGame.points));
+  await mxDrv.act({ action: 'continue' });
+  mv = await mxDrv.state();
+  assert(mv.phase === 'podium' && mv.players.find((p) => p.seat === 1).score === 350 && mv.players.find((p) => p.seat === 2).score === 250,
+    'mixed: hand-checked podium totals are P1 350 (50 co-op + 300 tug) / P2 250 (50 + 200), got '
+    + mv.players.map((p) => p.seat + ':' + p.score).join(','));
+
   // --- Storage routing: with ROOMS_DO bound, everything above must have
-  // gone through the Durable Objects and the KV fallback must be untouched.
   console.log('Storage: Durable Object routing + expiry');
   assert(env.ROOMS.putCount === 0 && env.ROOMS.getCount === 0,
     'KV fallback saw zero reads/writes while ROOMS_DO is bound (spy counters)');
