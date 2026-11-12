@@ -503,6 +503,26 @@ async function main() {
     && home.text.indexOf('Đổi phòng') >= 0,
     'topbar mute / fullscreen / change-room controls ship in the page');
 
+  console.log('Audit H: phone touch input — pointerdown dispatch, fallbacks, dedupe');
+  assert(home.text.indexOf('GAME_CMDS') >= 0 && home.text.indexOf('function runCmd(') >= 0,
+    'gameplay commands dispatch through runCmd, shared by the press and click paths');
+  assert(home.text.indexOf("addEventListener('pointerdown'") >= 0 && home.text.indexOf('findCmdNode') >= 0
+    && home.text.indexOf('findPadNode') >= 0,
+    'gameplay commands + gamepad fire on pointerdown, targets resolved with parent walk-up (span labels no longer dead)');
+  assert(home.text.indexOf('cmdGuard') >= 0 && home.text.indexOf('markCmdGuard') >= 0,
+    'the synthetic click trailing a pointerdown press is swallowed exactly once (dedupe guard)');
+  assert(home.text.indexOf('window.PointerEvent') >= 0 && home.text.indexOf("addEventListener('touchstart'") >= 0
+    && home.text.indexOf("addEventListener('touchcancel'") >= 0 && home.text.indexOf("addEventListener('mousedown'") >= 0,
+    'touch/mouse fallbacks ship for engines without Pointer Events (in-app webviews, older browsers)');
+  assert(home.text.indexOf('.tapbtn, .opt, .key, .pad') >= 0 && home.text.indexOf('data-cmd="guessSubmit"]') >= 0,
+    'every gameplay control carries touch-action:none so mashing cannot scroll or cancel presses');
+  assert(home.text.indexOf('.pstage') >= 0 && home.text.indexOf('overscroll-behavior: none') >= 0
+    && home.text.indexOf('.pressed') >= 0 && home.text.indexOf('pressFx') >= 0,
+    'playing container blocks overscroll/pull-refresh; presses get instant .pressed feedback');
+  assert(home.text.indexOf('padBitHeld') >= 0 && home.text.indexOf("g.id === 'dua-bam') pm = null") >= 0
+    && home.text.indexOf('Math.round((g.knot || 0) / 9)') >= 0,
+    'player view signature is stabilized (no per-tap/per-press rebuilds) and lost pad releases recover');
+
   console.log('Audit B: garbage inputs never produce an unhandled 500');
   const gRoom = (await call('POST', '/api/rooms', {})).data;
   const gCode = gRoom.code;

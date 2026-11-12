@@ -1429,7 +1429,7 @@ const PAGE = `<!doctype html>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; overscroll-behavior: none; }
 body { font-family: 'Quicksand', sans-serif; background: #FFF6E9; color: #4A3226; min-height: 100vh;
   background-image: radial-gradient(circle at 12% 18%, rgba(247,127,176,.14) 0 90px, transparent 91px),
     radial-gradient(circle at 88% 12%, rgba(79,168,232,.14) 0 110px, transparent 111px),
@@ -1480,6 +1480,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .gamecard h3 { margin: 0 0 4px; font-size: 24px; }
 .gamecard p { margin: 0; font-weight: 700; opacity: .92; }
 .stage { border-radius: 32px; padding: 26px; color: #fff; min-height: 400px; box-shadow: inset 0 -10px 0 rgba(0,0,0,.12), 0 18px 34px rgba(120,72,20,.2); position: relative; overflow: hidden; }
+.pstage { touch-action: none; overscroll-behavior: none; }
 .stage h2 { margin: 0 0 8px; font-size: 34px; text-shadow: 0 3px 0 rgba(0,0,0,.15); }
 .g-nhanh-tay { background: linear-gradient(160deg, #FFD93D, #FF8C42); }
 .g-do-vui { background: linear-gradient(160deg, #6BCBFF, #4F7BE8); }
@@ -1522,6 +1523,8 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .key { border: none; border-radius: 18px; padding: 16px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 24px;
   background: #fff; color: #4A3226; box-shadow: 0 5px 0 rgba(140,90,30,.3); cursor: pointer; }
 .key:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(140,90,30,.3); }
+.tapbtn, .opt, .key, .pad, .btn[data-cmd="choose"], .btn[data-cmd="guessSubmit"] { touch-action: none; user-select: none; -webkit-user-select: none; }
+.pressed { transform: scale(.93) !important; filter: brightness(1.25) saturate(1.15); box-shadow: 0 0 0 3px rgba(255,255,255,.8), 0 0 26px rgba(255,255,255,.6) !important; }
 .guessbox { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 44px; background: #fff; border-radius: 20px;
   padding: 8px 20px; min-height: 74px; box-shadow: inset 0 -5px 0 rgba(140,90,30,.15); }
 .podium { display: flex; align-items: flex-end; justify-content: center; gap: 14px; margin-top: 26px; }
@@ -2122,6 +2125,7 @@ function finalHTML(v, isHost) {
 }
 function viewSig(v) {
   if (!v) return 'none';
+  var pl = S.role === 'player';
   var g = v.game;
   var gp = null;
   if (g) {
@@ -2132,13 +2136,29 @@ function viewSig(v) {
     } else if (g.id === 'ne-dan') {
       var ak2 = '';
       if (g.blobs) for (var bs2 in g.blobs) ak2 += bs2 + (g.blobs[bs2].alive ? '1' : '0') + g.blobs[bs2].lives;
-      gp = [g.id, g.phase, ak2, g.balls ? g.balls.length : 0, g.lastRound];
+      gp = pl ? [g.id, g.phase, ak2, g.lastRound] : [g.id, g.phase, ak2, g.balls ? g.balls.length : 0, g.lastRound];
     } else if (g.id === 'keo-co') {
-      gp = [g.id, g.phase, g.knot, g.presses, g.lastRound];
+      gp = pl ? [g.id, g.phase, Math.round((g.knot || 0) / 9), g.lastRound] : [g.id, g.phase, g.knot, g.presses, g.lastRound];
     } else if (g.id === 'chia-cuop') {
       gp = [g.id, g.phase, g.round, g.points, g.chosen, g.chat, g.reveal, g.mineChosen, g.lastRound];
     } else {
+      if (pl) {
+      // PLAYER signature for the tap/answer games: keep only what the
+      // phone actually renders and what changes on real game events.
+      // Dropped vs the host signature: g.mine as a raw counter (dua-bam
+      // mine = my own tap count, nho-mau mine.taps — both change with
+      // EVERY press I make, and tick() already refreshes the on-screen
+      // counters from the raw view), and g.answered / g.guessed /
+      // g.statuses, which track the OTHER players and are never drawn
+      // on the phone. Rebuilding the controls mid-press is what ate
+      // real finger presses; the host signature is unchanged.
+      var pm = g.mine;
+      if (g.id === 'nho-mau' && pm) pm = pm.status;
+      else if (g.id === 'dua-bam') pm = null;
+      gp = [g.id, g.phase, g.round, g.points, g.lastRound, g.reveal, g.status, pm, g.myStreak];
+    } else {
       gp = [g.id, g.phase, g.round, g.points, g.lastRound, g.reveal, g.status, g.answered, g.guessed, g.statuses, g.mine];
+    }
     }
   }
   return JSON.stringify([v.phase, v.players, v.bubble, v.standings, v.gap, gp, v.lastGame]);
@@ -2454,7 +2474,7 @@ function playerHTML(v) {
 function playerGame(v) {
   var g = v.game;
   var me = playerOf(v, S.seat);
-  var h = '<div class="stage g-' + g.id + (isActionGame(g.id) ? ' neon-stage' : '') + '">';
+  var h = '<div class="stage pstage g-' + g.id + (isActionGame(g.id) ? ' neon-stage' : '') + '">';
   if (g.phase === 'countdown') { h += '<div class="center baloo" style="font-size:26px">' + esc(g.name) + '</div>' + countdownHTML(g) + '</div>'; return h; }
   h += '<h2>' + esc(g.name) + ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '') + '</h2>';
   if (g.id === 'nhanh-tay') {
@@ -2530,7 +2550,7 @@ function playerGame(v) {
       if (mine.status === 'done') h += '<div class="center baloo" style="font-size:29px">Hoàn thành! Đợi kết quả…</div>';
       else if (mine.status === 'failed') h += '<div class="center baloo" style="font-size:29px">Sai rồi! Vòng này 0 điểm.</div>';
       else {
-        h += '<div class="center baloo" style="font-size:23px">Đã bấm ' + mine.taps + '/' + g.len + ' màu</div>';
+        h += '<div class="center baloo" style="font-size:23px">Đã bấm <span id="coltaps">' + mine.taps + '</span>/' + g.len + ' màu</div>';
         h += '<div class="pads">';
         for (var cI = 0; cI < 4; cI++) h += '<button class="pad" data-cmd="color" data-i="' + cI + '" style="background:' + MEM[cI] + ';opacity:.9" aria-label="' + MEMNAME[cI] + '"></button>';
         h += '</div>';
@@ -2561,7 +2581,7 @@ function playerGame(v) {
       h += '<div class="center baloo" style="font-size:24px">BẠN Ở ĐỘI ' + myTeam + ' — BẤM NÚT B LIÊN TỤC!</div>';
       var kpct2 = Math.max(3, Math.min(97, 50 + (g.knot / 84) * 46));
       h += '<div class="rope"><div class="mid"></div><div class="knot" style="left:' + kpct2 + '%"></div></div>';
-      h += '<div class="center baloo" style="font-size:21px">Bạn đã kéo: ' + (g.presses ? (g.presses[S.seat] || 0) : 0) + ' lần</div>';
+      h += '<div class="center baloo" style="font-size:21px">Bạn đã kéo: <span id="mypull">' + (g.presses ? (g.presses[S.seat] || 0) : 0) + '</span> lần</div>';
       h += '<div class="padwrap"><div class="dpad">'
         + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
         + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
@@ -2631,10 +2651,45 @@ function tryJoin(code, name, attempt) {
     toast(err || 'Không vào được phòng.');
   });
 }
-document.addEventListener('click', function (ev) {
-  var node = ev.target;
-  while (node && node !== document.body) { if (node.getAttribute && node.getAttribute('data-cmd')) break; node = node.parentNode; }
-  if (!node || !node.getAttribute) return;
+// ---------------------------------------------------------------------
+// Input dispatch. A mouse click is atomic, but a real finger press is
+// not: 'click' only fires on release, and only if the touch did not
+// drift, scroll, or straddle a re-render — rapid mashing on a phone
+// lost presses exactly that way ("bấm phím không ăn"). Gameplay
+// commands therefore fire on pointerdown (finger contact), with a
+// per-signature guard that swallows the synthetic click trailing each
+// press exactly once. Non-gameplay commands (lobby, settings,
+// navigation) keep the plain click path, as do clicks with no press
+// before them (keyboard / assistive tech).
+// ---------------------------------------------------------------------
+var GAME_CMDS = { tap: 1, answer: 1, color: 1, key: 1, guessSubmit: 1, choose: 1 };
+var cmdGuard = {};
+function findCmdNode(node) {
+  while (node && node !== document.body) { if (node.getAttribute && node.getAttribute('data-cmd')) return node; node = node.parentNode; }
+  return null;
+}
+function findPadNode(node) {
+  while (node && node !== document.body) { if (node.getAttribute && node.getAttribute('data-pad')) return node; node = node.parentNode; }
+  return null;
+}
+function cmdSig(node, cmd) {
+  return cmd + '|' + (node.getAttribute('data-i') || '') + '|' + (node.getAttribute('data-k') || '') + '|' + (node.getAttribute('data-c') || '');
+}
+function markCmdGuard(node, cmd) {
+  var s = cmdSig(node, cmd); var r = cmdGuard[s]; var t = Date.now();
+  if (!r || t - r.at > 700) cmdGuard[s] = { n: 1, at: t };
+  else { r.n += 1; r.at = t; }
+}
+function pressFx(node) {
+  if (!node || !node.classList) return;
+  node.classList.add('pressed');
+  setTimeout(function () { node.classList.remove('pressed'); }, 220);
+}
+function clearPadFx() {
+  var pb = document.querySelectorAll('.dbtn.pressed, .abtn.pressed');
+  for (var i = 0; i < pb.length; i++) pb[i].classList.remove('pressed');
+}
+function runCmd(node) {
   var cmd = node.getAttribute('data-cmd');
   if (cmd === 'create') {
     api('/api/rooms', {}, function (v) {
@@ -2674,6 +2729,7 @@ document.addEventListener('click', function (ev) {
     act({ action: 'answer', choice: +node.getAttribute('data-i') });
   } else if (cmd === 'color') {
     var ci = +node.getAttribute('data-i');
+    var cv = el('coltaps'); if (cv) cv.textContent = (+cv.textContent || 0) + 1;
     beep(320 + ci * 130, 0.1, 'triangle', 0.14);
     node.classList.add('on');
     setTimeout(function () { node.classList.remove('on'); }, 200);
@@ -2698,6 +2754,18 @@ document.addEventListener('click', function (ev) {
     if (ct) ct.value = '';
     act({ action: 'chat', text: txt });
   }
+}
+document.addEventListener('click', function (ev) {
+  var node = findCmdNode(ev.target);
+  if (!node) return;
+  var cmd = node.getAttribute('data-cmd');
+  if (GAME_CMDS[cmd]) {
+    // This click is the synthetic tail of a press that already fired on
+    // pointerdown: swallow it once per recorded press.
+    var s = cmdSig(node, cmd); var r = cmdGuard[s];
+    if (r && r.n > 0 && Date.now() - r.at < 700) { r.n -= 1; return; }
+  }
+  runCmd(node);
 });
 document.addEventListener('input', function (ev) {
   var t = ev.target;
@@ -2713,25 +2781,57 @@ function sendPad() {
   if (!S.code || S.role !== 'player') return;
   api('/api/rooms/' + S.code + '/action', { role: 'player', token: S.token, action: 'pad', pad: S.padState }, function () {});
 }
+function padBitHeld(bit) {
+  for (var k in S.padPointers) if (S.padPointers[k] === bit) return true;
+  return false;
+}
 function padSet(bit, val, pid) {
   if (val) {
+    if (S.padPointers[pid] === bit) return;
+    var wasHeld = !!S.padState[bit];
     S.padPointers[pid] = bit;
-    if (!S.padState[bit]) { S.padState[bit] = true; sendPad(); }
+    if (wasHeld) {
+      // The bit already reads as held, but not by THIS pointer: the
+      // earlier holder's release never arrived (its button was rebuilt
+      // mid-touch) or a second finger joined on the same button. Cycle
+      // the bit so this press produces a fresh rising edge on the
+      // server instead of being swallowed by the stuck state.
+      S.padState[bit] = false; sendPad();
+    }
+    S.padState[bit] = true; sendPad();
   } else {
     delete S.padPointers[pid];
-    if (S.padState[bit]) { S.padState[bit] = false; sendPad(); }
+    if (S.padState[bit] && !padBitHeld(bit)) { S.padState[bit] = false; sendPad(); }
+  }
+}
+function padPressFx(bit) {
+  // Kéo Co no longer re-renders for my own press count (player
+  // signature), so the on-screen counter is bumped locally on contact.
+  if (bit === 'b' && S.view && S.view.game && S.view.game.id === 'keo-co' && S.view.game.phase === 'pull') {
+    var mp = el('mypull'); if (mp) mp.textContent = (+mp.textContent || 0) + 1;
   }
 }
 document.addEventListener('pointerdown', function (ev) {
-  var node = ev.target;
-  if (node && node.getAttribute && node.getAttribute('data-pad')) {
+  var padNode = findPadNode(ev.target);
+  if (padNode) {
     ev.preventDefault();
-    padSet(node.getAttribute('data-pad'), true, ev.pointerId);
+    pressFx(padNode);
+    padSet(padNode.getAttribute('data-pad'), true, ev.pointerId);
+    padPressFx(padNode.getAttribute('data-pad'));
+    return;
+  }
+  var node = findCmdNode(ev.target);
+  if (node && GAME_CMDS[node.getAttribute('data-cmd')]) {
+    ev.preventDefault();
+    pressFx(node);
+    markCmdGuard(node, node.getAttribute('data-cmd'));
+    runCmd(node);
   }
 });
 function padRelease(ev) {
   var bit = S.padPointers[ev.pointerId];
   if (bit) padSet(bit, false, ev.pointerId);
+  clearPadFx();
 }
 document.addEventListener('pointerup', padRelease);
 document.addEventListener('pointercancel', padRelease);
@@ -2741,6 +2841,63 @@ window.addEventListener('blur', function () {
   for (var k in S.padState) if (S.padState[k]) { S.padState[k] = false; changed = true; }
   if (changed) sendPad();
 });
+// Fallbacks for engines without Pointer Events (older browsers and
+// in-app webviews such as Zalo/Facebook): without these, the gamepad
+// would be completely dead there and gameplay buttons would fall back
+// to fragile clicks. Registered ONLY when Pointer Events are missing,
+// so the two input stacks can never double-fire; the cmdGuard above
+// additionally swallows any emulated click that still gets through.
+if (!window.PointerEvent) {
+  document.addEventListener('touchstart', function (ev) {
+    for (var i = 0; i < ev.changedTouches.length; i++) {
+      var t = ev.changedTouches[i];
+      var padNode = findPadNode(t.target);
+      if (padNode) {
+        ev.preventDefault();
+        pressFx(padNode);
+        padSet(padNode.getAttribute('data-pad'), true, 't' + t.identifier);
+        padPressFx(padNode.getAttribute('data-pad'));
+        continue;
+      }
+      var node = findCmdNode(t.target);
+      if (node && GAME_CMDS[node.getAttribute('data-cmd')]) {
+        ev.preventDefault();
+        pressFx(node);
+        markCmdGuard(node, node.getAttribute('data-cmd'));
+        runCmd(node);
+      }
+    }
+  }, { passive: false });
+  function touchEnd(ev) {
+    for (var i = 0; i < ev.changedTouches.length; i++) {
+      var pid = 't' + ev.changedTouches[i].identifier;
+      var bit = S.padPointers[pid];
+      if (bit) padSet(bit, false, pid);
+    }
+    clearPadFx();
+  }
+  document.addEventListener('touchend', touchEnd);
+  document.addEventListener('touchcancel', touchEnd);
+  document.addEventListener('mousedown', function (ev) {
+    var padNode = findPadNode(ev.target);
+    if (padNode) {
+      pressFx(padNode);
+      padSet(padNode.getAttribute('data-pad'), true, 'mouse');
+      padPressFx(padNode.getAttribute('data-pad'));
+      return;
+    }
+    var node = findCmdNode(ev.target);
+    if (node && GAME_CMDS[node.getAttribute('data-cmd')]) {
+      pressFx(node);
+      markCmdGuard(node, node.getAttribute('data-cmd'));
+      runCmd(node);
+    }
+  });
+  document.addEventListener('mouseup', function () {
+    if (S.padPointers.mouse) padSet(S.padPointers.mouse, false, 'mouse');
+    clearPadFx();
+  });
+}
 (function init() {
   try {
     var raw = sessionStorage.getItem('np_session');
