@@ -102,6 +102,68 @@ async function toGame(gameId) {
 const played = [];
 function collect(v) { played.push(Object.assign({}, v.lastGame.points)); }
 
+// --- Audit helpers -------------------------------------------------------
+// rawCall sends an arbitrary (possibly malformed) body, unlike call() which
+// always JSON-encodes. If worker.fetch throws instead of answering, the
+// promise rejects and the whole run fails — exactly what the garbage
+// battery is meant to catch.
+async function rawCall(method, path, raw, ctype) {
+  const req = new Request('https://test' + path, {
+    method,
+    headers: { 'content-type': ctype || 'application/json' },
+    body: raw === undefined ? undefined : raw,
+  });
+  const res = await worker.fetch(req, env, ctx);
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch (e) { /* not JSON */ }
+  return { status: res.status, text, data };
+}
+// A room driver with its own code/host token, so audit sections never
+// disturb the main match's globals (CODE/HOST/P1).
+function driver(code, host) {
+  return {
+    code, host,
+    state: async () => (await call('GET', '/api/rooms/' + code + '/state?role=host&token=' + host)).data,
+    act: async (b) => (await call('POST', '/api/rooms/' + code + '/action', Object.assign({ role: 'host', token: host }, b))).data,
+    join: async (name) => (await call('POST', '/api/rooms/' + code + '/join', { name })).data,
+    pState: async (tok) => (await call('GET', '/api/rooms/' + code + '/state?role=player&token=' + tok)).data,
+    pAct: async (tok, b) => (await call('POST', '/api/rooms/' + code + '/action', Object.assign({ role: 'player', token: tok }, b))).data,
+  };
+}
+async function newDrv() {
+  const c = (await call('POST', '/api/rooms', {})).data;
+  return driver(c.code, c.hostToken);
+}
+async function pumpD(drv, stepMs, until, label, maxIter) {
+  const cap = maxIter || 4000;
+  for (let i = 0; i < cap; i++) {
+    const v = await drv.state();
+    if (until(v)) return v;
+    tick(stepMs);
+  }
+  throw new Error('pump timeout: ' + label);
+}
+// Play dua-bam in a driver room all the way to the results phase.
+async function raceToResults(drv, humanTok) {
+  for (let r = 1; r <= 3; r++) {
+    await pumpD(drv, 200, (s) => s.game && s.game.phase === 'race' && s.game.round === r, 'race r' + r);
+    if (humanTok) for (let i = 0; i < 12; i++) await drv.pAct(humanTok, { action: 'tap' });
+    await pumpD(drv, 400, (s) => s.phase === 'results' || (s.game && s.game.phase === 'pause' && s.game.round === r), 'race resolve r' + r);
+  }
+  return pumpD(drv, 400, (s) => s.phase === 'results', 'race results');
+}
+// Run fn with Math.random served from a fixed queue (then restored).
+// Room creation draws its candidate codes from Math.random via randInt,
+// so this can force exact codes — collisions and code recycling included.
+function withRandomQueue(values, fn) {
+  const orig = Math.random;
+  let i = 0;
+  Math.random = () => (i < values.length ? values[i++] : orig());
+  return Promise.resolve().then(fn).finally(() => { Math.random = orig; });
+}
+const rFor = (code) => (code - 100000 + 0.5) / 900000;
+
 async function playQuiz() {
   console.log('Game: Đố Vui Tốc Độ (streak bonus + final round ×2)');
   const v0 = await hAct({ action: 'startGame', game: 'do-vui' });
@@ -340,12 +402,13 @@ async function main() {
   assert(home.status === 200 && home.text.indexOf('Nảy Party') >= 0, 'GET / serves the game page');
   assert(home.text.indexOf('Nhanh Tay') >= 0 && home.text.indexOf('Đẩy Ra Khỏi Sàn') >= 0, 'page lists all games incl. the arena');
   assert(home.text.indexOf('Né Đạn') >= 0 && home.text.indexOf('Kéo Co') >= 0 && home.text.indexOf('Chia Hay Cướp') >= 0, 'page lists the 3 new games (Né Đạn, Kéo Co, Chia Hay Cướp)');
-  // KV is eventually consistent, so the join handler must auto-retry ONLY
-  // the room-not-found error (2s interval, bounded attempts, subtle status).
+  // A freshly created room can briefly be invisible somewhere, so the join
+  // handler must auto-retry ONLY the room-not-found error (2s interval,
+  // bounded attempts, subtle status).
   assert(home.text.indexOf('JOIN_RETRY_MS = 2000') >= 0 && home.text.indexOf('JOIN_RETRY_MAX = 10') >= 0
     && home.text.indexOf('function tryJoin(') >= 0 && home.text.indexOf('Đang tìm phòng…') >= 0
     && home.text.indexOf("indexOf('Không thấy phòng này')") >= 0,
-    'join flow auto-retries room-not-found for KV propagation (2s x 10, "Đang tìm phòng…")');
+    'join flow auto-retries room-not-found briefly (2s x 10, "Đang tìm phòng…")');
   // NEON ARENA overhaul: action games must ship the fighter-orb renderer,
   // the K.O. banner markup, the FX engine and its hooks in the served page.
   assert(home.text.indexOf('function orbSVG(') >= 0 && home.text.indexOf('ko-banner') >= 0
@@ -421,6 +484,212 @@ async function main() {
   await hAct({ action: 'playAgain' });
   v = await hState();
   assert(v.phase === 'lobby' && v.players.every((p) => p.score === 0), 'play-again resets scores and returns to the lobby');
+
+  // =====================================================================
+  // Robustness audit additions (dead ends, garbage inputs, late joins)
+  // =====================================================================
+  console.log('Audit A: served page — dead-end fixes + controls');
+  assert(home.text.indexOf('KV') === -1, 'served page carries no leftover KV references');
+  assert(home.text.indexOf('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.') >= 0
+    && home.text.indexOf('Không thấy phòng này') >= 0,
+    'client leaves a dead room (not-found) instead of spinning on the connecting screen');
+  assert(home.text.indexOf('Mất kết nối với phòng') >= 0 && home.text.indexOf('failSince') >= 0
+    && home.text.indexOf('net: true') >= 0,
+    'client exits gracefully after sustained network silence (spaced failure streak)');
+  assert(home.text.indexOf('Đang nối phòng…') >= 0 && home.text.indexOf('Về trang chính') >= 0
+    && home.text.indexOf('data-cmd="reload"') >= 0,
+    'connecting screen has a manual "Về trang chính" escape (reload command)');
+  assert(home.text.indexOf('data-cmd="sound"') >= 0 && home.text.indexOf('data-cmd="fs"') >= 0
+    && home.text.indexOf('Đổi phòng') >= 0,
+    'topbar mute / fullscreen / change-room controls ship in the page');
+
+  console.log('Audit B: garbage inputs never produce an unhandled 500');
+  const gRoom = (await call('POST', '/api/rooms', {})).data;
+  const gCode = gRoom.code;
+  const junk = [
+    ['join malformed JSON', 'POST', '/api/rooms/' + gCode + '/join', 'not json{{{'],
+    ['join JSON null body', 'POST', '/api/rooms/' + gCode + '/join', 'null'],
+    ['join JSON array body', 'POST', '/api/rooms/' + gCode + '/join', '[1,2,3]'],
+    ['join JSON string body', 'POST', '/api/rooms/' + gCode + '/join', '"hello"'],
+    ['join numeric name', 'POST', '/api/rooms/' + gCode + '/join', '{"name":12345}'],
+    ['join object name', 'POST', '/api/rooms/' + gCode + '/join', '{"name":{"x":1}}'],
+    ['join empty body', 'POST', '/api/rooms/' + gCode + '/join', ''],
+    ['join via GET (wrong method)', 'GET', '/api/rooms/' + gCode + '/join', undefined],
+    ['action malformed JSON', 'POST', '/api/rooms/' + gCode + '/action', '###'],
+    ['action JSON null body', 'POST', '/api/rooms/' + gCode + '/action', 'null'],
+    ['state with no query params', 'GET', '/api/rooms/' + gCode + '/state', undefined],
+    ['state with bogus role', 'GET', '/api/rooms/' + gCode + '/state?role=xyz&token=abc', undefined],
+    ['join on unknown room', 'POST', '/api/rooms/000000/join', '{"name":"X"}'],
+    ['unknown api path', 'GET', '/api/whatever', undefined],
+    ['GET on the create path', 'GET', '/api/rooms', undefined],
+    ['state via POST (wrong method)', 'POST', '/api/rooms/' + gCode + '/state', '{}'],
+  ];
+  for (const [label, m, p, raw] of junk) {
+    const rj = await rawCall(m, p, raw);
+    assert(rj.data && rj.data.ok === false && rj.status >= 400 && rj.status < 500,
+      'garbage: ' + label + ' -> clean JSON 4xx (got status ' + rj.status + ')');
+  }
+  const huge = await call('POST', '/api/rooms/' + gCode + '/join', { name: 'X'.repeat(5000) });
+  assert(huge.data.ok === true, 'garbage: a 5000-char name is accepted but truncated, not an error');
+  const gDrv = driver(gCode, gRoom.hostToken);
+  const gState = await gDrv.state();
+  const hugeP = gState.players.find((p) => p.seat === huge.data.seat);
+  assert(hugeP && hugeP.name.length === 14, 'garbage: stored name is truncated to 14 chars (got ' + (hugeP ? hugeP.name.length : '?') + ')');
+  const bogusAct = await call('POST', '/api/rooms/' + gCode + '/action', { role: 'host', token: 'bogus', action: 'addBot', seat: 2 });
+  assert(bogusAct.status === 403 && bogusAct.data.ok === false, 'garbage: action with a bogus host token -> 403');
+  const hostAsPlayer = await call('GET', '/api/rooms/' + gCode + '/state?role=player&token=' + gRoom.hostToken);
+  assert(hostAsPlayer.status === 403 && hostAsPlayer.data.ok === false, 'garbage: host token cannot pose as a player token');
+  const unk = await gDrv.act({ action: 'fly-to-the-moon' });
+  assert(unk.ok === false && unk.error === 'Hành động không hợp lệ.', 'garbage: unknown host action -> clean error');
+  const badSeat = await gDrv.act({ action: 'addBot', seat: 'x' });
+  const badSeat2 = await gDrv.act({ action: 'addBot', seat: 99 });
+  const badSeat3 = await gDrv.act({ action: 'addBot', seat: 2.5 });
+  assert(badSeat.ok === false && badSeat2.ok === false && badSeat3.ok === false, 'garbage: addBot with string/huge/fractional seat -> clean errors');
+  const weird = await worker.fetch({ url: '::::', method: 'GET' }, env, ctx);
+  assert(weird.status === 200 && (await weird.text()).indexOf('Nảy Party') >= 0, 'garbage: unparseable request URL -> game page, no exception');
+
+  console.log('Audit C: wrong-phase actions + stale inputs + start gate');
+  const cDrv = await newDrv();
+  const solo = await cDrv.join('MotMinh');
+  assert(solo.ok && solo.seat === 1, 'solo human joins');
+  let cr = await cDrv.act({ action: 'startGame', game: 'do-vui' });
+  assert(cr.ok === false && cr.error.indexOf('ít nhất 2 người chơi') >= 0, 'start gate: 1 human + 0 bots cannot start (needs 2 seats)');
+  cr = await cDrv.act({ action: 'continue' });
+  assert(cr.ok === false, 'wrong phase: continue in the lobby is rejected');
+  cr = await cDrv.act({ action: 'replay' });
+  assert(cr.ok === false, 'wrong phase: replay in the lobby is rejected');
+  cr = await cDrv.act({ action: 'finish' });
+  assert(cr.ok === false, 'wrong phase: finish in the lobby is rejected');
+  cr = await cDrv.act({ action: 'playAgain' });
+  assert(cr.ok === false, 'wrong phase: playAgain in the lobby is rejected');
+  cr = await cDrv.act({ action: 'toChoosing' });
+  assert(cr.ok === false, 'wrong phase: toChoosing in the lobby is rejected');
+  const staleLobby = await cDrv.pAct(solo.playerToken, { action: 'tap' });
+  assert(staleLobby.ok === false, 'stale input: player tap in the lobby is a clean error, not a crash');
+  await cDrv.act({ action: 'addBot', seat: 2 });
+  cr = await cDrv.act({ action: 'startGame', game: 'do-vui' });
+  assert(cr.ok === true && cr.phase === 'playing', 'start succeeds once a second seat is filled');
+  cr = await cDrv.act({ action: 'startGame', game: 'do-vui' });
+  assert(cr.ok === false, 'wrong phase: startGame while playing is rejected');
+  cr = await cDrv.act({ action: 'addBot', seat: 3 });
+  assert(cr.ok === false, 'wrong phase: addBot while playing is rejected');
+  cr = await cDrv.act({ action: 'removeBot', seat: 2 });
+  assert(cr.ok === false, 'wrong phase: removeBot while playing is rejected');
+  cr = await cDrv.act({ action: 'cycleBot', seat: 2 });
+  assert(cr.ok === false, 'wrong phase: cycleBot while playing is rejected');
+  const cState = await cDrv.state();
+  const cBot = cState.players.find((p) => p.seat === 2);
+  assert(cBot && cBot.type === 'bot' && cBot.difficulty === 'vua', 'bot is untouched after rejected mid-game seat changes');
+
+  console.log('Audit D: spectator joins at results/podium, plays the next game');
+  const sDrv = await newDrv();
+  const chu = await sDrv.join('Chu');
+  await sDrv.act({ action: 'addBot', seat: 2 });
+  let sr = await sDrv.act({ action: 'startGame', game: 'dua-bam' });
+  assert(sr.ok === true && sr.phase === 'playing', 'spectator scenario: race starts');
+  const midJoin = await sDrv.join('Tre');
+  assert(midJoin.ok === false && midJoin.error.indexOf('Phòng đang chơi') >= 0, 'joining mid-game is still rejected');
+  const resV = await raceToResults(sDrv, chu.playerToken);
+  const banked = JSON.parse(JSON.stringify(resV.lastGame.points));
+  const bankedScores = resV.players.map((p) => [p.seat, p.score]);
+  const xem = await sDrv.join('Xem');
+  assert(xem.ok === true && xem.seat === 3, 'spectator can join at results (seat 3)');
+  let sv = await sDrv.state();
+  assert(sv.players.length === 3 && sv.players.find((p) => p.seat === 3).score === 0, 'spectator appears with a 0 cumulative score');
+  assert(JSON.stringify(sv.lastGame.points) === JSON.stringify(banked), 'finished game results are unchanged by the spectator join');
+  assert(bankedScores.every((bs) => sv.players.find((p) => p.seat === bs[0]).score === bs[1]), 'banked scores of the original players are unchanged');
+  const xemView = await sDrv.pState(xem.playerToken);
+  assert(xemView.ok === true && xemView.phase === 'results', 'spectator state view works at results');
+  const staleTap = await sDrv.pAct(chu.playerToken, { action: 'tap' });
+  const staleAns = await sDrv.pAct(chu.playerToken, { action: 'answer', choice: 1 });
+  assert(staleTap.ok === false && staleAns.ok === false, 'stale inputs after the game ended are clean errors');
+  const rmRes = await sDrv.act({ action: 'removeBot', seat: 2 });
+  assert(rmRes.ok === false, 'wrong phase: removeBot at results is rejected');
+  await sDrv.act({ action: 'continue' });
+  sv = await sDrv.state();
+  assert(sv.phase === 'podium', 'host advances to podium');
+  const muon = await sDrv.join('Muon');
+  assert(muon.ok === true && muon.seat === 4, 'a second spectator can join at podium (seat 4)');
+  await sDrv.act({ action: 'toChoosing' });
+  sr = await sDrv.act({ action: 'startGame', game: 'do-vui' });
+  assert(sr.ok === true && sr.game && sr.game.id === 'do-vui', 'next game starts with the spectators as full players');
+  for (let q = 1; q <= 8; q++) {
+    await pumpD(sDrv, 250, (s) => s.game && s.game.phase === 'question' && s.game.round === q, 'spec quiz q' + q);
+    const xv = await sDrv.pState(xem.playerToken);
+    const bankQ = QUIZ_BANK.find((b) => b.q === xv.game.question);
+    const idx = xv.game.options.indexOf(bankQ.options[bankQ.answer]);
+    await sDrv.pAct(xem.playerToken, { action: 'answer', choice: idx });
+    if (q === 2) {
+      const mv = await sDrv.pState(muon.playerToken);
+      const idxM = mv.game.options.indexOf(bankQ.options[bankQ.answer]);
+      await sDrv.pAct(muon.playerToken, { action: 'answer', choice: idxM });
+    }
+    await pumpD(sDrv, 500, (s) => s.game && s.game.phase === 'reveal' && s.game.round === q, 'spec quiz reveal ' + q);
+  }
+  sv = await pumpD(sDrv, 500, (s) => s.phase === 'results', 'spec quiz results');
+  assert(sv.lastGame.points[xem.seat] > 0, 'results-joiner scores in the next game (' + sv.lastGame.points[xem.seat] + ')');
+  assert(sv.lastGame.points[muon.seat] > 0, 'podium-joiner scores in the next game (' + sv.lastGame.points[muon.seat] + ')');
+  const xemTotal = sv.players.find((p) => p.seat === xem.seat).score;
+  assert(xemTotal === sv.lastGame.points[xem.seat], 'results-joiner cumulative == their next-game points (started from 0)');
+  const chuTotal = sv.players.find((p) => p.seat === chu.seat).score;
+  assert(chuTotal === banked[chu.seat] + (sv.lastGame.points[chu.seat] || 0), 'original player cumulative == game1 banked + game2 points');
+
+  console.log('Audit E: joining at the final screen');
+  const fDrv = await newDrv();
+  const dau = await fDrv.join('Dau');
+  await fDrv.act({ action: 'addBot', seat: 2 });
+  await fDrv.act({ action: 'startGame', game: 'dua-bam' });
+  await raceToResults(fDrv, dau.playerToken);
+  await fDrv.act({ action: 'continue' });
+  await fDrv.act({ action: 'finish' });
+  let fv = await fDrv.state();
+  assert(fv.phase === 'final', 'final screen reached');
+  const cuoi = await fDrv.join('Cuoi');
+  assert(cuoi.ok === true && cuoi.seat === 3, 'spectator can join at the final screen');
+  const cuoiView = await fDrv.pState(cuoi.playerToken);
+  assert(cuoiView.ok === true && cuoiView.phase === 'final', 'final-joiner state view works');
+  await fDrv.act({ action: 'playAgain' });
+  fv = await fDrv.state();
+  assert(fv.phase === 'lobby' && fv.players.length === 3 && fv.players.every((p) => p.score === 0), 'play-again includes the final-joiner, all scores reset');
+  const again = await fDrv.act({ action: 'startGame', game: 'nhanh-tay' });
+  assert(again.ok === true && again.game && again.game.id === 'nhanh-tay', 'final-joiner counts as a full player for the next start gate');
+
+  console.log('Audit F: duplicate-name joins keep distinct seats/tokens');
+  const dDrv = await newDrv();
+  const t1 = await dDrv.join('Trung');
+  const t2 = await dDrv.join('Trung');
+  assert(t1.ok && t2.ok && t1.seat !== t2.seat && t1.playerToken !== t2.playerToken, 'same name twice -> two distinct seats and tokens (no re-seat, no crash)');
+  const dv = await dDrv.state();
+  assert(dv.players.filter((p) => p.name === 'Trung').length === 2, 'both same-name players are in the room');
+  const t1v = await dDrv.pState(t1.playerToken);
+  const t2v = await dDrv.pState(t2.playerToken);
+  assert(t1v.ok && t1v.you.seat === t1.seat && t2v.ok && t2v.you.seat === t2.seat, 'each same-name session resolves to its own seat');
+
+  console.log('Audit G: room-code collision + recycled code after expiry');
+  const first = await withRandomQueue([rFor(555555)], () => call('POST', '/api/rooms', {}));
+  assert(first.data.ok && first.data.code === '555555', 'forced-code room created (555555)');
+  const second = await withRandomQueue([rFor(555555), rFor(555556)], () => call('POST', '/api/rooms', {}));
+  assert(second.data.ok && second.data.code === '555556', 'create loop skips a colliding code and takes the next candidate');
+  const oldDrv = driver('555555', first.data.hostToken);
+  const oldJoin = await oldDrv.join('Cu');
+  assert(oldJoin.ok === true, 'player joins the original 555555 room');
+  tick((6 * 3600 + 60) * 1000); // beyond the 6h TTL
+  const gone = await call('GET', '/api/rooms/555555/state?role=host&token=' + first.data.hostToken);
+  assert(gone.status === 404, 'original room is gone after the TTL');
+  const reborn = await withRandomQueue([rFor(555555)], () => call('POST', '/api/rooms', {}));
+  assert(reborn.data.ok && reborn.data.code === '555555', 'the expired code can be recycled for a fresh room');
+  const rb = driver('555555', reborn.data.hostToken);
+  const rbState = await rb.state();
+  assert(rbState.players.length === 0, 'recycled room starts empty — old players are not resurrected');
+  const zombie = await call('GET', '/api/rooms/555555/state?role=player&token=' + oldJoin.playerToken);
+  assert(zombie.status === 403 && zombie.data.ok === false, 'old player token is rejected by the recycled room');
+  const zombieHost = await call('GET', '/api/rooms/555555/state?role=host&token=' + first.data.hostToken);
+  assert(zombieHost.status === 403 && zombieHost.data.ok === false, 'old host token is rejected by the recycled room');
+  const fresh = await rb.join('Moi');
+  assert(fresh.ok === true && fresh.seat === 1, 'a fresh player can join the recycled room at P1');
+  await rb.act({ action: 'addBot', seat: 2 });
+  const rbStart = await rb.act({ action: 'startGame', game: 'nhanh-tay' });
+  assert(rbStart.ok === true && rbStart.phase === 'playing', 'recycled room can start a game normally');
 
   // --- Storage routing: with ROOMS_DO bound, everything above must have
   // gone through the Durable Objects and the KV fallback must be untouched.

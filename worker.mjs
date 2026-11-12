@@ -1179,12 +1179,18 @@ function hostAction(room, body) {
     return null;
   }
   if (a === 'removeBot') {
+    // Same phase gate as addBot: removing a bot mid-game (or at results)
+    // would strand its seat inside the running game's snapshots and break
+    // the results/podium views, so seat changes are lobby-only, exactly
+    // like the buttons the UI shows.
+    if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Chỉ xoá Máy được khi đang ở sảnh chờ.';
     const p = playerAt(room, body.seat);
     if (!p || p.type !== 'bot') return 'Ô này không phải Máy.';
     room.players = room.players.filter((x) => x.seat !== body.seat);
     return null;
   }
   if (a === 'cycleBot') {
+    if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Chỉ đổi mức Máy được khi đang ở sảnh chờ.';
     const p = playerAt(room, body.seat);
     if (!p || p.type !== 'bot') return 'Ô này không phải Máy.';
     p.difficulty = DIFFS[(DIFFS.indexOf(p.difficulty) + 1) % DIFFS.length];
@@ -1316,8 +1322,12 @@ function playerAction(room, player, body) {
 // ---------------------------------------------------------------------------
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    const path = url.pathname;
+    // A malformed request target must never escape as an unhandled
+    // exception: unparseable URLs are served the game page, and every API
+    // failure below is a clean JSON ok:false.
+    let url = null;
+    try { url = new URL(request.url); } catch (e) { /* fall through to the page */ }
+    const path = url ? url.pathname : '/';
     if (!path.startsWith('/api/')) {
       return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
     }
@@ -1340,9 +1350,17 @@ export default {
       if (!room) return fail('Không thấy phòng này. Kiểm tra lại mã nhé.', 404);
 
       if (kind === 'join' && request.method === 'POST') {
-        const body = await request.json().catch(() => ({}));
-        if (room.phase !== 'lobby' && room.phase !== 'choosing') return fail('Phòng đang chơi, đợi ván sau nhé.');
-        const name = String(body.name || '').trim().slice(0, 14);
+        const rawBody = await request.json().catch(() => null);
+        const body = rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody) ? rawBody : {};
+        // Joining is open in every phase except mid-game. Late joiners at
+        // results/podium/final are spectators for the finished game: that
+        // is safe because endGame() has already banked its points into
+        // p.score and snapshotted them into lastGame (both immutable by
+        // now), and room.game is null in those phases — so nothing the
+        // joiner does can touch the finished game. They become a full
+        // player from the next createGame(), which snapshots room.players.
+        if (room.phase === 'playing') return fail('Phòng đang chơi, đợi ván sau nhé.');
+        const name = typeof body.name === 'string' ? body.name.trim().slice(0, 14) : '';
         if (!name) return fail('Hãy nhập tên của bạn.');
         if (room.players.length >= 4) return fail('Phòng đã đủ 4 người.');
         let seat = 1;
@@ -1372,7 +1390,8 @@ export default {
       }
 
       if (kind === 'action' && request.method === 'POST') {
-        const body = await request.json().catch(() => ({}));
+        const rawBody = await request.json().catch(() => null);
+        const body = rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody) ? rawBody : {};
         let seat = null; let player = null;
         if (body.role === 'host') {
           if (body.token !== room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
@@ -1766,20 +1785,50 @@ function confetti(waves) {
 function api(path, body, cb) {
   var opt = { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json' } };
   if (body) opt.body = JSON.stringify(body);
-  fetch(path, opt).then(function (r) { return r.json(); }).then(cb).catch(function () { cb({ ok: false, error: 'Mất kết nối, thử lại nhé.' }); });
+  // Network-level failures (offline, DNS, a non-JSON reply) are flagged
+  // with net:true so poll() can tell "no answer at all" apart from a real
+  // JSON error the server sent on purpose.
+  fetch(path, opt).then(function (r) { return r.json(); }).then(cb).catch(function () { cb({ ok: false, error: 'Mất kết nối, thử lại nhé.', net: true }); });
 }
 function stateUrl() { return '/api/rooms/' + S.code + '/state?role=' + S.role + '&token=' + encodeURIComponent(S.token); }
 function poll() {
   if (!S.code) return;
   api(stateUrl(), null, function (v) {
-    if (v && v.ok) { S.view = v; S.serverOffset = v.serverNow - Date.now(); render(); }
-    else if (v && v.error && v.error.indexOf('không hợp lệ') >= 0) clearSession();
+    if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; S.serverOffset = v.serverNow - Date.now(); render(); return; }
+    if (v && v.net) {
+      // No answer at all (offline / DNS / non-JSON reply): the room may
+      // well still exist, so keep waiting — but never spin on the
+      // connecting screen forever. Count only failures spaced >=600ms
+      // apart (the 220ms fast poll during games must not be able to fake
+      // a long outage) and give up after 5 counted failures spanning
+      // at least ~3 seconds of continuous silence.
+      var t = Date.now();
+      if (!S.failSince) S.failSince = t;
+      if (t - (S.failLast || 0) >= 600) { S.failN = (S.failN || 0) + 1; S.failLast = t; }
+      if (S.failN >= 5 && t - S.failSince >= 3000) {
+        S.failN = 0; S.failSince = 0;
+        clearSession();
+        toast('Mất kết nối với phòng, về trang chính nhé.');
+      }
+      return;
+    }
+    // The server answered with a JSON error: any silence streak is over.
+    S.failN = 0; S.failSince = 0;
+    if (v && v.error && v.error.indexOf('Không thấy phòng này') >= 0) {
+      // The room is gone (expired after its TTL or older than the current
+      // storage): this saved session can never work again. Leave for the
+      // home screen instead of polling a dead room forever.
+      clearSession();
+      toast('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.');
+    } else if (v && v.error && v.error.indexOf('không hợp lệ') >= 0) clearSession();
   });
 }
 function act(body, cb) {
   body.role = S.role; body.token = S.token;
   api('/api/rooms/' + S.code + '/action', body, function (v) {
     if (v && v.ok) { S.view = v; S.serverOffset = v.serverNow - Date.now(); S.sig = ''; render(); }
+    else if (v && v.error && v.error.indexOf('Không thấy phòng này') >= 0) { clearSession(); toast('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.'); }
+    else if (v && v.error && v.error.indexOf('không hợp lệ') >= 0) clearSession();
     else if (v && v.error) toast(v.error);
     if (cb) cb(v);
   });
@@ -2098,7 +2147,7 @@ function render() {
   var app = el('app');
   if (!S.role) { if (S.sig !== 'home') { S.sig = 'home'; app.innerHTML = homeHTML(); } return; }
   var v = S.view;
-  if (!v) { app.innerHTML = '<div class="card center"><h2>Đang nối phòng…</h2></div>'; return; }
+  if (!v) { app.innerHTML = '<div class="card center"><h2>Đang nối phòng…</h2><p class="muted">Nếu chờ lâu vẫn không vào được, phòng có thể đã đóng hoặc hết hạn.</p><p><button class="btn ghost" data-cmd="reload">Về trang chính</button></p></div>'; return; }
   var sig = viewSig(v);
   if (sig === S.sig) return;
   S.sig = sig;
@@ -2564,9 +2613,9 @@ function clearSession() {
   try { sessionStorage.removeItem('np_session'); } catch (e) {}
   S.role = null; S.code = null; S.token = null; S.seat = null; S.view = null; S.sig = ''; render();
 }
-// Rooms live in KV, which is eventually consistent: a room created seconds
-// ago may not be visible yet at the edge location serving this phone, and
-// the join then answers "room not found". Retry ONLY that error every 2s
+// A room created seconds ago may briefly be invisible to a phone whose
+// request lands somewhere the fresh room has not reached yet, and the
+// join then answers "room not found". Retry ONLY that error every 2s
 // for ~20s before bothering the user; every other error (room playing,
 // room full, name problems) surfaces immediately.
 var JOIN_RETRY_MS = 2000, JOIN_RETRY_MAX = 10;
