@@ -7,5 +7,5 @@ workers_dev = true
 # replace the placeholder ids below with the real namespace id.
 [[kv_namespaces]]
 binding = "ROOMS"
-id = "00000000000000000000000000000000"
-preview_id = "00000000000000000000000000000000"
+id = "48b2f1adf27a4a869bb05f3e7ea32b28"
+preview_id = "48b2f1adf27a4a869bb05f3e7ea32b28"
