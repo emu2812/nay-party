@@ -5,6 +5,10 @@
 // - POST /api/rooms/:code/join    → a phone joins by code + name
 // - GET  /api/rooms/:code/state   → polled state view (host or player, filtered)
 // - POST /api/rooms/:code/action  → host / player actions
+// - GET  /api/rooms/:code/ws      → WebSocket live channel (same auth as
+//   /state): the room's Durable Object pushes personalized state views the
+//   moment they change and accepts the same action bodies, so input no
+//   longer waits on polling. HTTP remains the full fallback everywhere.
 // Rooms live in a Durable Object (binding ROOMS_DO, class RoomStore below):
 // one object per room code, so room writes use DO storage instead of KV
 // (the KV free tier's daily write limit was exhausted by per-poll saves).
@@ -307,18 +311,50 @@ async function deleteRoom(env, code) {
     await env.ROOMS.delete('room:' + code);
   }
 }
+// After a worker-side mutation (join / action) is saved, nudge the room's
+// Durable Object so any WebSocket clients attached to it receive the new
+// views immediately and the tick alarm stays armed. Fire-and-forget via
+// waitUntil: the HTTP response — above all the tiny pad ack — must never
+// wait on it, and a failed poke changes nothing (polls + alarm recover).
+function pokeRoom(env, code, ctx) {
+  if (!env.ROOMS_DO) return;
+  const p = roomStub(env, code).fetch('https://room/poke', { method: 'POST' }).catch(() => {});
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(p);
+}
 
 // Durable Object holding one room. Internal protocol (only loadRoom /
-// saveRoom / deleteRoom talk to it):
+// saveRoom / deleteRoom / pokeRoom talk to it over fetch):
 //   GET    /get    → 200 with the room JSON text, or 404 if absent/expired
 //   PUT    /put    → store the room JSON text with a fresh expiry, 200
 //   POST   /delete → clear the room, 200
+//   GET    /ws     → WebSocket upgrade (worker-validated identity arrives
+//                    as x-np-role / x-np-seat / x-np-token headers and is
+//                    re-checked against the stored room before accept)
+//   POST   /poke   → a worker-side HTTP mutation was saved: broadcast the
+//                    fresh views to attached sockets and re-check the alarm
 // The stored value is an envelope { json, expiresAt } under the key 'room';
 // expiry is logical (checked on /get) because DO storage has no TTL.
+//
+// WebSocket channel (hibernation API): sockets are tagged by role/seat and
+// carry { role, seat, token } as their attachment. Server→client messages:
+//   {"type":"state","view":<the exact object GET /state returns for that
+//   recipient>} — sent only when the serialized view (with the serverNow
+//   clock field neutralized, since it changes on every call) differs from
+//   the last one sent to that socket; {"type":"error","error":...} for a
+//   rejected client action; {"type":"bye"} right before a fatal close
+//   (bad identity, room deleted/expired). Client→server messages are the
+//   POST /action body minus token/role and dispatch through the very same
+//   advance/hostAction/playerAction pipeline as HTTP. While a game is
+//   active and at least one socket is attached, a storage alarm every
+//   TICK_MS advances the sim so ticks no longer depend on anyone polling.
 export class RoomStore {
   constructor(state, env) {
     this.state = state;
     this.env = env;
+    // Diff memory for broadcasts: socket -> last serialized view sent.
+    // Instance-local on purpose — hibernation may drop it, and the worst
+    // case is one duplicate state message per socket after a wake.
+    this.lastSent = new Map();
   }
   async fetch(request) {
     const path = new URL(request.url).pathname;
@@ -345,7 +381,177 @@ export class RoomStore {
       await this.state.storage.delete('room');
       return new Response(null, { status: 200 });
     }
+    if (path === '/ws' && request.method === 'GET') return this._acceptWs(request);
+    if (path === '/poke' && request.method === 'POST') {
+      try {
+        const loaded = await this._loadRoom();
+        if (loaded) { this._broadcast(loaded.room); await this._syncAlarm(loaded.room); }
+      } catch (e) { /* a poke must never fail the caller's request */ }
+      return new Response(null, { status: 200 });
+    }
     return new Response(null, { status: 404 });
+  }
+  // Load the room record exactly as /get sees it (same envelope, same key,
+  // same logical expiry), plus the raw stored text for change detection.
+  async _loadRoom() {
+    const entry = await this.state.storage.get('room');
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      await this.state.storage.delete('room');
+      return null;
+    }
+    let room = null;
+    try { room = JSON.parse(entry.json); } catch (e) { return null; }
+    return room ? { room, json: entry.json } : null;
+  }
+  // Persist only when the serialized room actually moved (mirrors the
+  // intent of saveRoom's payload dedup on the worker side).
+  async _saveIfChanged(loaded) {
+    if (JSON.stringify(loaded.room) === loaded.json) return false;
+    loaded.room.updatedAt = now();
+    const text = JSON.stringify(loaded.room);
+    await this.state.storage.put('room', {
+      json: text,
+      expiresAt: Date.now() + ROOM_TTL_SECONDS * 1000,
+    });
+    loaded.json = text;
+    return true;
+  }
+  _sockets() {
+    try {
+      return this.state && typeof this.state.getWebSockets === 'function'
+        ? this.state.getWebSockets() : [];
+    } catch (e) { return []; }
+  }
+  _bye(ws) {
+    try { ws.send(JSON.stringify({ type: 'bye' })); } catch (e) { /* already gone */ }
+    try { ws.close(1001, 'Phòng đã đóng.'); } catch (e) { /* already gone */ }
+  }
+  // Send this socket its personalized view, but only when it changed.
+  // The diff key is the serialized view with serverNow neutralized: the
+  // clock field differs on every buildView call and would defeat the
+  // compare, pushing every tick to every socket. A dead socket is
+  // contained here — it can never break the broadcast or a save.
+  _sendState(ws, room) {
+    try {
+      const att = ws.deserializeAttachment() || {};
+      const view = buildView(room, att.role === 'host' ? 'host' : 'player', att.seat || null);
+      const diffKey = JSON.stringify(Object.assign({}, view, { serverNow: 0 }));
+      if (this.lastSent.get(ws) === diffKey) return;
+      this.lastSent.set(ws, diffKey);
+      ws.send(JSON.stringify({ type: 'state', view }));
+    } catch (e) { /* one dead socket must not affect the others */ }
+  }
+  _broadcast(room) {
+    const sockets = this._sockets();
+    for (const ws of sockets) this._sendState(ws, room);
+  }
+  // Keep a TICK_MS alarm armed exactly while a game is active and at
+  // least one socket is attached; disarm otherwise. Only arms when no
+  // alarm is pending, so frequent calls never postpone a due tick.
+  async _syncAlarm(room) {
+    try {
+      const st = this.state && this.state.storage;
+      if (!st || typeof st.setAlarm !== 'function' || typeof st.getAlarm !== 'function') return;
+      const want = !!(room && room.game) && this._sockets().length > 0;
+      const current = await st.getAlarm();
+      if (want && current === null) await st.setAlarm(Date.now() + TICK_MS);
+      if (!want && current !== null && typeof st.deleteAlarm === 'function') await st.deleteAlarm();
+    } catch (e) { /* best-effort: HTTP lazy advance still works without it */ }
+  }
+  async _acceptWs(request) {
+    // Hibernation API unavailable (local test harness, exotic envs):
+    // answer a clean JSON error so the worker passes it through and
+    // clients stay on HTTP polling, completely unaffected.
+    if (typeof WebSocketPair !== 'function' || !this.state || typeof this.state.acceptWebSocket !== 'function') {
+      return fail('Kênh WebSocket chưa khả dụng.', 501);
+    }
+    const role = request.headers.get('x-np-role') === 'host' ? 'host' : 'player';
+    const seatRaw = parseInt(request.headers.get('x-np-seat') || '', 10);
+    const seat = role === 'player' && Number.isInteger(seatRaw) ? seatRaw : null;
+    const token = request.headers.get('x-np-token') || '';
+    const loaded = await this._loadRoom();
+    if (!loaded) return fail('Không thấy phòng này. Kiểm tra lại mã nhé.', 404);
+    // The worker already validated this identity; re-check it against
+    // the stored room anyway so the object never trusts headers alone.
+    if (role === 'host') {
+      if (token !== loaded.room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
+    } else {
+      const p = loaded.room.players.find((x) => x.type === 'human' && x.seat === seat && x.token === token);
+      if (!p) return fail('Phiên tay cầm không hợp lệ.', 403);
+    }
+    const pair = new WebSocketPair();
+    const client = pair[0]; const server = pair[1];
+    this.state.acceptWebSocket(server, role === 'host' ? ['host'] : ['player', 'seat-' + seat]);
+    try { server.serializeAttachment({ role, seat, token }); } catch (e) { /* tags still identify it */ }
+    try {
+      // Greet exactly like a /state poll would: advance the sim, persist
+      // if it moved, then hand this socket its personalized view.
+      advance(loaded.room);
+      await this._saveIfChanged(loaded);
+      this._sendState(server, loaded.room);
+      await this._syncAlarm(loaded.room);
+    } catch (e) { /* a failed greeting must not break the upgrade */ }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+  async webSocketMessage(ws, message) {
+    try {
+      if (typeof message !== 'string') return;
+      let body = null;
+      try { body = JSON.parse(message); } catch (e) { return; }
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return;
+      if (body.action === 'ping') return; // tolerated no-op; protocol pings are the runtime's job
+      let att = {};
+      try { att = ws.deserializeAttachment() || {}; } catch (e) { /* treated as bad identity below */ }
+      const loaded = await this._loadRoom();
+      if (!loaded) { this._bye(ws); return; }
+      const room = loaded.room;
+      // The identity pinned at accept time must still own its seat: a
+      // socket never outlives the session it was opened for.
+      let player = null;
+      if (att.role === 'host') {
+        if (!att.token || att.token !== room.hostToken) { this._bye(ws); return; }
+      } else {
+        player = room.players.find((p) => p.type === 'human' && p.seat === att.seat && p.token === att.token) || null;
+        if (!player) { this._bye(ws); return; }
+      }
+      // The HTTP action pipeline, verbatim: advance, dispatch, advance,
+      // save (even on error — the first advance may have moved the sim),
+      // then push the fresh personalized views to every socket.
+      advance(room);
+      const err = att.role === 'host' ? hostAction(room, body) : playerAction(room, player, body);
+      if (err) {
+        await this._saveIfChanged(loaded);
+        try { ws.send(JSON.stringify({ type: 'error', error: err })); } catch (e) { /* socket dying */ }
+        this._broadcast(room);
+        await this._syncAlarm(room);
+        return;
+      }
+      advance(room);
+      await this._saveIfChanged(loaded);
+      this._broadcast(room);
+      await this._syncAlarm(room);
+    } catch (e) { /* a bad message must never crash the object */ }
+  }
+  webSocketClose(ws) { this.lastSent.delete(ws); }
+  webSocketError(ws) { this.lastSent.delete(ws); }
+  async alarm() {
+    try {
+      const loaded = await this._loadRoom();
+      const sockets = this._sockets();
+      if (!loaded) {
+        // The room was deleted/expired under live sockets: say bye first.
+        for (const ws of sockets) this._bye(ws);
+        return;
+      }
+      if (!loaded.room.game || sockets.length === 0) { await this._syncAlarm(null); return; }
+      advance(loaded.room);
+      // Save BEFORE broadcasting: a broadcast failure (contained per
+      // socket in _sendState) can never corrupt or block persistence.
+      await this._saveIfChanged(loaded);
+      this._broadcast(loaded.room);
+      await this._syncAlarm(loaded.room); // the fired alarm is spent: re-arm
+    } catch (e) { /* an alarm must never throw */ }
   }
 }
 function newRoom(code, hostToken) {
@@ -3168,7 +3374,7 @@ function playerAction(room, player, body) {
 // Router
 // ---------------------------------------------------------------------------
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     // A malformed request target must never escape as an unhandled
     // exception: unparseable URLs are served the game page, and every API
     // failure below is a clean JSON ok:false.
@@ -3190,7 +3396,7 @@ export default {
         await saveRoom(env, room);
         return json({ ok: true, code, hostToken: room.hostToken });
       }
-      const m = path.match(/^\/api\/rooms\/(\d{6})\/(join|state|action)$/);
+      const m = path.match(/^\/api\/rooms\/(\d{6})\/(join|state|action|ws)$/);
       if (!m) return fail('Không tìm thấy đường dẫn.', 404);
       const code = m[1]; const kind = m[2];
       const room = await loadRoom(env, code);
@@ -3217,6 +3423,7 @@ export default {
         room.players.sort((x, y) => x.seat - y.seat);
         advance(room);
         await saveRoom(env, room);
+        pokeRoom(env, code, ctx);
         return json({ ok: true, seat, playerToken: player.token, color: SEAT_COLORS[seat - 1] });
       }
 
@@ -3236,6 +3443,40 @@ export default {
         return json(buildView(room, role === 'host' ? 'host' : 'player', seat));
       }
 
+      if (kind === 'ws' && request.method === 'GET') {
+        // WebSocket live channel for this room. Identity is validated
+        // exactly like /state (the host token, or the player token that
+        // owns a seat) BEFORE any upgrade is attempted, so bad sessions
+        // get the same JSON errors as every other route and a missing
+        // room the shared 404 above. The room's Durable Object accepts
+        // the socket itself (hibernation API): it re-checks the identity
+        // headers against its stored room, greets with the personalized
+        // view, and owns the tick alarm while a game runs.
+        const role = url.searchParams.get('role');
+        const token = url.searchParams.get('token') || '';
+        let seat = null;
+        if (role === 'host') {
+          if (token !== room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
+        } else {
+          const p = room.players.find((x) => x.type === 'human' && x.token === token);
+          if (!p) return fail('Phiên tay cầm không hợp lệ.', 403);
+          seat = p.seat;
+        }
+        if (!env.ROOMS_DO) return fail('Kênh WebSocket chưa khả dụng.', 501);
+        if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') {
+          return fail('Yêu cầu này phải là nâng cấp WebSocket.', 400);
+        }
+        const fwd = new Request('https://room/ws', {
+          headers: {
+            Upgrade: 'websocket',
+            'x-np-role': role === 'host' ? 'host' : 'player',
+            'x-np-seat': seat === null ? '' : String(seat),
+            'x-np-token': token,
+          },
+        });
+        return roomStub(env, code).fetch(fwd);
+      }
+
       if (kind === 'action' && request.method === 'POST') {
         const rawBody = await request.json().catch(() => null);
         const body = rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody) ? rawBody : {};
@@ -3249,9 +3490,10 @@ export default {
         }
         advance(room);
         const err = body.role === 'host' ? hostAction(room, body) : playerAction(room, player, body);
-        if (err) { await saveRoom(env, room); return fail(err); }
+        if (err) { await saveRoom(env, room); pokeRoom(env, code, ctx); return fail(err); }
         advance(room);
         await saveRoom(env, room);
+        pokeRoom(env, code, ctx);
         // Pad snapshots are fire-and-forget: clients ignore this response
         // body (the web page's sendPad callback is empty; views arrive via
         // /state polling). Shipping the full ~3.4KB view here would make
@@ -3785,8 +4027,17 @@ function watchdog() {
     }
   }
 }
+var lastPollAt = 0;
 function poll() {
   if (!S.code) return;
+  wsEnsure();
+  // While the WebSocket channel is live it pushes every change the
+  // moment it happens, so polling demotes itself to a ~2s safety net.
+  // The moment the socket drops, this gate opens and the normal rates
+  // (800ms base + 220ms in-game) resume on their own.
+  var tPoll = Date.now();
+  if (wsOpen() && tPoll - lastPollAt < 2000) return;
+  lastPollAt = tPoll;
   api(stateUrl(), null, function (v) {
     if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; S.serverOffset = v.serverNow - Date.now(); noteOk(); render(); return; }
     if (v && v.net) {
@@ -3800,6 +4051,13 @@ function poll() {
       if (!S.failSince) S.failSince = t;
       if (t - (S.failLast || 0) >= 600) { S.failN = (S.failN || 0) + 1; S.failLast = t; }
       if (S.failN >= 5 && t - S.failSince >= 3000) {
+        if (wsOpen()) {
+          // The WS channel is still feeding fresh state, so this session
+          // is demonstrably alive even while HTTP polls are failing:
+          // never let the poll path tear it down.
+          S.failN = 0; S.failSince = 0; S.failLast = 0;
+          return;
+        }
         if (S.view && (S.view.phase === 'playing' || S.view.phase === 'results' || S.view.phase === 'podium')) {
           // Mid-match (or on the results/podium screens) a dead connection
           // must NOT nuke the host session: the room lives on server-side,
@@ -3835,6 +4093,66 @@ function act(body, cb) {
     else if (v && v.error) toast(v.error);
     if (cb) cb(v);
   });
+}
+// ---------------------------------------------------------------------
+// WebSocket live channel. Once a session exists the page also opens a
+// socket to the room: the server pushes the personalized view the
+// moment it changes (no poll delay) and pad snapshots ride the socket
+// instead of a fresh HTTP round trip per press. HTTP stays the full
+// fallback: while the socket is open, poll() demotes itself to a ~2s
+// safety net (see poll), and if the socket dies the normal poll rates
+// resume automatically while a reconnect is retried with backoff
+// (1s, 2s, 5s, then every 10s) — the session itself is never touched,
+// and every pushed state stamps noteOk() exactly like a poll, so the
+// stale-view watchdog keeps working off the same freshness signal.
+// ---------------------------------------------------------------------
+var wsConn = null;
+var wsBackoff = 0;
+var wsTimer = null;
+var WS_BACKOFFS = [1000, 2000, 5000, 10000];
+function wsUrl() {
+  var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  return proto + location.host + '/api/rooms/' + S.code + '/ws?role=' + S.role + '&token=' + encodeURIComponent(S.token);
+}
+function wsOpen() { return !!wsConn && wsConn.readyState === 1; }
+function wsEnsure() {
+  if (!S.code || !S.role || !S.token) return;
+  if (wsConn || wsTimer) return; // already open/connecting, or a retry is scheduled
+  if (typeof WebSocket === 'undefined') return;
+  var sock = null;
+  try { sock = new WebSocket(wsUrl()); } catch (e) { wsSchedule(); return; }
+  wsConn = sock;
+  sock.onopen = function () { wsBackoff = 0; };
+  sock.onmessage = function (ev) {
+    var msg = null;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (!msg) return;
+    if (msg.type === 'state' && msg.view && msg.view.ok) {
+      // Applied EXACTLY like a successful poll: fresh view, fresh
+      // server-offset, watchdog stamp, render.
+      S.failN = 0; S.failSince = 0; S.view = msg.view; S.serverOffset = msg.view.serverNow - Date.now(); noteOk(); render();
+    } else if (msg.type === 'error' && msg.error) {
+      toast(msg.error);
+    } else if (msg.type === 'bye') {
+      // The server is closing this socket for a fatal reason; the
+      // safety-net poll arbitrates what happens to the session.
+      try { sock.close(); } catch (e) {}
+    }
+  };
+  sock.onclose = function () { if (wsConn === sock) wsConn = null; wsSchedule(); };
+  sock.onerror = function () { try { sock.close(); } catch (e) {} };
+}
+function wsSchedule() {
+  if (wsTimer) return;
+  if (!S.code || !S.role) return;
+  var d = WS_BACKOFFS[Math.min(wsBackoff, WS_BACKOFFS.length - 1)];
+  wsBackoff += 1;
+  wsTimer = setTimeout(function () { wsTimer = null; wsEnsure(); }, d);
+}
+function wsDrop() {
+  if (wsTimer) { clearTimeout(wsTimer); wsTimer = null; }
+  wsBackoff = 0;
+  if (wsConn) { var s = wsConn; wsConn = null; s.onclose = null; try { s.close(); } catch (e) {} }
 }
 function serverNow() { return Date.now() + S.serverOffset; }
 
@@ -5143,6 +5461,7 @@ function saveSession() {
   try { sessionStorage.setItem('np_session', JSON.stringify({ role: S.role, code: S.code, token: S.token, seat: S.seat })); } catch (e) {}
 }
 function clearSession() {
+  wsDrop();
   try { sessionStorage.removeItem('np_session'); } catch (e) {}
   S.role = null; S.code = null; S.token = null; S.seat = null; S.view = null; S.sig = ''; render();
 }
@@ -5299,6 +5618,12 @@ S.padState = { u: false, d: false, l: false, r: false, a: false, b: false };
 S.padPointers = {};
 function sendPad() {
   if (!S.code || S.role !== 'player') return;
+  // The live channel carries pad snapshots with no HTTP round trip per
+  // press; the HTTP send (tiny-ack path) remains the exact fallback
+  // whenever the socket is down or a send throws.
+  if (wsOpen()) {
+    try { wsConn.send(JSON.stringify({ action: 'pad', pad: S.padState })); return; } catch (e) {}
+  }
   api('/api/rooms/' + S.code + '/action', { role: 'player', token: S.token, action: 'pad', pad: S.padState }, function () {});
 }
 function padBitHeld(bit) {
@@ -5423,6 +5748,7 @@ if (!window.PointerEvent) {
     var raw = sessionStorage.getItem('np_session');
     if (raw) { var s = JSON.parse(raw); if (s && s.code && s.token) { S.role = s.role; S.code = s.code; S.token = s.token; S.seat = s.seat; S.lastOkAt = Date.now(); } }
   } catch (e) {}
+  wsEnsure();
   render();
   setInterval(poll, 800);
   setInterval(tick, 150);

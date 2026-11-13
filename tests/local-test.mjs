@@ -1965,6 +1965,64 @@ async function main() {
     await paDrv.pAct(pa1.playerToken, { action: 'pad', pad: {} });
   }
 
+  // Audit N: the WebSocket upgrade gate. The fake Durable Object has
+  // no hibernation API, so a real 101 upgrade cannot happen here —
+  // what CAN be pinned is the worker-side contract: identity is
+  // validated exactly like /state BEFORE any upgrade is attempted, so
+  // a missing room answers the shared 404 JSON and a bad token the
+  // shared 403 JSON; with a valid identity the request is forwarded
+  // to the room's object, whose no-hibernation guard answers a clean
+  // 501 JSON instead of crashing (in production that path is the 101).
+  console.log('Audit N: WebSocket upgrade gate — 404/403 before upgrade, guarded forward');
+  {
+    async function wsCall(code, qs, withUpgrade) {
+      const headers = {};
+      if (withUpgrade) headers.Upgrade = 'websocket';
+      const req = new Request('https://test/api/rooms/' + code + '/ws?' + qs, { headers });
+      const res = await worker.fetch(req, env, ctx);
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (e) { /* not JSON */ }
+      return { status: res.status, text, data };
+    }
+    const wsDrv = await newDrv();
+    const ws1 = await wsDrv.join('WsMot');
+    // Unknown room: '000000' can never be a generated code (codes are
+    // 100000-999999), so this is a guaranteed miss → shared 404 JSON.
+    const noRoom = await wsCall('000000', 'role=host&token=whatever', true);
+    assert(noRoom.status === 404 && noRoom.data && noRoom.data.ok === false
+      && noRoom.data.error.indexOf('Không thấy phòng này') >= 0,
+      'ws gate: upgrade for a missing room returns the shared 404 JSON before any upgrade');
+    // Bad tokens: same 403 session errors as /state, before upgrade.
+    const badHost = await wsCall(wsDrv.code, 'role=host&token=bogus-token', true);
+    assert(badHost.status === 403 && badHost.data && badHost.data.ok === false
+      && badHost.data.error.indexOf('không hợp lệ') >= 0,
+      'ws gate: upgrade with a bad host token returns the 403 session error');
+    const badPlayer = await wsCall(wsDrv.code, 'role=player&token=bogus-token', true);
+    assert(badPlayer.status === 403 && badPlayer.data && badPlayer.data.ok === false
+      && badPlayer.data.error.indexOf('không hợp lệ') >= 0,
+      'ws gate: upgrade with a bad player token returns the 403 session error');
+    // Valid identities are forwarded to the room object; the fake has
+    // no acceptWebSocket, so the object guard answers 501 JSON and
+    // nothing crashes — HTTP fallback stays fully available.
+    const okHost = await wsCall(wsDrv.code, 'role=host&token=' + encodeURIComponent(wsDrv.host), true);
+    assert(okHost.status === 501 && okHost.data && okHost.data.ok === false
+      && typeof okHost.data.error === 'string',
+      'ws gate: valid host upgrade reaches the object guard (501 in the harness, 101 in production)');
+    const okPlayer = await wsCall(wsDrv.code, 'role=player&token=' + encodeURIComponent(ws1.playerToken), true);
+    assert(okPlayer.status === 501 && okPlayer.data && okPlayer.data.ok === false,
+      'ws gate: valid player upgrade reaches the object guard (501 in the harness)');
+    // No Upgrade header at all: validation passes, then the request is
+    // rejected as not-an-upgrade instead of being forwarded.
+    const noUpgrade = await wsCall(wsDrv.code, 'role=host&token=' + encodeURIComponent(wsDrv.host), false);
+    assert(noUpgrade.status === 400 && noUpgrade.data && noUpgrade.data.ok === false,
+      'ws gate: a plain GET on the ws route is rejected with 400, not forwarded');
+    // The HTTP surface is untouched by all of the above.
+    const stillOk = await wsDrv.state();
+    assert(stillOk && stillOk.ok === true && stillOk.phase === 'lobby',
+      'ws gate: HTTP state polling is unaffected after the upgrade probes');
+  }
+
   // --- Storage routing: with ROOMS_DO bound, everything above must have
   console.log('Storage: Durable Object routing + expiry');
   assert(env.ROOMS.putCount === 0 && env.ROOMS.getCount === 0,
