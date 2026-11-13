@@ -151,11 +151,25 @@ const MEMORY_INPUT_MS = 12000, MEMORY_PAUSE_MS = 3000;
 // ring shrink 0.5 per 8 ticks = per 2s, dodge invulnerability 8 ticks =
 // 2s, ball speed 0.575/tick = 2.3 units/s, bot re-decision every
 // 2/4/6 ticks = 0.5s/1s/1.5s as before.
-const ARENA_R0 = 10, ARENA_RMIN = 4, ARENA_MS = 90000, ARENA_LIVES = 3, TICK_MS = 250;
-const MOVE_STEP = 0.5, DASH_CD_TICKS = 12, SHOVE_CD_TICKS = 6;
+// Retuned again 250ms -> 125ms (same method): per-tick speeds halved,
+// tick-counted durations doubled, bot cadences 4/8/12 ticks, crown hold
+// points accrue via an accumulator (+1 per 250ms held). Platform
+// physics is the exception that proves the rule: with gravity-before-
+// move semi-implicit Euler, halving the step needs gravity x0.25
+// (A*h^2) and jump velocities re-tuned to the same discrete apexes
+// (FIGHT_JUMP 1.2 -> apex 4.2 vs 4.4 before), and per-tick friction
+// factors rescale to their square roots so decay per second is kept.
+// The TEMPLE game is gated back to the old 250ms tick entirely — see
+// TEMPLE_TICK_MS below for the geometry reason.
+const ARENA_R0 = 10, ARENA_RMIN = 4, ARENA_MS = 90000, ARENA_LIVES = 3, TICK_MS = 125;
+const MOVE_STEP = 0.25, DASH_CD_TICKS = 24, SHOVE_CD_TICKS = 12;
+// A dash is a x3 speed boost lasting DASH_BOOST_TICKS ticks: 2 ticks
+// at 125ms reproduces the old single-tick 1.5-unit lunge (3 x 0.5)
+// over the same 250ms.
+const DASH_BOOST_TICKS = 2;
 const SHOVE_RANGE = 2.7, SHOVE_FORCE = 2.7;
 // Né Đạn: same tick engine + walled arena (no shrinking, no ring-out).
-const DODGE_MS = 75000, DODGE_LIVES = 3, BALL_SPEED = 0.575, BALL_HIT_DIST = 1.35, INVULN_TICKS = 8;
+const DODGE_MS = 75000, DODGE_LIVES = 3, BALL_SPEED = 0.2875, BALL_HIT_DIST = 1.35, INVULN_TICKS = 16;
 // Kéo Co: knot = TUG_STEP * (presses of even seats - presses of odd seats);
 // first side to |knot| >= TUG_WIN within TUG_MS wins, else the leader at
 // time out wins (exact tie = draw). Bots add BOT_TUG presses per tug tick.
@@ -169,14 +183,14 @@ const TALK_MS = 60000, CHOOSE_MS = 15000, POT = 400;
 // one banked point loose as a fresh star (unpickable for DROP_LOCK_TICKS
 // ticks so the victim cannot instantly re-grab it). A golden star worth
 // 3 spawns every GOLD_EVERY_TICKS ticks (12s) while none is on the field.
-const STEAL_MS = 45000, STEAL_SHOVE_FORCE = 4.5, GOLD_EVERY_TICKS = 48, DROP_LOCK_TICKS = 2;
-// Giữ Vương Miện: hold the crown for +1 point per tick; the holder moves
+const STEAL_MS = 45000, STEAL_SHOVE_FORCE = 4.5, GOLD_EVERY_TICKS = 96, DROP_LOCK_TICKS = 4;
+// Giữ Vương Miện: hold the crown for +1 point per 250ms; the holder moves
 // at HOLDER_SPEED of normal speed; a shove drops the crown, which then
 // cannot be picked up for CROWN_LOCK_TICKS ticks (1s).
-const CROWN_MS = 45000, HOLDER_SPEED = 0.9, CROWN_LOCK_TICKS = 4;
+const CROWN_MS = 45000, HOLDER_SPEED = 0.9, CROWN_LOCK_TICKS = 8;
 // Sơn Sàn: 12x12 grid over the square [-9.6, 9.6]^2 (cell 1.6). Entering
 // a cell paints it; A triggers a 3x3 paint burst on PAINT_CD_TICKS (2s).
-const SPLAT_MS = 40000, SPLAT_N = 12, SPLAT_MIN = -9.6, SPLAT_CELL = 1.6, PAINT_CD_TICKS = 8;
+const SPLAT_MS = 40000, SPLAT_N = 12, SPLAT_MIN = -9.6, SPLAT_CELL = 1.6, PAINT_CD_TICKS = 16;
 // Cao Bồi: after a random hidden delay the BẮN! window opens for
 // DUEL_WINDOW_MS; round points by server receipt order, foul = -100.
 const DUEL_WINDOW_MS = 1500, DUEL_POINTS = [200, 100, 50, 0], DUEL_FOUL = -100;
@@ -188,8 +202,8 @@ const TIER_POINTS = { vang: 300, bac: 200, dong: 100, none: 50 };
 // Chung Một Thân: ONE shared blob steered by split direction ownership;
 // checkpoint stars score for the team, cannonballs (slower + sparser
 // than Né Đạn) cost shared hearts.
-const SHARED_MS = 60000, SHARED_HEARTS = 3, STAR_STALE_TICKS = 60;
-const SHARED_BALL_SPEED = 0.4;
+const SHARED_MS = 60000, SHARED_HEARTS = 3, STAR_STALE_TICKS = 120;
+const SHARED_BALL_SPEED = 0.2;
 // Tiers by checkpoints: >=8 Vàng, >=5 Bạc, >=3 Đồng.
 const SHARED_TIERS = [[8, 'vang'], [5, 'bac'], [3, 'dong']];
 // Đẩy Hộp Về Đích: crate = circle of radius BOX_CRATE_R; it only moves
@@ -214,7 +228,7 @@ const ROW_ERR = { kho: 120, vua: 220, de: 380 };
 // (1s) cooldown, and a player hit costs 1 life + INVULN_TICKS (2s) of
 // cover. Xe Tăng cover blocks are arena rects in {x,y,w,h} top-left
 // form, kept off the spawn axes so every spawn lane starts clear.
-const TANK_MS = 75000, TANK_LIVES = 3, SHELL_SPEED = 1.2, SHELL_CD_TICKS = 4, SHELL_HIT_DIST = 1.0;
+const TANK_MS = 75000, TANK_LIVES = 3, SHELL_SPEED = 0.6, SHELL_CD_TICKS = 8, SHELL_HIT_DIST = 1.0;
 const TANK_BLOCKS = [
   { x: 2.2, y: -3.2, w: 2, h: 1.4 }, { x: -4.2, y: 1.8, w: 2, h: 1.4 },
   { x: -4.2, y: -3.2, w: 2, h: 1.4 }, { x: 2.2, y: 1.8, w: 2, h: 1.4 },
@@ -222,7 +236,7 @@ const TANK_BLOCKS = [
 // Đặt Bom: 11x9 grid of 2-unit cells over the arena; hard pillars sit
 // on odd/odd cells (classic bomber layout), soft blocks are dealt per
 // match with Math.random so tests can queue the exact layout.
-const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 11, BOM_ROWS = 9, BOM_FUSE_TICKS = 8, BOM_SOFT_P = 0.62;
+const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 11, BOM_ROWS = 9, BOM_FUSE_TICKS = 16, BOM_SOFT_P = 0.62;
 // Kẻ Giả Mạo: one secret impostor per round secretly gets the variant
 // question; catching pays every other player, escaping pays the
 // impostor (doubled in the final round).
@@ -246,18 +260,20 @@ const DECODE_SYMBOLS = [
 // [-12, 12] unit space so the page's % mapping works unchanged. Gravity
 // is applied BEFORE the move each tick (semi-implicit Euler), so the
 // discrete jump apex for velocity V is sum(V - k*GRAV) over the rising
-// ticks: V=2.6 -> ~4.4 units, V=2.2 -> ~3.0 units. Every step-up in both
-// stages below is sized against those apexes, never the naive V²/2G.
-const PLAT_GRAV = 0.6, PLAT_MAXFALL = 2.6, PLAT_HW = 0.45, PLAT_HH = 0.9;
+// ticks: at the 125ms tick, V=1.2 -> ~4.2 units, V=1.02 -> ~3.0 units
+// (the pre-retune 250ms values were V=2.6 -> ~4.4, V=2.2 -> ~3.0).
+// Every step-up in both stages below is sized against those apexes,
+// never the naive V²/2G.
+const PLAT_GRAV = 0.15, PLAT_MAXFALL = 1.3, PLAT_HW = 0.45, PLAT_HH = 0.9;
 // Người Que Đại Chiến: %-based knockback fighting on an open stage.
-// A hit adds FIGHT_DMG %; the knockback force 0.6 + dmg*0.05 is applied
+// A hit adds FIGHT_DMG %; the knockback force 0.3 + dmg*0.025 is applied
 // AFTER the damage lands, so the same punch flies further the more
 // hurt the victim already is. Ring-out (past the blast bounds) costs a
 // life; respawn is on the top platform, damage reset, 2s invulnerable.
 const FIGHT_MS = 90000, FIGHT_LIVES = 3;
-const FIGHT_RUN = 0.68, FIGHT_JUMP = 2.6, FIGHT_DJUMP = 2.3;
-const FIGHT_ATK_CD = 3, FIGHT_DMG = 10, FIGHT_HITSTUN = 3;
-const FIGHT_DASH_CD = 8, FIGHT_DASH_TICKS = 3, FIGHT_DASH_SPEED = 1.9;
+const FIGHT_RUN = 0.34, FIGHT_JUMP = 1.2, FIGHT_DJUMP = 1.05;
+const FIGHT_ATK_CD = 6, FIGHT_DMG = 10, FIGHT_HITSTUN = 6;
+const FIGHT_DASH_CD = 16, FIGHT_DASH_TICKS = 6, FIGHT_DASH_SPEED = 0.95;
 const FIGHT_PLATFORMS = [
   { x: -8.5, y: 6, w: 17, h: 2.5 },
   { x: -8, y: 2, w: 4.5, h: 0.7, oneWay: true },
@@ -276,6 +292,17 @@ const FIGHT_SPAWN_X = [-6, -2, 2, 6];
 // the element start, the team loses one of TEMP_HEARTS hearts.
 const TEMP_MS = 150000, TEMP_HEARTS = 5;
 const TEMP_RUN = 0.65, TEMP_JUMP = 2.2;
+// TEMPLE EXCEPTION to the 125ms wave: the temple sim stays on the
+// old 250ms tick (TEMPLE_TICK_MS) with its original per-tick constants
+// (TEMP_RUN/TEMP_JUMP above, TEMPLE_GRAV/TEMPLE_MAXFALL below). Its
+// level geometry cannot be halved faithfully: gate slab 2 starts at
+// x 5.5, only 0.2 past the mid-floor red pool's edge (5.3), so the
+// jump-off window is one old tick of run (0.65) wide — at 125ms the
+// first jump tick moves the box only 0.325, it stays under the slab,
+// head-bonks, and drops into the pool. Rather than redesign the level
+// or the shared platform physics, the temple ticks every other tick.
+const TEMPLE_TICK_MS = 250;
+const TEMPLE_GRAV = 0.6, TEMPLE_MAXFALL = 2.6;
 const TEMPLE_LEVEL = {
   solids: [
     { x: -12, y: 10, w: 24, h: 2.4 },
@@ -716,7 +743,7 @@ function createGame(room, gameId) {
     id: gameId, round: 1, totalRounds: meta.rounds, phase: 'countdown', endsAt: now() + 3000,
     points: {}, streaks: {}, inputs: {}, botPlan: {}, reveal: null, lastRound: null, rankMoves: {},
     order: null, current: null, seq: null, greenAt: 0, qStart: 0, raceStart: 0, inputStart: 0,
-    pad: {}, padPrev: {}, blobs: null, arenaR: 0, tickCount: 0, nextTickAt: 0, elimOrder: [], botIntent: {}, dashCd: {}, shoveCd: {},
+    pad: {}, padPrev: {}, blobs: null, arenaR: 0, tickCount: 0, nextTickAt: 0, elimOrder: [], botIntent: {}, dashCd: {}, dashBoost: {}, shoveCd: {},
     balls: null, spawnIn: 0, invuln: {}, elimTick: {},
     presses: {}, knot: 0, teams: null, winnerTeam: null,
     pair: null, chat: {},
@@ -818,7 +845,7 @@ function preservePads(room) {
 // ARENA_R0*0.55 with fresh cooldown / invulnerability maps.
 function spawnArenaBlobs(room, lives) {
   const g = room.game;
-  g.blobs = {}; g.elimOrder = []; g.elimTick = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
+  g.blobs = {}; g.elimOrder = []; g.elimTick = {}; g.botIntent = {}; g.dashCd = {}; g.dashBoost = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
   room.players.forEach((p, i) => {
     const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
     g.blobs[p.seat] = {
@@ -904,7 +931,7 @@ function beginRound(room) {
   } else if (g.id === 'ne-dan') {
     g.phase = 'dodge';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + DODGE_MS;
-    g.blobs = {}; g.balls = []; g.spawnIn = 6; g.elimOrder = []; g.elimTick = {};
+    g.blobs = {}; g.balls = []; g.spawnIn = 12; g.elimOrder = []; g.elimTick = {};
     g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
@@ -958,7 +985,7 @@ function beginRound(room) {
     g.phase = 'crown';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + CROWN_MS;
     g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room);
-    g.hold = {}; g.crown = { holder: null, x: 0, y: 0, lockTicks: 0 };
+    g.hold = {}; g.crown = { holder: null, x: 0, y: 0, lockTicks: 0, acc: 0 };
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
@@ -1075,7 +1102,7 @@ function beginRound(room) {
     spawnArenaBlobs(room, 0);
     initGuns(room);
     g.crystal = { hp: DEF_CRYSTAL_HP };
-    g.slimes = []; g.slimeSeq = 0; g.kills = 0; g.spawnIn = 4;
+    g.slimes = []; g.slimeSeq = 0; g.kills = 0; g.spawnIn = 8;
   } else if (g.id === 'giai-ma-chung') {
     g.phase = 'decode';
     g.endsAt = t + DECODE_MS;
@@ -1095,7 +1122,7 @@ function beginRound(room) {
     });
   } else if (g.id === 'den-lua-nuoc') {
     g.phase = 'temple';
-    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + TEMP_MS;
+    g.tickCount = 0; g.nextTickAt = t + TEMPLE_TICK_MS; g.endsAt = t + TEMP_MS;
     g.hearts = TEMP_HEARTS; preservePads(room); g.botIntent = {};
     g.chars = {}; g.elOf = {}; g.wpIdx = {}; g.wpAt = {};
     g.gems = TEMPLE_LEVEL.gems.map((gm) => ({ x: gm.x, y: gm.y, el: gm.el, taken: false }));
@@ -1368,7 +1395,7 @@ function stepArena(room, t) {
 }
 function botBrain(room, p) {
   const g = room.game;
-  const every = p.difficulty === 'kho' ? 2 : p.difficulty === 'vua' ? 4 : 6;
+  const every = p.difficulty === 'kho' ? 4 : p.difficulty === 'vua' ? 8 : 12;
   const prev = g.botIntent[p.seat];
   if (prev && (g.tickCount + p.seat) % every !== 0) return { x: prev.x, y: prev.y, shove: false };
   const me = g.blobs[p.seat];
@@ -1394,7 +1421,7 @@ function botBrain(room, p) {
 function simulateTick(room) {
   const g = room.game;
   g.tickCount += 1;
-  if (g.tickCount % 8 === 0 && g.arenaR > ARENA_RMIN) g.arenaR = Math.max(ARENA_RMIN, g.arenaR - 0.5);
+  if (g.tickCount % 16 === 0 && g.arenaR > ARENA_RMIN) g.arenaR = Math.max(ARENA_RMIN, g.arenaR - 0.5);
   const moves = {};
   room.players.forEach((p) => {
     const b = g.blobs[p.seat];
@@ -1416,8 +1443,10 @@ function simulateTick(room) {
     const b = g.blobs[p.seat]; const mv = moves[p.seat];
     if (!b || !b.alive || !mv) return;
     if (g.dashCd[p.seat] > 0) g.dashCd[p.seat] -= 1;
+    if ((g.dashBoost[p.seat] || 0) > 0) g.dashBoost[p.seat] -= 1;
     let stepMul = 1;
-    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { stepMul = 3; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
     b.x += mv.x * MOVE_STEP * stepMul; b.y += mv.y * MOVE_STEP * stepMul;
   });
   const alive = room.players.filter((p) => g.blobs[p.seat] && g.blobs[p.seat].alive);
@@ -1505,7 +1534,7 @@ function stepDodge(room, t) {
 }
 function botBrainDodge(room, p) {
   const g = room.game;
-  const every = p.difficulty === 'kho' ? 2 : p.difficulty === 'vua' ? 4 : 6;
+  const every = p.difficulty === 'kho' ? 4 : p.difficulty === 'vua' ? 8 : 12;
   const prev = g.botIntent[p.seat];
   if (prev && (g.tickCount + p.seat) % every !== 0) return prev;
   const me = g.blobs[p.seat];
@@ -1543,8 +1572,10 @@ function simulateDodgeTick(room) {
     const b = g.blobs[p.seat]; const mv = moves[p.seat];
     if (!b || !b.alive || !mv) return;
     if (g.dashCd[p.seat] > 0) g.dashCd[p.seat] -= 1;
+    if ((g.dashBoost[p.seat] || 0) > 0) g.dashBoost[p.seat] -= 1;
     let stepMul = 1;
-    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { stepMul = 3; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
     b.x += mv.x * MOVE_STEP * stepMul; b.y += mv.y * MOVE_STEP * stepMul;
     const d = Math.hypot(b.x, b.y); const maxR = ARENA_R0 - 0.8;
     if (d > maxR) { b.x *= maxR / d; b.y *= maxR / d; } // the wall stops you
@@ -1562,7 +1593,7 @@ function simulateDodgeTick(room) {
     const tx = rand(-5, 5), ty = rand(-5, 5);
     const dx = tx - x, dy = ty - y; const dd = Math.hypot(dx, dy) || 1;
     g.balls.push({ x, y, vx: (dx / dd) * BALL_SPEED, vy: (dy / dd) * BALL_SPEED });
-    g.spawnIn = Math.max(6, 14 - Math.floor(g.tickCount / 48));
+    g.spawnIn = Math.max(12, 28 - Math.floor(g.tickCount / 96));
   }
   g.balls.forEach((b) => { b.x += b.vx; b.y += b.vy; });
   g.balls = g.balls.filter((b) => Math.hypot(b.x, b.y) <= 15);
@@ -1738,9 +1769,11 @@ function applyMoves(room, moves, opts) {
     const b = g.blobs[p.seat]; const mv = moves[p.seat];
     if (!b || !b.alive || !mv) return;
     if (g.dashCd[p.seat] > 0) g.dashCd[p.seat] -= 1;
+    if ((g.dashBoost[p.seat] || 0) > 0) g.dashBoost[p.seat] -= 1;
     let stepMul = 1;
     if (opts.holderSeat === p.seat) stepMul = HOLDER_SPEED;
-    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { stepMul = 3; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
     b.x += mv.x * MOVE_STEP * stepMul; b.y += mv.y * MOVE_STEP * stepMul;
     if (opts.clampBox) {
       const m = opts.clampBox;
@@ -1841,7 +1874,7 @@ function addRowDistance(room, seat) {
   g.distance = Math.round((g.distance + ROW_FULL_STROKE / Math.max(1, room.players.length)) * 1000) / 1000;
   g.hits[seat] = (g.hits[seat] || 0) + 1;
 }
-function brainCadence(p) { return p.difficulty === 'kho' ? 2 : p.difficulty === 'vua' ? 4 : 6; }
+function brainCadence(p) { return p.difficulty === 'kho' ? 4 : p.difficulty === 'vua' ? 8 : 12; }
 function cachedIntent(room, p) {
   const g = room.game;
   const prev = g.botIntent[p.seat];
@@ -1965,7 +1998,7 @@ function simulateStealTick(room) {
 
 // --- Game 11: Giữ Vương Miện (keep the crown, walled arena) ----------------
 // The crown rests at the centre; touching it picks it up. The holder
-// banks +1 hold point per tick survived and moves at HOLDER_SPEED; a
+// banks +1 hold point per 250ms survived and moves at HOLDER_SPEED; a
 // shove knocks the crown loose a short way away, and it then stays
 // unpickable for CROWN_LOCK_TICKS ticks (1s) so the victim cannot
 // instantly re-grab it. Ranked by hold points; ties -> earlier seat.
@@ -2023,6 +2056,7 @@ function simulateCrownTick(room) {
       const cd = Math.hypot(cx, cy); const maxR = ARENA_R0 - 0.8;
       if (cd > maxR) { cx *= maxR / cd; cy *= maxR / cd; }
       gg.crown.holder = null;
+      gg.crown.acc = 0;
       gg.crown.x = Math.round(cx * 100) / 100; gg.crown.y = Math.round(cy * 100) / 100;
       gg.crown.lockTicks = CROWN_LOCK_TICKS;
     }
@@ -2030,7 +2064,11 @@ function simulateCrownTick(room) {
   if (g.crown.holder) {
     const hb = g.blobs[g.crown.holder];
     g.crown.x = hb.x; g.crown.y = hb.y;
-    g.hold[g.crown.holder] = (g.hold[g.crown.holder] || 0) + 1;
+    // +1 hold point per 250ms of holding: at the 125ms tick, accrue
+    // one point per two ticks spent holding (counted from the pickup,
+    // so the rate is exact regardless of tick parity).
+    g.crown.acc = (g.crown.acc || 0) + 1;
+    if (g.crown.acc >= 2) { g.crown.acc = 0; g.hold[g.crown.holder] = (g.hold[g.crown.holder] || 0) + 1; }
   } else if (g.crown.lockTicks > 0) {
     g.crown.lockTicks -= 1;
   } else {
@@ -2043,6 +2081,7 @@ function simulateCrownTick(room) {
     });
     if (taker) {
       g.crown.holder = taker;
+      g.crown.acc = 0;
       g.hold[taker] = (g.hold[taker] || 0) + 1;
     }
   }
@@ -2263,7 +2302,7 @@ function simulateSharedTick(room) {
     const tx = rand(-5, 5), ty = rand(-5, 5);
     const dx = tx - x, dy = ty - y; const dd = Math.hypot(dx, dy) || 1;
     g.balls.push({ x, y, vx: (dx / dd) * SHARED_BALL_SPEED, vy: (dy / dd) * SHARED_BALL_SPEED });
-    g.spawnIn = Math.max(10, 16 - Math.floor(g.tickCount / 96));
+    g.spawnIn = Math.max(20, 32 - Math.floor(g.tickCount / 192));
   }
   g.balls.forEach((ball) => { ball.x += ball.vx; ball.y += ball.vy; });
   g.balls = g.balls.filter((ball) => Math.hypot(ball.x, ball.y) <= 15);
@@ -2361,8 +2400,10 @@ function simulateBoxTick(room) {
     const b = g.blobs[p.seat]; const mv = moves[p.seat];
     if (!b || !b.alive || !mv) return;
     if (g.dashCd[p.seat] > 0) g.dashCd[p.seat] -= 1;
+    if ((g.dashBoost[p.seat] || 0) > 0) g.dashBoost[p.seat] -= 1;
     let stepMul = 1;
-    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { stepMul = 3; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
     slideCircle(b, mv.x * MOVE_STEP * stepMul, mv.y * MOVE_STEP * stepMul, 0.8, g.walls, ARENA_R0 - 0.8);
   });
   separateBlobs(room);
@@ -2476,8 +2517,10 @@ function moveBlobsWalled(room, moves, walls, clampM) {
     const b = g.blobs[p.seat]; const mv = moves[p.seat];
     if (!b || !b.alive || !mv) return;
     if (g.dashCd[p.seat] > 0) g.dashCd[p.seat] -= 1;
+    if ((g.dashBoost[p.seat] || 0) > 0) g.dashBoost[p.seat] -= 1;
     let stepMul = 1;
-    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { stepMul = 3; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
     if (walls) {
       slideCircle(b, mv.x * MOVE_STEP * stepMul, mv.y * MOVE_STEP * stepMul, 0.8, walls, clampM);
     } else {
@@ -2893,19 +2936,19 @@ function simulateDefendTick(room) {
   processGuns(room, moves);
   stepShells(room, { hitSlimes: true });
   if (g.slimes.some((sl) => sl.dead)) g.slimes = g.slimes.filter((sl) => !sl.dead);
-  // Waves: spawn interval ramps 12 -> 5 ticks across the minute;
+  // Waves: spawn interval ramps 24 -> 10 ticks across the minute;
   // bigger, slower 3-HP slimes join from the 20 second mark.
   g.spawnIn -= 1;
   if (g.spawnIn <= 0) {
     const ang = rand(0, Math.PI * 2);
-    const big = g.tickCount >= 80 && Math.random() < 0.3;
+    const big = g.tickCount >= 160 && Math.random() < 0.3;
     g.slimeSeq += 1;
     g.slimes.push({
       id: g.slimeSeq,
       x: Math.round(Math.cos(ang) * 10.6 * 100) / 100, y: Math.round(Math.sin(ang) * 10.6 * 100) / 100,
-      hp: big ? 3 : 1, maxHp: big ? 3 : 1, r: big ? 1.05 : 0.7, speed: big ? 0.16 : 0.26, big,
+      hp: big ? 3 : 1, maxHp: big ? 3 : 1, r: big ? 1.05 : 0.7, speed: big ? 0.08 : 0.13, big,
     });
-    g.spawnIn = Math.max(5, Math.round(12 - 7 * (g.tickCount / (DEF_MS / TICK_MS))));
+    g.spawnIn = Math.max(10, Math.round(24 - 14 * (g.tickCount / (DEF_MS / TICK_MS))));
   }
   let crystalDown = false;
   g.slimes.forEach((sl) => {
@@ -3020,8 +3063,8 @@ function platOverlap(e, s) {
   return e.x - PLAT_HW < s.x + s.w && e.x + PLAT_HW > s.x
     && e.y - PLAT_HH < s.y + s.h && e.y + PLAT_HH > s.y;
 }
-function platStep(e, solids) {
-  e.vy = Math.min(PLAT_MAXFALL, e.vy + PLAT_GRAV);
+function platStep(e, solids, grav, maxFall) {
+  e.vy = Math.min(maxFall, e.vy + grav);
   e.x += e.vx;
   for (const s of solids) {
     if (s.oneWay) continue;
@@ -3104,15 +3147,15 @@ function simulateFightTick(room) {
       b.vy = -PLAT_GRAV; // pre-cancel gravity: the dash flies level
       g.face[seat] = g.dashDir[seat];
     } else if (stunned) {
-      b.vx *= b.ground ? 0.6 : 0.88; // knockback slide, no control
+      b.vx *= b.ground ? 0.775 : 0.938; // knockback slide, no control
     } else {
       if (it.x !== 0) {
         g.face[seat] = it.x;
         if (Math.abs(b.vx) <= FIGHT_RUN || Math.sign(b.vx) !== it.x) b.vx = it.x * FIGHT_RUN;
-        else b.vx *= b.ground ? 0.86 : 0.97; // launched: bleed back toward run speed
+        else b.vx *= b.ground ? 0.927 : 0.985; // launched: bleed back toward run speed
       } else {
-        b.vx *= b.ground ? 0.55 : 0.9;
-        if (Math.abs(b.vx) < 0.03) b.vx = 0;
+        b.vx *= b.ground ? 0.742 : 0.949;
+        if (Math.abs(b.vx) < 0.015) b.vx = 0;
       }
       if (it.jump && (g.jumps[seat] || 0) < 2) {
         b.vy = (g.jumps[seat] || 0) === 0 ? -FIGHT_JUMP : -FIGHT_DJUMP;
@@ -3123,7 +3166,7 @@ function simulateFightTick(room) {
     // Melee: an A press swings at once; the arc reaches FIGHT reach in
     // the facing direction and a full body height up/down.
     if (!stunned && it.atk && g.atkCd[seat] <= 0) {
-      g.atkT[seat] = 2;
+      g.atkT[seat] = 4;
       g.atkCd[seat] = FIGHT_ATK_CD;
       const face = g.face[seat] || 1;
       room.players.forEach((q) => {
@@ -3133,7 +3176,7 @@ function simulateFightTick(room) {
         const dx = qb.x - b.x, dy = qb.y - b.y;
         if (Math.abs(dy) > 1.7 || Math.abs(dx) > 2.1 || (Math.abs(dx) > 0.3 && Math.sign(dx) !== face)) return;
         g.dmg[q.seat] = (g.dmg[q.seat] || 0) + FIGHT_DMG;
-        const force = 0.6 + g.dmg[q.seat] * 0.05; // AFTER the damage lands
+        const force = 0.3 + g.dmg[q.seat] * 0.025; // AFTER the damage lands
         qb.vx = face * force;
         qb.vy = -force * 0.55;
         qb.ground = false;
@@ -3141,7 +3184,7 @@ function simulateFightTick(room) {
         g.dashT[q.seat] = 0;
       });
     }
-    platStep(b, FIGHT_PLATFORMS);
+    platStep(b, FIGHT_PLATFORMS, PLAT_GRAV, PLAT_MAXFALL);
     if (b.ground) g.jumps[seat] = 0;
     // Ring-out past the blast bounds.
     if (b.x < -13 || b.x > 13 || b.y > 12.5 || b.y < -15) {
@@ -3171,7 +3214,7 @@ function botBrainFight(room, p) {
   // the dash to get back over the stage.
   if (!me.ground && (me.y > 1 || Math.abs(me.x) > 8.5)) {
     intent.x = me.x > 0 ? -1 : 1;
-    if (me.vy > 0.4 && me.y > -1.5 && (g.jumps[p.seat] || 0) < 2) intent.jump = true;
+    if (me.vy > 0.2 && me.y > -1.5 && (g.jumps[p.seat] || 0) < 2) intent.jump = true;
     else if (Math.abs(me.x) > 9.5 && (g.dashCd[p.seat] || 0) <= 0) intent.dash = true;
     return intent;
   }
@@ -3236,8 +3279,8 @@ function stepTemple(room, t) {
   if (t >= g.endsAt) { finishTemple(room, false); return true; }
   if (t >= g.nextTickAt) {
     simulateTempleTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    g.nextTickAt += TEMPLE_TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TEMPLE_TICK_MS;
     return true;
   }
   return false;
@@ -3271,7 +3314,7 @@ function simulateTempleTick(room) {
     const it = templeIntent(room, p);
     if (it.jump && c.ground) { c.vy = -TEMP_JUMP; c.ground = false; }
     c.vx = it.x * TEMP_RUN;
-    platStep(c, solids);
+    platStep(c, solids, TEMPLE_GRAV, TEMPLE_MAXFALL);
     // Pools: only the feet box counts, so jumping a pool is safe.
     for (const pool of TEMPLE_LEVEL.pools) {
       const inX = c.x + 0.25 > pool.x && c.x - 0.25 < pool.x + pool.w;
@@ -3312,7 +3355,7 @@ function botBrainTemple(room, p) {
       if (!g.wpAt[p.seat]) g.wpAt[p.seat] = g.tickCount;
       const partnersIn = room.players.every((q) => q.seat === p.seat
         || (g.chars[q.seat] && (g.chars[q.seat].home || g.chars[q.seat].y < 1.0)));
-      if (!partnersIn && g.tickCount - g.wpAt[p.seat] < 120) return intent; // keep holding
+      if (!partnersIn && g.tickCount - g.wpAt[p.seat] < 120) return intent; // keep holding (30s at the temple's 250ms tick)
     }
     g.wpIdx[p.seat] = idx + 1;
     g.wpAt[p.seat] = 0;
