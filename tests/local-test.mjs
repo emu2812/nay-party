@@ -2510,6 +2510,141 @@ async function main() {
   assert(bv.phase === 'playing' || bv.phase === 'results', 'temple: the bot drive ends in a sane phase (' + bv.phase + ')');
   }
 
+  // Audit P: seamless multi-game rooms — one-tap game switching from
+  // results, the playlist (liên hoàn) chain with its 8s auto-start,
+  // and the host's mid-game escape (quitToChoosing). Playlist drives
+  // lean on the fake clock: endGame arms playlistNextAt = now + 8000,
+  // and ANY later request (a bare state poll here) must fire the
+  // auto-start inside advance() with no host action in between.
+  {
+  console.log('Audit P: seamless rooms — playlist chain, one-tap switching, mid-game quit');
+  assert(home.text.indexOf('Chế độ liên hoàn') >= 0 && home.text.indexOf('plToggle') >= 0 && home.text.indexOf('plStart') >= 0,
+    'page ships the playlist builder (toggle cards, start button)');
+  assert(home.text.indexOf('quitToChoosing') >= 0 && home.text.indexOf('Đổi game') >= 0,
+    'page ships the host mid-game escape (quitToChoosing)');
+  assert(home.text.indexOf('cứ ở yên trong phòng nhé') >= 0 && home.text.indexOf('Game tiếp theo') >= 0,
+    'page ships the explicit results waiting copy + the playlist next-game banner');
+  assert(home.text.indexOf('rafLoop') >= 0 && home.text.indexOf('raf-on') >= 0 && home.text.indexOf('function moveEl') >= 0,
+    'page ships the rAF position interpolator (moveEl targets + rafLoop + raf-on transition gate)');
+
+  // --- The chain: filter at start, auto-start in the gap, exact totals
+  const plDrv = await newDrv();
+  const plJoin = await plDrv.join('LienHoan');
+  await plDrv.act({ action: 'addBot', seat: 2 });
+  const badPl = await plDrv.act({ action: 'playlistStart', games: ['dua-bam'] });
+  assert(badPl && badPl.error, 'playlist: a chain of one game is rejected');
+  const plStart = await plDrv.act({ action: 'playlistStart', games: ['dua-bam', 'ke-gia-mao', 'nhanh-tay'] });
+  assert(plStart && plStart.ok && plStart.phase === 'playing' && plStart.game && plStart.game.id === 'dua-bam',
+    'playlist: the first queued game starts immediately');
+  assert(plStart.playlist && plStart.playlist.active && plStart.playlist.total === 2,
+    'playlist: seat-gated Kẻ Giả Mạo is filtered out of a 2-seat queue at start (total ' + (plStart.playlist && plStart.playlist.total) + ')');
+  assert(plStart.playlist.pos === 1 && plStart.playlist.nextName === 'Nhanh Tay',
+    'playlist: the view exposes progress (pos 1) and the next game name during play');
+  const plR1 = await raceToResults(plDrv, plJoin.playerToken);
+  assert(plR1.phase === 'results' && plR1.playlist && plR1.playlist.active
+    && plR1.playlist.nextName === 'Nhanh Tay' && plR1.playlist.nextInSec >= 1 && plR1.playlist.nextInSec <= 8,
+    'playlist: the intermission view counts down to the next game (' + (plR1.playlist && plR1.playlist.nextInSec) + 's)');
+  const plPhone = await plDrv.pState(plJoin.playerToken);
+  assert(plPhone && plPhone.playlist && plPhone.playlist.active && plPhone.playlist.nextName === 'Nhanh Tay',
+    'playlist: phones see the same next-game progress as the TV');
+  const pts1 = Object.values(plR1.lastGame.points).reduce((a, b) => a + b, 0);
+  const sum1 = plR1.players.reduce((a, p) => a + p.score, 0);
+  assert(sum1 === pts1, 'playlist: cumulative scores after game 1 equal its banked points exactly');
+  tick(8100); // past the 8s intermission — no host action follows, only polls
+  const plAuto = await plDrv.state();
+  assert(plAuto.phase === 'playing' && plAuto.game && plAuto.game.id === 'nhanh-tay',
+    'playlist: the next game auto-starts after the intermission with NO host action');
+  const plR2 = await pumpD(plDrv, 1000, (s) => s.phase === 'results', 'playlist game 2 results');
+  assert(plR2.lastGame && plR2.lastGame.id === 'nhanh-tay', 'playlist: game 2 is the queued Nhanh Tay');
+  const pts2 = Object.values(plR2.lastGame.points).reduce((a, b) => a + b, 0);
+  const sum2 = plR2.players.reduce((a, p) => a + p.score, 0);
+  assert(sum2 === pts1 + pts2, 'playlist: cumulative scores include BOTH games exactly (' + sum1 + ' -> ' + sum2 + ')');
+  assert(plR2.playlist && !plR2.playlist.active, 'playlist: the chain ends after the last queued game');
+
+  // --- One tap from results to the game list; scores/players untouched
+  const bankedStr = plR2.players.map((p) => p.score).join(',');
+  const hop = await plDrv.act({ action: 'toChoosing' });
+  assert(hop && hop.ok && hop.phase === 'choosing', 'results: toChoosing works straight from results (no podium detour)');
+  assert(hop.players.map((p) => p.score).join(',') === bankedStr && hop.players.length === plR2.players.length,
+    'results: the hop keeps every player and every cumulative score');
+  const dq = await plDrv.act({ action: 'startGame', game: 'do-vui' });
+  assert(dq && dq.ok && dq.phase === 'playing' && dq.game && dq.game.id === 'do-vui',
+    'results: a fresh game starts immediately after the hop');
+
+  // --- quitToChoosing: abandon mid-game, nothing leaks, restart at once
+  await pumpD(plDrv, 500, (s) => s.game && s.game.phase === 'reveal', 'quit: one quiz question resolves (live points exist)');
+  const quit = await plDrv.act({ action: 'quitToChoosing' });
+  assert(quit && quit.ok && quit.phase === 'choosing' && !quit.game,
+    'quit: the host abandons the running game and the room lands on choosing');
+  assert(quit.players.map((p) => p.score).join(',') === bankedStr && quit.players.length === plR2.players.length,
+    'quit: NO points from the abandoned game leak into cumulative scores; players intact');
+  const quitPhone = await plDrv.pState(plJoin.playerToken);
+  assert(quitPhone && quitPhone.phase === 'choosing', 'quit: phones land on the choosing/waiting state cleanly');
+  const quitAgain = await plDrv.act({ action: 'quitToChoosing' });
+  assert(quitAgain && quitAgain.error, 'quit: quitToChoosing outside a running game is rejected');
+  const quitByPlayer = await plDrv.pAct(plJoin.playerToken, { action: 'quitToChoosing' });
+  assert(quitByPlayer && quitByPlayer.error, 'quit: a player cannot fire the host escape');
+  const fresh = await plDrv.act({ action: 'startGame', game: 'nhanh-tay' });
+  assert(fresh && fresh.ok && fresh.phase === 'playing' && fresh.game && fresh.game.id === 'nhanh-tay',
+    'quit: a new game can be started immediately after quitting');
+
+  // --- playlistStop during the intermission prevents the auto-start
+  const psDrv = await newDrv();
+  await psDrv.join('DungLai');
+  await psDrv.act({ action: 'addBot', seat: 2 });
+  await psDrv.act({ action: 'playlistStart', games: ['dua-bam', 'nhanh-tay'] });
+  await raceToResults(psDrv, null);
+  const psBefore = await psDrv.state();
+  assert(psBefore.playlist && psBefore.playlist.active && psBefore.playlist.nextInSec != null,
+    'playlist stop: an intermission is pending before the stop');
+  const psStop = await psDrv.act({ action: 'playlistStop' });
+  assert(psStop && psStop.ok && psStop.playlist && !psStop.playlist.active, 'playlist stop: playlistStop clears the chain');
+  tick(9000);
+  const psAfter = await psDrv.state();
+  assert(psAfter.phase === 'results' && !psAfter.game, 'playlist stop: no auto-start fires after the stop');
+
+  // --- Manual navigation during a playlist cancels it (toChoosing ->
+  // startGame): after the manually started game ends, nothing chains.
+  await psDrv.act({ action: 'playlistStart', games: ['dua-bam', 'nhanh-tay'] });
+  await raceToResults(psDrv, null);
+  const psHop = await psDrv.act({ action: 'toChoosing' });
+  assert(psHop && psHop.ok && psHop.phase === 'choosing' && psHop.playlist && !psHop.playlist.active,
+    'playlist cancel: toChoosing during the intermission cancels the chain');
+  const psManual = await psDrv.act({ action: 'startGame', game: 'dua-bam' });
+  assert(psManual && psManual.ok && psManual.playlist && !psManual.playlist.active,
+    'playlist cancel: the manual startGame runs with no chain attached');
+  await raceToResults(psDrv, null);
+  tick(9000);
+  const psEnd = await psDrv.state();
+  assert(psEnd.phase === 'results' && !psEnd.game, 'playlist cancel: nothing auto-starts after the manual game');
+
+  // --- Runtime skip: a seat-gated game queued in good times is
+  // skipped when the seats are gone by its turn. Seats cannot leave
+  // through the API mid-room, so the drop is applied white-box to the
+  // stored room (exactly what a vanished seat would look like).
+  const skDrv = await newDrv();
+  await skDrv.join('Skipper');
+  await skDrv.act({ action: 'addBot', seat: 2 });
+  await skDrv.act({ action: 'addBot', seat: 3 });
+  const skStart = await skDrv.act({ action: 'playlistStart', games: ['nhanh-tay', 'ke-gia-mao', 'dua-bam'] });
+  assert(skStart && skStart.ok && skStart.game && skStart.game.id === 'nhanh-tay'
+    && skStart.playlist && skStart.playlist.total === 3,
+    'playlist skip: a 3-seat room queues all three games, Kẻ Giả Mạo included');
+  await pumpD(skDrv, 1000, (s) => s.phase === 'results', 'skip: game 1 results');
+  const skRec = doFake.records.get(skDrv.code);
+  const skEntry = await skRec.state.storage.get('room');
+  const skRoom = JSON.parse(skEntry.json);
+  skRoom.players = skRoom.players.filter((p) => p.seat !== 3);
+  skEntry.json = JSON.stringify(skRoom);
+  await skRec.state.storage.put('room', skEntry);
+  tick(8100);
+  const skAuto = await skDrv.state();
+  assert(skAuto.phase === 'playing' && skAuto.game && skAuto.game.id === 'dua-bam',
+    'playlist skip: seat-gated Kẻ Giả Mạo is skipped at runtime after the seats drop; Đua Bấm Nút starts');
+  assert(skAuto.playlist && skAuto.playlist.pos === 3 && skAuto.playlist.total === 3,
+    'playlist skip: progress reports the game that actually started (pos 3/3)');
+  }
+
   // --- Storage routing: with ROOMS_DO bound, everything above must have
   console.log('Storage: Durable Object routing + expiry');
   assert(env.ROOMS.putCount === 0 && env.ROOMS.getCount === 0,

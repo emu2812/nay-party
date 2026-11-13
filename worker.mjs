@@ -142,6 +142,7 @@ const ROOM_TTL_SECONDS = 6 * 3600;
 const QUIZ_MS = 15000, QUIZ_REVEAL_MS = 4000;
 const GUESS_MS = 20000, GUESS_REVEAL_MS = 5000;
 const REACT_GO_MS = 3000, ROUND_PAUSE_MS = 3500;
+const PLAYLIST_GAP_MS = 8000; // results intermission before a playlist auto-starts its next game
 const RACE_COUNTDOWN_MS = 3000, RACE_MS = 10000, RACE_PAUSE_MS = 3000;
 const MEMORY_INPUT_MS = 12000, MEMORY_PAUSE_MS = 3000;
 // Tick engine retuned 500ms -> 250ms for smoother motion. Every
@@ -584,14 +585,15 @@ export class RoomStore {
     const sockets = this._sockets();
     for (const ws of sockets) this._sendState(ws, room);
   }
-  // Keep a TICK_MS alarm armed exactly while a game is active and at
-  // least one socket is attached; disarm otherwise. Only arms when no
-  // alarm is pending, so frequent calls never postpone a due tick.
+  // Keep a TICK_MS alarm armed exactly while a game is active (or a
+  // playlist intermission is pending) and at least one socket is
+  // attached; disarm otherwise. Only arms when no alarm is pending,
+  // so frequent calls never postpone a due tick.
   async _syncAlarm(room) {
     try {
       const st = this.state && this.state.storage;
       if (!st || typeof st.setAlarm !== 'function' || typeof st.getAlarm !== 'function') return;
-      const want = !!(room && room.game) && this._sockets().length > 0;
+      const want = !!((room && room.game) || (room && room.phase === 'results' && room.playlistNextAt)) && this._sockets().length > 0;
       const current = await st.getAlarm();
       if (want && current === null) await st.setAlarm(Date.now() + TICK_MS);
       if (!want && current !== null && typeof st.deleteAlarm === 'function') await st.deleteAlarm();
@@ -682,7 +684,12 @@ export class RoomStore {
         for (const ws of sockets) this._bye(ws);
         return;
       }
-      if (!loaded.room.game || sockets.length === 0) { await this._syncAlarm(null); return; }
+      if (sockets.length === 0) { await this._syncAlarm(null); return; }
+      // A pending playlist auto-start also keeps the alarm alive: the
+      // room sits in results with no game, but the intermission
+      // deadline must fire on time even if nobody polls.
+      const active = !!loaded.room.game || (loaded.room.phase === 'results' && !!loaded.room.playlistNextAt);
+      if (!active) { await this._syncAlarm(null); return; }
       advance(loaded.room);
       // Save BEFORE broadcasting: a broadcast failure (contained per
       // socket in _sendState) can never corrupt or block persistence.
@@ -696,6 +703,7 @@ function newRoom(code, hostToken) {
   return {
     code, hostToken, phase: 'lobby', players: [], game: null, lastGame: null,
     resultsLog: [], bubble: null, prevRanks: null, createdAt: now(), updatedAt: now(),
+    playlist: null, playlistNextAt: null,
   };
 }
 function playerAt(room, seat) { return room.players.find((p) => p.seat === seat) || null; }
@@ -796,6 +804,14 @@ function endGame(room) {
   snapshotRanks(room);
   room.game = null;
   room.phase = 'results';
+  // Playlist mode: if games remain in the queue, arm the intermission
+  // auto-start; advance() fires it once the gap elapses (the DO alarm
+  // stays armed meanwhile, and plain polling is the fallback). If that
+  // was the last queued game, the playlist simply ends here.
+  if (room.playlist) {
+    if (room.playlist.idx + 1 < room.playlist.queue.length) room.playlistNextAt = now() + PLAYLIST_GAP_MS;
+    else { room.playlist = null; room.playlistNextAt = null; }
+  }
   rollBubble(room);
 }
 function isFinalRound(g) { return g.round === g.totalRounds; }
@@ -1149,8 +1165,24 @@ function beginRound(room) {
 // the room. Bots act from their precomputed plans.
 // ---------------------------------------------------------------------------
 function advance(room) {
+  playlistAutoStart(room);
   let guard = 0;
   while (guard++ < 40) { if (!step(room)) break; }
+}
+// Playlist intermission: the results screen is showing and the gap has
+// elapsed — start the next queued game with NO host action. Entries
+// that became unplayable since queueing (seat-gated games after seats
+// dropped, or nobody left to play) are skipped; if nothing playable
+// remains, the playlist ends and the room just stays on results.
+function playlistAutoStart(room) {
+  if (room.phase !== 'results' || !room.playlist || !room.playlistNextAt) return;
+  if (now() < room.playlistNextAt) return;
+  room.playlistNextAt = null;
+  let i = room.playlist.idx + 1;
+  while (i < room.playlist.queue.length && !gamePlayable(room, room.playlist.queue[i])) i++;
+  if (i >= room.playlist.queue.length) { room.playlist = null; return; }
+  room.playlist.idx = i;
+  createGame(room, room.playlist.queue[i]);
 }
 function step(room) {
   const g = room.game;
@@ -3705,7 +3737,8 @@ function buildView(room, role, seat) {
   return {
     ok: true, serverNow: t, code: room.code, phase: room.phase, players, standings: st, gap,
     bubble: room.bubble && room.bubble.until > t ? { seat: room.bubble.seat, text: room.bubble.text } : null,
-    games: Object.keys(GAMES).map((id) => ({ id, name: GAMES[id].name, desc: GAMES[id].desc, rounds: GAMES[id].rounds, cat: GAMES[id].cat })),
+    games: Object.keys(GAMES).map((id) => ({ id, name: GAMES[id].name, desc: GAMES[id].desc, rounds: GAMES[id].rounds, cat: GAMES[id].cat, min: minSeats(id) })),
+    playlist: playlistView(room, t),
     game: room.game ? gameView(room, role, seat, t) : null,
     lastGame: room.lastGame,
     you: seat ? { seat } : null,
@@ -3719,6 +3752,38 @@ function startCheck(room) {
   if (humanCount(room) < 1) return 'Cần ít nhất 1 người chơi bằng điện thoại mới bắt đầu được.';
   if (room.players.length < 2) return 'Cần ít nhất 2 người chơi (thêm Máy hoặc rủ thêm bạn).';
   return null;
+}
+// Seat gate per game: Kẻ Giả Mạo needs a real vote, so 3 seats minimum;
+// everything else plays with the usual 2.
+function minSeats(id) { return id === 'ke-gia-mao' ? 3 : 2; }
+// Could this game start right now in this room? Used by playlist
+// queueing (filter) and by the intermission auto-start (skip).
+function gamePlayable(room, id) {
+  if (!GAMES[id]) return false;
+  if (room.players.length < minSeats(id)) return false;
+  return !startCheck(room);
+}
+function clearPlaylist(room) { room.playlist = null; room.playlistNextAt = null; }
+// Playlist progress for the room view (both roles read the same shape;
+// additive only — older clients just ignore it). pos is the 1-based
+// position of the game playing now, or of the one about to auto-start
+// during the intermission; nextName skips entries that are no longer
+// playable so the TV never promises a game that will be skipped.
+function playlistView(room, t) {
+  const pl = room.playlist;
+  if (!pl || !pl.queue || !pl.queue.length) return { active: false };
+  let nextIdx = -1;
+  for (let i = pl.idx + 1; i < pl.queue.length; i++) {
+    if (gamePlayable(room, pl.queue[i])) { nextIdx = i; break; }
+  }
+  const intermission = !!room.playlistNextAt;
+  return {
+    active: true,
+    pos: Math.min((intermission && nextIdx >= 0 ? nextIdx : pl.idx) + 1, pl.queue.length),
+    total: pl.queue.length,
+    nextName: nextIdx >= 0 ? GAMES[pl.queue[nextIdx]].name : null,
+    nextInSec: intermission ? Math.max(0, Math.ceil((room.playlistNextAt - t) / 1000)) : null,
+  };
 }
 function hostAction(room, body) {
   const a = body.action;
@@ -3755,7 +3820,39 @@ function hostAction(room, body) {
     const err = startCheck(room);
     if (err) return err;
     if (body.game === 'ke-gia-mao' && room.players.length < 3) return 'Kẻ Giả Mạo cần ít nhất 3 người chơi mới chơi được (thêm Máy hoặc rủ thêm bạn).';
+    clearPlaylist(room); // manual navigation cancels any playlist
     createGame(room, body.game);
+    return null;
+  }
+  if (a === 'playlistStart') {
+    if (room.phase !== 'choosing' && room.phase !== 'lobby' && room.phase !== 'results' && room.phase !== 'podium') return 'Đang chơi, không bắt đầu liên hoàn được.';
+    const err = startCheck(room);
+    if (err) return err;
+    const ids = Array.isArray(body.games) ? body.games : [];
+    const queue = [];
+    ids.forEach((id) => {
+      if (typeof id === 'string' && queue.indexOf(id) < 0 && gamePlayable(room, id)) queue.push(id);
+    });
+    if (queue.length < 2) return 'Liên hoàn cần ít nhất 2 game đủ người chơi (game thiếu người đã bị lọc ra).';
+    room.playlist = { queue, idx: 0 };
+    room.playlistNextAt = null;
+    createGame(room, queue[0]);
+    return null;
+  }
+  if (a === 'playlistStop') {
+    if (!room.playlist && !room.playlistNextAt) return 'Chưa bật chế độ liên hoàn.';
+    clearPlaylist(room);
+    return null;
+  }
+  if (a === 'quitToChoosing') {
+    // Host-only mid-game escape: abandon the running game and land the
+    // whole room on the chooser. Points are banked ONLY in endGame, so
+    // dropping room.game here leaks nothing into cumulative scores —
+    // the abandoned game simply never happened, score-wise.
+    if (room.phase !== 'playing' || !room.game) return 'Chưa vào game.';
+    room.game = null;
+    clearPlaylist(room);
+    room.phase = 'choosing';
     return null;
   }
   if (a === 'continue') {
@@ -3765,16 +3862,21 @@ function hostAction(room, body) {
   }
   if (a === 'replay') {
     if ((room.phase !== 'results' && room.phase !== 'podium') || !room.lastGame) return 'Chưa có game nào để chơi lại.';
+    clearPlaylist(room); // manual navigation cancels any playlist
     createGame(room, room.lastGame.id);
     return null;
   }
   if (a === 'toChoosing') {
-    if (room.phase !== 'podium') return 'Chưa ở bục vinh quang.';
+    // One tap from results OR the podium: the room, its players and
+    // the cumulative scores all stay exactly as they are.
+    if (room.phase !== 'podium' && room.phase !== 'results') return 'Chưa chọn game khác được.';
+    clearPlaylist(room); // manual navigation cancels any playlist
     room.phase = 'choosing';
     return null;
   }
   if (a === 'finish') {
     if (room.phase !== 'podium' && room.phase !== 'choosing') return 'Chưa kết thúc được.';
+    clearPlaylist(room); // manual navigation cancels any playlist
     room.phase = 'final';
     return null;
   }
@@ -3782,6 +3884,7 @@ function hostAction(room, body) {
     if (room.phase !== 'final') return 'Chưa ở màn kết thúc.';
     room.players.forEach((p) => { p.score = 0; });
     room.resultsLog = []; room.lastGame = null; room.prevRanks = null;
+    clearPlaylist(room);
     room.phase = 'lobby';
     return null;
   }
@@ -4212,16 +4315,21 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .fplat.oneway { background: linear-gradient(160deg, rgba(90,50,80,.85), rgba(46,22,44,.85)); border-color: rgba(200,160,255,.5); box-shadow: 0 3px 8px rgba(0,0,0,.45), 0 0 10px rgba(170,120,255,.2); }
 .admg { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 15px; line-height: 1; text-shadow: 0 2px 0 rgba(0,0,0,.5); min-height: 16px; }
 .tbrick { position: absolute; z-index: 1; pointer-events: none; border-radius: 4px; background: linear-gradient(150deg, #6B4A2F, #4A2F1B); border: 2px solid rgba(255,196,110,.4); box-shadow: inset 0 0 0 2px rgba(0,0,0,.28), inset 0 -6px 0 rgba(0,0,0,.22), 0 3px 7px rgba(0,0,0,.5); }
-.tpool { position: absolute; z-index: 1; pointer-events: none; border-radius: 8px 8px 4px 4px; animation: poolGlow 1.1s ease-in-out infinite alternate; }
+.tpool { position: absolute; z-index: 1; pointer-events: none; border-radius: 8px 8px 4px 4px; overflow: hidden; animation: poolGlow 1.1s ease-in-out infinite alternate; }
+.tpool::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 55%; pointer-events: none;
+  background: linear-gradient(100deg, rgba(255,255,255,0), rgba(255,255,255,.45), rgba(255,255,255,0));
+  transform: translateX(-140%) skewX(-14deg); opacity: 0; animation: poolShine 3.4s ease-in-out infinite; }
+@keyframes poolShine { 0%, 52% { transform: translateX(-140%) skewX(-14deg); opacity: 0; } 62% { opacity: 1; } 88%, 100% { transform: translateX(260%) skewX(-14deg); opacity: 0; } }
 .tpool.red { background: radial-gradient(ellipse at 50% 0%, #FFB199, #FF5A3C 55%, #C22E12); box-shadow: 0 0 18px rgba(255,90,60,.8), inset 0 3px 6px rgba(255,255,255,.35); }
 .tpool.blue { background: radial-gradient(ellipse at 50% 0%, #BDEFFF, #3FA9F5 55%, #1663B8); box-shadow: 0 0 18px rgba(80,170,255,.8), inset 0 3px 6px rgba(255,255,255,.35); }
 .tpool.green { background: radial-gradient(ellipse at 50% 0%, #E4FFB0, #8CE03A 55%, #4E9A16); box-shadow: 0 0 18px rgba(150,230,70,.8), inset 0 3px 6px rgba(255,255,255,.35); }
 @keyframes poolGlow { from { filter: brightness(1); } to { filter: brightness(1.35); } }
-.tgem { position: absolute; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; z-index: 2; pointer-events: none; transform: rotate(45deg); animation: gemSpin 1.6s ease-in-out infinite alternate; }
-.tgem.lua { background: linear-gradient(140deg, #FFD7C2, #FF5A3C 60%, #B81F08); box-shadow: 0 0 12px rgba(255,90,60,.95); }
-.tgem.nuoc { background: linear-gradient(140deg, #D8F4FF, #3FA9F5 60%, #0F4E9E); box-shadow: 0 0 12px rgba(80,170,255,.95); }
+.tgem { position: absolute; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; z-index: 2; pointer-events: none; }
+.tgem i { display: block; width: 100%; height: 100%; transform: rotate(45deg); animation: gemBob 1.5s ease-in-out infinite alternate; }
+.tgem.lua i { background: linear-gradient(140deg, #FFD7C2, #FF5A3C 60%, #B81F08); box-shadow: 0 0 12px rgba(255,90,60,.95); }
+.tgem.nuoc i { background: linear-gradient(140deg, #D8F4FF, #3FA9F5 60%, #0F4E9E); box-shadow: 0 0 12px rgba(80,170,255,.95); }
 .tgem.taken { display: none; }
-@keyframes gemSpin { from { transform: rotate(45deg) scale(1); } to { transform: rotate(45deg) scale(1.22); } }
+@keyframes gemBob { from { transform: rotate(45deg) translate(0, 0) scale(1); } to { transform: rotate(45deg) translate(-2.4px, -2.4px) scale(1.18); } }
 .tgate { position: absolute; z-index: 2; pointer-events: none; border-radius: 4px; background: repeating-linear-gradient(90deg, #8A93A6 0 5px, #454E61 5px 10px); border: 2px solid rgba(220,230,255,.5); box-shadow: 0 4px 9px rgba(0,0,0,.55), inset 0 0 0 2px rgba(0,0,0,.3); transition: opacity .18s linear; }
 .tgate.open { opacity: 0; }
 .tbtn { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: linear-gradient(180deg, #FFE9A8, #E8A812); border: 2px solid rgba(255,240,190,.8); box-shadow: 0 0 12px rgba(255,200,60,.55); }
@@ -4271,7 +4379,12 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .rope .knot { position: absolute; top: 50%; width: 34px; height: 34px; border-radius: 50%; background: #FFC93D;
   border: 4px solid #fff; transform: translate(-50%, -50%); box-shadow: 0 0 18px rgba(255,201,61,.85), 0 6px 12px rgba(0,0,0,.3); transition: left .3s; }
 .chatrow { display: flex; gap: 8px; align-items: center; background: rgba(255,255,255,.22); border-radius: 14px; padding: 7px 12px; margin: 6px 0; font-weight: 700; text-align: left; }
-.afield { position: relative; width: min(86vw, 540px); aspect-ratio: 1; margin: 12px auto; }
+.afield { position: relative; width: min(86vw, 540px); aspect-ratio: 1; margin: 12px auto; border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(255,255,255,.08), rgba(0,0,0,.34) 82%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 45px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 45px);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.10), inset 0 0 52px rgba(0,0,0,.45); }
 .aring { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%;
   background: radial-gradient(circle, rgba(140,200,255,.15), rgba(140,200,255,.03) 62%, rgba(255,120,80,.06));
   border: 3px solid rgba(120,220,255,.9);
@@ -4318,6 +4431,27 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .cathead { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 26px; color: #7C4F27; margin: 20px 0 0; }
 .ablob.hitflash svg { filter: brightness(2.6) saturate(.25) drop-shadow(0 0 16px #FF4757); }
 .afield.slowmo .ablob, .afield.slowmo .aball { transition-duration: 1.15s; }
+/* While the rAF interpolator is live it owns left/top on the movers:
+   zero their CSS transitions so the two smoothing systems never stack
+   (the loop itself applies the slow-mo time constant when .slowmo is
+   on). Without rAF this rule never matches and transitions remain. */
+.afield.raf-on .ablob, .afield.raf-on .aball, .afield.raf-on .ashell, .afield.raf-on .aslime,
+.afield.raf-on .astar, .afield.raf-on .acrown, .afield.raf-on .acrate, .afield.raf-on .achar,
+.afield.raf-on .tgem { transition: none; }
+/* Spawn pop for dynamically created field entities (shells, slimes,
+   gems): the standalone scale property composes with the elements'
+   own transform instead of overriding it. */
+.pop { animation: spawnPop .3s ease-out; }
+@keyframes spawnPop { 0% { scale: .2; opacity: 0; } 60% { scale: 1.22; opacity: 1; } 100% { scale: 1; opacity: 1; } }
+/* Winner crown glow (podium + final screens). */
+.crownglow { display: inline-block; filter: drop-shadow(0 0 14px rgba(255,201,61,.95)) drop-shadow(0 0 34px rgba(255,170,20,.55)); animation: crownPulse 1.5s ease-in-out infinite alternate; }
+@keyframes crownPulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+/* Playlist builder: queue badges on game cards. */
+.gamecard { position: relative; }
+.plbadge { position: absolute; top: 8px; right: 8px; min-width: 30px; height: 30px; padding: 0 7px; border-radius: 999px; background: #fff; color: #333;
+  font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 17px; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 8px rgba(0,0,0,.35); }
+.gamecard.plon { outline: 4px solid #fff; outline-offset: -4px; }
+.gamecard.pllock { opacity: .62; }
 .afield.pulse { animation: fieldPulse .22s ease; }
 @keyframes fieldPulse { 0% { transform: scale(1); } 40% { transform: scale(1.012); } 100% { transform: scale(1); } }
 .afield.shake { animation: shakeA .3s ease; }
@@ -4400,11 +4534,13 @@ var LETTERS = ['A', 'B', 'C', 'D'];
 var S = { role: null, code: null, token: null, seat: null, view: null, sig: '', serverOffset: 0,
   audio: null, muted: localStorage.getItem('np_muted') === '1', lastCd: -1, lastTickSec: -1,
   fxReveal: '', fxRound: '', fxConfetti: '', guess: '', blobN: 0, fxP: null, _nb: null, _koT: 0, _smT: 0,
+  plMode: false, plQueue: [], raf: {}, rafLast: 0,
   lastOkAt: 0 };
 function el(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
 function fmt(n) { var s = String(Math.round(Math.abs(n))); var out = ''; while (s.length > 3) { out = '.' + s.slice(-3) + out; s = s.slice(0, -3); } return (n < 0 ? '-' : '') + s + out; }
 function playerOf(v, seat) { for (var i = 0; i < v.players.length; i++) if (v.players[i].seat === seat) return v.players[i]; return null; }
+function gameMeta(v, id) { if (!v || !v.games) return null; for (var i = 0; i < v.games.length; i++) if (v.games[i].id === id) return v.games[i]; return null; }
 function toast(msg) { var t = el('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(function () { t.style.display = 'none'; }, 3200); }
 function blobSVG(color, mood, size) {
   S.blobN += 1;
@@ -4868,10 +5004,40 @@ function hostHTML(v) {
     h += '</p></div>';
     // Game chooser, grouped by category: versus games race for
     // placement points; co-op games score the whole team one tier.
+    // In playlist mode the same cards become queue toggles instead of
+    // one-tap starts, with numbered badges showing the queue order.
     function gameCard(gm) {
+      if (S.plMode) {
+        var qi = S.plQueue.indexOf(gm.id);
+        var locked = gm.min && v.players.length < gm.min;
+        return '<button class="gamecard' + (qi >= 0 ? ' plon' : '') + (locked ? ' pllock' : '') + '" style="background:' + GCOLORS[gm.id] + '" data-cmd="plToggle" data-game="' + gm.id + '">'
+          + (qi >= 0 ? '<span class="plbadge">' + (qi + 1) + '</span>' : '')
+          + '<h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p>'
+          + (locked ? '<p class="small">🔒 Cần ' + gm.min + ' người chơi</p>' : '<p class="small">' + (qi >= 0 ? 'Đã chọn · chạm để bỏ khỏi hàng chờ' : 'Chạm để thêm vào hàng chờ') + '</p></button>');
+      }
       var small = gm.cat === 'coop' ? '1 trận hợp tác · Cả đội cùng nhận điểm theo hạng' : (gm.rounds > 1 ? gm.rounds + ' vòng · Vòng cuối ×2 điểm' : '1 trận sống còn · 300/200/100/50');
       return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">' + small + '</p></button>';
     }
+    // Playlist builder: arm the mode, tap cards to queue them, then
+    // start the chain — or take a preset (random 5 / everything).
+    h += '<div class="card center" style="margin-top:12px">';
+    if (!S.plMode) {
+      h += '<button class="btn purple" data-cmd="plMode">🔁 Chế độ liên hoàn</button>';
+      h += '<p class="small muted" style="margin:8px 0 0">Chọn sẵn nhiều game để chơi nối tiếp nhau — hết game này tự sang game kia, cả phòng không phải chọn lại.</p>';
+    } else {
+      h += '<div class="baloo" style="font-size:21px">🔁 Chế độ liên hoàn</div>';
+      h += '<p style="margin:6px 0">Chạm vào các game bên dưới để xếp hàng chờ · đã chọn ' + S.plQueue.length + ' game</p>';
+      if (S.plQueue.length) {
+        h += '<p class="small" style="margin:4px 0">';
+        for (var qi2 = 0; qi2 < S.plQueue.length; qi2++) { var qm = gameMeta(v, S.plQueue[qi2]); h += '<span class="chip cool">' + (qi2 + 1) + '. ' + esc(qm ? qm.name : S.plQueue[qi2]) + '</span>'; }
+        h += '</p>';
+      }
+      h += '<p style="margin:8px 0 0"><button class="btn green" data-cmd="plStart">▶ Chơi liên hoàn (' + S.plQueue.length + ' game)</button> ';
+      h += '<button class="btn blue" data-cmd="plRandom">🎲 Ngẫu nhiên 5 game</button> ';
+      h += '<button class="btn orange" data-cmd="plAll">🏆 Tất cả game</button> ';
+      h += '<button class="btn ghost" data-cmd="plMode">Tắt liên hoàn</button></p>';
+    }
+    h += '</div>';
     h += '<div class="cathead">🏆 Đấu với nhau</div><div class="games">';
     for (var k = 0; k < v.games.length; k++) if (v.games[k].cat !== 'coop') h += gameCard(v.games[k]);
     h += '</div>';
@@ -4882,6 +5048,7 @@ function hostHTML(v) {
   }
   if (v.phase === 'playing' && v.game) {
     h += scoreStrip(v);
+    h += '<p style="text-align:right;margin:2px 0 0"><button class="btn small ghost" data-cmd="quitGame" title="Bỏ game đang chơi, về màn hình chọn game — điểm ván này không tính">Đổi game ✕</button></p>';
     h += '<div class="stage g-' + v.game.id + (isActionGame(v.game.id) ? ' neon-stage' : '') + '">' + hostStage(v) + '</div>';
     return h;
   }
@@ -5230,7 +5397,7 @@ function hostStage(v) {
       (g.buttons || []).forEach(function (bt) { h += '<div class="tbtn" style="' + rectStyle(bt) + '"></div>'; });
       if (g.doors) { h += '<div class="tdoor lua" style="' + rectStyle(g.doors.lua) + '"></div>'; h += '<div class="tdoor nuoc" style="' + rectStyle(g.doors.nuoc) + '"></div>'; }
       (g.gates || []).forEach(function (gt, gi) { h += '<div class="tgate' + (g.gateOpen ? ' open' : '') + '" id="gate-' + gi + '" style="' + rectStyle(gt) + '"></div>'; });
-      (g.gems || []).forEach(function (gm) { h += '<div class="tgem ' + gm.el + (gm.taken ? ' taken' : '') + '" id="tgem-' + gm.id + '" style="left:' + ((gm.x + 12) / 24 * 100) + '%;top:' + ((gm.y + 12) / 24 * 100) + '%"></div>'; });
+      (g.gems || []).forEach(function (gm) { h += '<div class="tgem ' + gm.el + (gm.taken ? ' taken' : '') + '" id="tgem-' + gm.id + '" style="left:' + ((gm.x + 12) / 24 * 100) + '%;top:' + ((gm.y + 12) / 24 * 100) + '%"><i></i></div>'; });
       for (var tI = 0; tI < v.players.length; tI++) {
         var tp = v.players[tI]; var tc = g.chars[tp.seat];
         if (!tc) continue;
@@ -5253,8 +5420,15 @@ function resultsHTML(v, isHost) {
   h += '<div class="card rows" style="margin-top:10px">';
   for (var i = 0; i < seats.length; i++) { var p = playerOf(v, seats[i]); h += '<div class="rrow">' + blobSVG(p.color, p.mood, 38) + ' ' + esc(p.name) + '<span class="pts">' + fmt(lg.points[seats[i]]) + ' điểm game này</span></div>'; }
   h += '</div>';
-  if (isHost) h += '<p class="center" style="margin-top:16px"><button class="btn green" data-cmd="replay">Chơi lại ngay</button> <button class="btn purple" data-cmd="continue">Bục vinh quang</button></p>';
-  else h += '<p class="center muted">Đợi màn hình lớn chọn tiếp…</p>';
+  var plv = v.playlist;
+  if (plv && plv.active && plv.nextName && plv.nextInSec != null) {
+    h += '<div class="card center" style="margin-top:10px"><div class="baloo" style="font-size:22px">🔁 Game tiếp theo: ' + esc(plv.nextName) + '</div>';
+    h += '<p style="margin:4px 0">Tự bắt đầu sau <b>' + plv.nextInSec + '</b> giây · Game ' + plv.pos + '/' + plv.total + ' trong liên hoàn</p>';
+    if (isHost) h += '<p style="margin:6px 0 0"><button class="btn pink" data-cmd="plStop">⏸ Dừng liên hoàn</button></p><p class="small muted" style="margin:6px 0 0">Bấm Chơi lại hoặc Chọn game khác cũng sẽ huỷ chế độ liên hoàn.</p>';
+    h += '</div>';
+  }
+  if (isHost) h += '<p class="center" style="margin-top:16px"><button class="btn green" data-cmd="replay">Chơi lại ngay</button> <button class="btn blue" data-cmd="toChoosing">Chọn game khác</button> <button class="btn purple" data-cmd="continue">Bục vinh quang</button></p>';
+  else if (!(plv && plv.active && plv.nextName)) h += '<p class="center muted">Ván này xong rồi! Chủ phòng sẽ chọn game tiếp theo, cứ ở yên trong phòng nhé.</p>';
   return h;
 }
 function podiumHTML(v, isHost) {
@@ -5266,7 +5440,7 @@ function podiumHTML(v, isHost) {
   for (var i = 0; i < order.length; i++) {
     if (!order[i]) continue;
     var p = playerOf(v, order[i]); var rank = v.standings.indexOf(order[i]) + 1;
-    h += '<div class="pod">' + (rank === 1 ? crownSVG(64) + '<br>' : '') + '<span class="blobbob">' + blobSVG(p.color, 'reo', 86) + '</span><div class="baloo" style="font-size:19px">' + esc(p.name) + '</div><div class="col" style="height:' + heights[order[i]] + 'px;background:' + COLORS[p.color] + '">' + rank + '</div><div class="muted">' + fmt(p.score) + ' điểm</div></div>';
+    h += '<div class="pod">' + (rank === 1 ? '<span class="crownglow">' + crownSVG(64) + '</span><br>' : '') + '<span class="blobbob">' + blobSVG(p.color, 'reo', 86) + '</span><div class="baloo" style="font-size:19px">' + esc(p.name) + '</div><div class="col" style="height:' + heights[order[i]] + 'px;background:' + COLORS[p.color] + '">' + rank + '</div><div class="muted">' + fmt(p.score) + ' điểm</div></div>';
   }
   h += '</div>';
   h += '<div class="rows">';
@@ -5278,7 +5452,7 @@ function podiumHTML(v, isHost) {
 }
 function finalHTML(v, isHost) {
   var champ = playerOf(v, v.standings[0]);
-  var h = '<div class="card center"><div>' + crownSVG(90) + '</div><span class="blobbob">' + blobSVG(champ.color, 'reo', 130) + '</span>';
+  var h = '<div class="card center"><div class="crownglow">' + crownSVG(90) + '</div><span class="blobbob">' + blobSVG(champ.color, 'reo', 130) + '</span>';
   h += '<h2 style="margin:6px 0">NHÀ VÔ ĐỊCH: ' + esc(champ.name) + '</h2><div class="baloo" style="font-size:24px">' + fmt(champ.score) + ' điểm</div>';
   h += '<div class="rows" style="text-align:left">';
   for (var i = 0; i < v.standings.length; i++) { var p = playerOf(v, v.standings[i]); h += '<div class="rrow"><b>' + (i + 1) + '</b>' + blobSVG(p.color, p.mood, 32) + ' ' + esc(p.name) + '<span class="pts">' + fmt(p.score) + '</span></div>'; }
@@ -5360,7 +5534,8 @@ function viewSig(v) {
     }
     }
   }
-  return JSON.stringify([v.phase, v.players, v.bubble, v.standings, v.gap, gp, v.lastGame]);
+  var pls = v.playlist ? [v.playlist.active ? 1 : 0, v.playlist.pos || 0, v.playlist.total || 0, v.playlist.nextName || '', v.playlist.nextInSec] : 0;
+  return JSON.stringify([v.phase, v.players, v.bubble, v.standings, v.gap, gp, v.lastGame, pls]);
 }
 function render() {
   var app = el('app');
@@ -5529,6 +5704,39 @@ function arenaFX(v, g) {
     }
     P.blobs[seat] = { x: cur.x, y: cur.y, lives: cur.lives, alive: cur.alive };
   }
+  // Pickup bursts, same snapshot pattern: a banked star (Cướp Sao), a
+  // crown changing hands (Giữ Vương Miện) and a temple gem being taken
+  // each pop a small spark burst in the game's own colour.
+  if (g.id === 'cuop-sao' && g.banked && g.blobs) {
+    if (!P.banked) { P.banked = {}; for (var bk0 in g.banked) P.banked[bk0] = g.banked[bk0]; }
+    for (var bkS in g.banked) {
+      if (P.banked[bkS] != null && g.banked[bkS] > P.banked[bkS] && field && g.blobs[bkS]) {
+        fxSparks(field, g.blobs[bkS].x, g.blobs[bkS].y, '#FFD93D', 8);
+        beep(1180, 0.07, 'sine', 0.1);
+      }
+      P.banked[bkS] = g.banked[bkS];
+    }
+  }
+  if (g.id === 'giu-vuong-mien' && g.crown && g.blobs) {
+    var holderNow = g.crown.holder || 0;
+    if (P.holder === undefined) P.holder = holderNow;
+    else if (holderNow && holderNow !== P.holder && field && g.blobs[holderNow]) {
+      fxSparks(field, g.blobs[holderNow].x, g.blobs[holderNow].y, '#FFC93D', 10);
+      beep(880, 0.08, 'triangle', 0.11);
+    }
+    P.holder = holderNow;
+  }
+  if (g.id === 'den-lua-nuoc' && g.gems) {
+    if (!P.gems) { P.gems = {}; for (var gm0 = 0; gm0 < g.gems.length; gm0++) P.gems[g.gems[gm0].id] = g.gems[gm0].taken; }
+    for (var gmI = 0; gmI < g.gems.length; gmI++) {
+      var gmNow = g.gems[gmI];
+      if (P.gems[gmNow.id] === false && gmNow.taken && field) {
+        fxSparks(field, gmNow.x, gmNow.y, gmNow.el === 'lua' ? '#FF7A4D' : '#4FC3F7', 9);
+        beep(990, 0.07, 'sine', 0.1);
+      }
+      P.gems[gmNow.id] = gmNow.taken;
+    }
+  }
   var ring = el('aring');
   if (ring && g.id === 'day-ra' && g.arenaR) ring.classList.toggle('danger', g.arenaR <= 5.5);
   if (g.id === 'ne-dan' && g.balls) {
@@ -5575,13 +5783,65 @@ function syncDyn(items, prefix, cls, decorate) {
       n = document.createElement('div');
       n.id = id; n.className = cls;
       if (decorate) decorate(n, it);
+      n.classList.add('pop');
       field.appendChild(n);
     }
-    n.style.left = ((it.x + 12) / 24 * 100) + '%';
-    n.style.top = ((it.y + 12) / 24 * 100) + '%';
+    moveEl(n, (it.x + 12) / 24 * 100, (it.y + 12) / 24 * 100);
   }
   var olds = field.querySelectorAll('.' + cls);
   for (var j = 0; j < olds.length; j++) if (!seen[olds[j].id]) olds[j].remove();
+}
+// ---------------------------------------------------------------------
+// rAF position interpolation. patchPositions records TARGET positions
+// through moveEl; a single requestAnimationFrame loop eases each
+// element's rendered left/top toward its target with frame-rate
+// independent exponential damping (tau ~55ms), replacing the steppy
+// per-tick CSS steps. First placement of any element (spawn, phase
+// change, full re-render — anywhere the DOM node is new) SNAPS exactly
+// to target, in the same task as the render: the centre-flash guard is
+// preserved bit-for-bit. While the loop runs it stamps 'raf-on' on
+// the field, which zeroes the CSS left/top transitions on the
+// interpolated classes so the two smoothing systems never stack; the
+// loop itself reads the field's .slowmo class and stretches its time
+// constant ~6x so slow motion still reads as slow motion. If rAF is
+// unavailable, moveEl sets positions directly and the CSS transitions
+// carry the motion exactly as before.
+var RAF_OK = typeof requestAnimationFrame === 'function';
+var RAF_TAU = 55;
+function moveEl(node, xPct, yPct) {
+  if (!node) return;
+  if (!RAF_OK || !node.id) { node.style.left = xPct + '%'; node.style.top = yPct + '%'; return; }
+  var e = S.raf[node.id];
+  if (!e || e.el !== node) {
+    node.style.left = xPct + '%'; node.style.top = yPct + '%';
+    S.raf[node.id] = { el: node, x: xPct, y: yPct, tx: xPct, ty: yPct };
+    return;
+  }
+  e.tx = xPct; e.ty = yPct;
+}
+function rafLoop(ts) {
+  requestAnimationFrame(rafLoop);
+  var nowMs = typeof ts === 'number' ? ts : performance.now();
+  var dt = S.rafLast ? Math.min(100, nowMs - S.rafLast) : 16;
+  S.rafLast = nowMs;
+  var field = el('afield');
+  if (field && !field.classList.contains('raf-on')) field.classList.add('raf-on');
+  var slow = !!(field && field.classList.contains('slowmo'));
+  var k = 1 - Math.exp(-dt / RAF_TAU);
+  var ks = 1 - Math.exp(-dt / (RAF_TAU * 6));
+  for (var id in S.raf) {
+    var e = S.raf[id];
+    if (e.el.isConnected === false) { delete S.raf[id]; continue; }
+    var kk = slow && field && field.contains(e.el) ? ks : k;
+    var dx = e.tx - e.x, dy = e.ty - e.y;
+    if (Math.abs(dx) < 0.02 && Math.abs(dy) < 0.02) {
+      if (e.x !== e.tx || e.y !== e.ty) { e.x = e.tx; e.y = e.ty; e.el.style.left = e.x + '%'; e.el.style.top = e.y + '%'; }
+      continue;
+    }
+    e.x += dx * kk; e.y += dy * kk;
+    e.el.style.left = e.x.toFixed(2) + '%';
+    e.el.style.top = e.y.toFixed(2) + '%';
+  }
 }
 // Position + label sync for every arena-style game (blobs, cannonballs,
 // barrels, shells, slimes, stars, crown, paint grid, shared blob, crate,
@@ -5601,8 +5861,7 @@ function patchPositions(v) {
       var bb = g.blobs[bSeat];
       var bn = el('ablob-' + bSeat);
       if (bn) {
-        bn.style.left = ((bb.x + 12) / 24 * 100) + '%';
-        bn.style.top = ((bb.y + 12) / 24 * 100) + '%';
+        moveEl(bn, (bb.x + 12) / 24 * 100, (bb.y + 12) / 24 * 100);
         bn.style.opacity = bb.alive ? '1' : '0.25';
       }
       var lv = el('alives-' + bSeat);
@@ -5617,8 +5876,7 @@ function patchPositions(v) {
     for (var nbi = 0; nbi < g.balls.length; nbi++) {
       var nb = el('nball-' + nbi);
       if (nb) {
-        nb.style.left = ((g.balls[nbi].x + 12) / 24 * 100) + '%';
-        nb.style.top = ((g.balls[nbi].y + 12) / 24 * 100) + '%';
+        moveEl(nb, (g.balls[nbi].x + 12) / 24 * 100, (g.balls[nbi].y + 12) / 24 * 100);
       }
     }
   }
@@ -5628,8 +5886,7 @@ function patchPositions(v) {
       var wb = g.blobs[wSeat];
       var wn = el('ablob-' + wSeat);
       if (wn) {
-        wn.style.left = ((wb.x + 12) / 24 * 100) + '%';
-        wn.style.top = ((wb.y + 12) / 24 * 100) + '%';
+        moveEl(wn, (wb.x + 12) / 24 * 100, (wb.y + 12) / 24 * 100);
         wn.style.opacity = wb.alive ? '1' : '0.25';
       }
       var lv2 = el('alives-' + wSeat);
@@ -5655,8 +5912,7 @@ function patchPositions(v) {
       var qb2 = g.blobs[qSeat];
       var qn = el('ablob-' + qSeat);
       if (qn) {
-        qn.style.left = ((qb2.x + 12) / 24 * 100) + '%';
-        qn.style.top = ((qb2.y + 12) / 24 * 100) + '%';
+        moveEl(qn, (qb2.x + 12) / 24 * 100, (qb2.y + 12) / 24 * 100);
         qn.style.opacity = qb2.alive ? (qb2.invuln ? '0.55' : '1') : '0.2';
       }
       var dm = el('dmg-' + qSeat);
@@ -5671,18 +5927,18 @@ function patchPositions(v) {
     }
     var mlq = el('mylives'); if (mlq && g.blobs[S.seat]) mlq.textContent = '♥'.repeat(Math.max(0, g.blobs[S.seat].lives));
     var mdq = el('mydmg'); if (mdq) mdq.textContent = (g.myDmg || 0) + '%';
+    arenaFX(v, g);
   }
   if (g && g.id === 'den-lua-nuoc' && g.chars) {
     for (var cSeat in g.chars) {
       var cc2 = g.chars[cSeat];
       var cn = el('achar-' + cSeat);
       if (cn) {
-        cn.style.left = ((cc2.x + 12) / 24 * 100) + '%';
-        cn.style.top = ((cc2.y + 12) / 24 * 100) + '%';
+        moveEl(cn, (cc2.x + 12) / 24 * 100, (cc2.y + 12) / 24 * 100);
         cn.className = 'achar' + (cc2.home ? ' home' : '');
       }
     }
-    if (g.gems) syncDyn(g.gems, 'tgem-', 'tgem', function (n, it) { n.className = 'tgem ' + it.el + (it.taken ? ' taken' : ''); });
+    if (g.gems) syncDyn(g.gems, 'tgem-', 'tgem', function (n, it) { n.className = 'tgem ' + it.el + (it.taken ? ' taken' : ''); if (!n.firstChild) n.innerHTML = '<i></i>'; });
     (g.gates || []).forEach(function (gt2, gi2) { var gn = el('gate-' + gi2); if (gn) gn.className = 'tgate' + (g.gateOpen ? ' open' : ''); });
     var gl2 = el('gemlua'); if (gl2 && g.gemCount) gl2.textContent = g.gemCount.lua;
     var gw2 = el('gemnuoc'); if (gw2 && g.gemCount) gw2.textContent = g.gemCount.nuoc;
@@ -5690,14 +5946,14 @@ function patchPositions(v) {
     var glp = el('gemluap'); if (glp && g.gemCount) glp.textContent = g.gemCount.lua;
     var gwp = el('gemnuocp'); if (gwp && g.gemCount) gwp.textContent = g.gemCount.nuoc;
     var thp = el('tempheartsp'); if (thp) thp.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+    arenaFX(v, g);
   }
   if (g && (g.id === 'cuop-sao' || g.id === 'giu-vuong-mien' || g.id === 'son-san') && g.blobs) {
     for (var nSeat in g.blobs) {
       var nb2 = g.blobs[nSeat];
       var nn = el('ablob-' + nSeat);
       if (nn) {
-        nn.style.left = ((nb2.x + 12) / 24 * 100) + '%';
-        nn.style.top = ((nb2.y + 12) / 24 * 100) + '%';
+        moveEl(nn, (nb2.x + 12) / 24 * 100, (nb2.y + 12) / 24 * 100);
         if (g.id === 'giu-vuong-mien') nn.className = 'ablob' + (g.crown && g.crown.holder === +nSeat ? ' holder' : '');
       }
     }
@@ -5705,7 +5961,7 @@ function patchPositions(v) {
       var mb2 = el('mybank'); if (mb2) mb2.textContent = g.mine || 0;
       for (var sN = 0; sN < (g.stars ? g.stars.length : 0); sN++) {
         var sEl = el('astar-' + g.stars[sN].id);
-        if (sEl) { sEl.style.left = ((g.stars[sN].x + 12) / 24 * 100) + '%'; sEl.style.top = ((g.stars[sN].y + 12) / 24 * 100) + '%'; }
+        if (sEl) moveEl(sEl, (g.stars[sN].x + 12) / 24 * 100, (g.stars[sN].y + 12) / 24 * 100);
       }
     }
     if (g.id === 'giu-vuong-mien') {
@@ -5713,8 +5969,7 @@ function patchPositions(v) {
       if (cr2 && g.crown) {
         var cx2 = g.crown.x, cy2 = g.crown.y;
         if (g.crown.holder && g.blobs[g.crown.holder]) { cx2 = g.blobs[g.crown.holder].x; cy2 = g.blobs[g.crown.holder].y; }
-        cr2.style.left = ((cx2 + 12) / 24 * 100) + '%';
-        cr2.style.top = ((cy2 + 12) / 24 * 100) + '%';
+        moveEl(cr2, (cx2 + 12) / 24 * 100, (cy2 + 12) / 24 * 100);
       }
       for (var hSeat in g.hold || {}) { var hn2 = el('holdn-' + hSeat); if (hn2) hn2.textContent = g.hold[hSeat]; }
       var mh2 = el('myhold'); if (mh2) mh2.textContent = g.mine || 0;
@@ -5728,15 +5983,16 @@ function patchPositions(v) {
       for (var cSeat in g.counts || {}) { var sn2 = el('scount-' + cSeat); if (sn2) sn2.textContent = g.counts[cSeat]; }
       var mc2 = el('mycells'); if (mc2) mc2.textContent = g.mine || 0;
     }
+    arenaFX(v, g);
   }
   if (g && g.id === 'chung-mot-than' && g.shared) {
     var sb = el('sharedblob');
-    if (sb) { sb.style.left = ((g.shared.x + 12) / 24 * 100) + '%'; sb.style.top = ((g.shared.y + 12) / 24 * 100) + '%'; }
+    if (sb) moveEl(sb, (g.shared.x + 12) / 24 * 100, (g.shared.y + 12) / 24 * 100);
     var cs = el('cstar');
-    if (cs && g.star) { cs.style.left = ((g.star.x + 12) / 24 * 100) + '%'; cs.style.top = ((g.star.y + 12) / 24 * 100) + '%'; }
+    if (cs && g.star) moveEl(cs, (g.star.x + 12) / 24 * 100, (g.star.y + 12) / 24 * 100);
     if (g.balls) for (var cbi = 0; cbi < g.balls.length; cbi++) {
       var cb = el('nball-' + cbi);
-      if (cb) { cb.style.left = ((g.balls[cbi].x + 12) / 24 * 100) + '%'; cb.style.top = ((g.balls[cbi].y + 12) / 24 * 100) + '%'; }
+      if (cb) moveEl(cb, (g.balls[cbi].x + 12) / 24 * 100, (g.balls[cbi].y + 12) / 24 * 100);
     }
     var cn = el('checkn'); if (cn) cn.textContent = g.checks || 0;
     var th = el('teamhearts'); if (th) th.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
@@ -5747,10 +6003,10 @@ function patchPositions(v) {
     for (var xSeat in g.blobs) {
       var xb = g.blobs[xSeat];
       var xn = el('ablob-' + xSeat);
-      if (xn) { xn.style.left = ((xb.x + 12) / 24 * 100) + '%'; xn.style.top = ((xb.y + 12) / 24 * 100) + '%'; }
+      if (xn) moveEl(xn, (xb.x + 12) / 24 * 100, (xb.y + 12) / 24 * 100);
     }
     var crt = el('acrate');
-    if (crt && g.crate) { crt.style.left = ((g.crate.x + 12) / 24 * 100) + '%'; crt.style.top = ((g.crate.y + 12) / 24 * 100) + '%'; }
+    if (crt && g.crate) moveEl(crt, (g.crate.x + 12) / 24 * 100, (g.crate.y + 12) / 24 * 100);
     var dv = el('delivn'); if (dv) dv.textContent = g.deliveries || 0;
     var dvp = el('delivp'); if (dvp) dvp.textContent = g.deliveries || 0;
   }
@@ -6297,6 +6553,43 @@ function runCmd(node) {
   } else if (cmd === 'start') {
     sfxTap();
     act({ action: 'startGame', game: node.getAttribute('data-game') });
+  } else if (cmd === 'quitGame') {
+    sfxTap();
+    act({ action: 'quitToChoosing' });
+  } else if (cmd === 'plStop') {
+    sfxTap();
+    act({ action: 'playlistStop' });
+  } else if (cmd === 'plMode') {
+    S.plMode = !S.plMode;
+    if (!S.plMode) S.plQueue = [];
+    sfxTap(); S.sig = ''; render();
+  } else if (cmd === 'plToggle') {
+    var pgid = node.getAttribute('data-game');
+    var pgm = gameMeta(S.view, pgid);
+    var pqi = S.plQueue.indexOf(pgid);
+    if (pqi >= 0) S.plQueue.splice(pqi, 1);
+    else {
+      if (pgm && pgm.min && S.view && S.view.players.length < pgm.min) { toast(pgm.name + ' cần ' + pgm.min + ' người chơi mới xếp hàng chờ được.'); return; }
+      S.plQueue.push(pgid);
+    }
+    sfxTap(); S.sig = ''; render();
+  } else if (cmd === 'plRandom') {
+    var pool = [];
+    for (var rpi = 0; rpi < S.view.games.length; rpi++) { var rgm = S.view.games[rpi]; if (!(rgm.min && S.view.players.length < rgm.min)) pool.push(rgm.id); }
+    var picked = [];
+    while (picked.length < 5 && pool.length) { var rix = Math.floor(Math.random() * pool.length); picked.push(pool.splice(rix, 1)[0]); }
+    S.plQueue = picked;
+    sfxTap(); S.sig = ''; render();
+  } else if (cmd === 'plAll') {
+    S.plQueue = [];
+    for (var api2 = 0; api2 < S.view.games.length; api2++) { var agm = S.view.games[api2]; if (!(agm.min && S.view.players.length < agm.min)) S.plQueue.push(agm.id); }
+    sfxTap(); S.sig = ''; render();
+  } else if (cmd === 'plStart') {
+    if (S.plQueue.length < 2) { toast('Chọn ít nhất 2 game cho liên hoàn nhé.'); return; }
+    var pq = S.plQueue.slice();
+    S.plQueue = []; S.plMode = false;
+    sfxTap();
+    act({ action: 'playlistStart', games: pq });
   } else if (cmd === 'continue' || cmd === 'replay' || cmd === 'toChoosing' || cmd === 'finish' || cmd === 'playAgain') {
     sfxTap();
     act({ action: cmd });
@@ -6498,6 +6791,7 @@ if (!window.PointerEvent) {
   } catch (e) {}
   wsEnsure();
   render();
+  if (RAF_OK) requestAnimationFrame(rafLoop);
   setInterval(poll, 800);
   setInterval(tick, 150);
   setInterval(function () {
