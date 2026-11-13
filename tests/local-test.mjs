@@ -1917,6 +1917,54 @@ async function main() {
     await tgDrv.pAct(tg1.playerToken, { action: 'pad', pad: {} });
   }
 
+  // =====================================================================
+  // Audit M: the pad-action ack. Pad snapshots are fire-and-forget —
+  // the web page's sendPad callback is literally empty and no client
+  // reads view data from a pad response (views come from /state
+  // polling) — so a successful pad must answer with a tiny ack instead
+  // of the full room view, which otherwise throttles the controller's
+  // serial pad channel on slow links. Errors keep the existing JSON.
+  console.log('Audit M: pad action ack — tiny success body, unchanged errors');
+  {
+    const paDrv = await newDrv();
+    const pa1 = await paDrv.join('Mot');
+    await paDrv.join('Hai');
+    // Wrong phase (still in the lobby): playerAction's error string
+    // comes back as the existing error JSON — never as an ack.
+    const early = await call('POST', '/api/rooms/' + paDrv.code + '/action',
+      { role: 'player', token: pa1.playerToken, action: 'pad', pad: { l: true } });
+    assert(early.data && early.data.ok === false && early.data.error === 'Chưa vào game.',
+      'pad ack: a pad before the game starts still returns the existing error JSON');
+    // Bad token: rejected by the route auth check, unchanged.
+    const badTok = await call('POST', '/api/rooms/' + paDrv.code + '/action',
+      { role: 'player', token: 'bogus-token', action: 'pad', pad: { l: true } });
+    assert(badTok.status === 403 && badTok.data && badTok.data.ok === false
+      && badTok.data.error.indexOf('không hợp lệ') >= 0,
+      'pad ack: a pad with a bad token still returns the 403 session error');
+    // A non-pad action still returns the full view, exactly as before.
+    const startV = await paDrv.act({ action: 'startGame', game: 'day-ra' });
+    assert(startV.ok === true && startV.game && startV.game.id === 'day-ra' && Array.isArray(startV.players),
+      'pad ack: a non-pad action (startGame) still returns the full room view');
+    await pumpD(paDrv, 250, (s) => s.game && s.game.phase === 'arena', 'pad ack arena begins');
+    const ack = await call('POST', '/api/rooms/' + paDrv.code + '/action',
+      { role: 'player', token: pa1.playerToken, action: 'pad', pad: { l: true } });
+    assert(ack.status === 200 && ack.data && ack.data.ok === true,
+      'pad ack: a successful pad response parses and returns ok:true');
+    assert(typeof ack.data.serverNow === 'number', 'pad ack: the ack carries serverNow');
+    assert(!('game' in ack.data) && !('players' in ack.data) && !('phase' in ack.data) && !('code' in ack.data),
+      'pad ack: the ack has no view fields (no game/players/phase/code)');
+    assert(Buffer.byteLength(ack.text, 'utf8') < 120,
+      'pad ack: the ack body is tiny (' + Buffer.byteLength(ack.text, 'utf8') + ' bytes < 120)');
+    // The pad itself still landed: the /state poll (the single source
+    // of view updates) shows the held direction steering the blob left
+    // from its (5.5, 0) spawn after two 250ms ticks.
+    tick(250); tick(250);
+    const pv = await paDrv.state();
+    assert(pv.game && pv.game.blobs[pa1.seat] && pv.game.blobs[pa1.seat].x < 5.5,
+      'pad ack: the acked pad still applies — blob steered left from spawn');
+    await paDrv.pAct(pa1.playerToken, { action: 'pad', pad: {} });
+  }
+
   // --- Storage routing: with ROOMS_DO bound, everything above must have
   console.log('Storage: Durable Object routing + expiry');
   assert(env.ROOMS.putCount === 0 && env.ROOMS.getCount === 0,

@@ -3252,6 +3252,13 @@ export default {
         if (err) { await saveRoom(env, room); return fail(err); }
         advance(room);
         await saveRoom(env, room);
+        // Pad snapshots are fire-and-forget: clients ignore this response
+        // body (the web page's sendPad callback is empty; views arrive via
+        // /state polling). Shipping the full ~3.4KB view here would make
+        // the controller's serial pad channel wait for a whole download
+        // after every snapshot on slow links, so a successful pad gets a
+        // tiny ack instead. Errors above keep the existing error JSON.
+        if (body.role !== 'host' && body.action === 'pad') return json({ ok: true, serverNow: now() });
         return json(buildView(room, body.role === 'host' ? 'host' : 'player', seat));
       }
       return fail('Không tìm thấy đường dẫn.', 404);
