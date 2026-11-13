@@ -3649,13 +3649,13 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .ablock { position: absolute; z-index: 1; pointer-events: none; border-radius: 6px; background: linear-gradient(150deg, #3E5A4C, #22392E); border: 2px solid rgba(140,255,200,.5); box-shadow: 0 3px 8px rgba(0,0,0,.5), inset 0 0 0 2px rgba(0,0,0,.25); }
 .orbwrap { position: relative; display: inline-block; }
 .abarrel { position: absolute; left: 50%; top: 50%; width: 27px; height: 8px; margin-top: -4px; transform-origin: 0 50%; border-radius: 4px; background: linear-gradient(90deg, rgba(255,255,255,.15), #FFC93D); box-shadow: 0 0 8px rgba(255,201,61,.8); pointer-events: none; }
-.ashell { position: absolute; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; z-index: 3; pointer-events: none; transition: left .25s linear, top .25s linear; background: radial-gradient(circle at 40% 38%, #FFF6D8, #FFC93D 55%, #FF7A1A); box-shadow: 0 0 12px rgba(255,190,60,.95), 0 0 26px rgba(255,140,30,.55); }
+.ashell { position: absolute; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; z-index: 3; pointer-events: none; transition: left .18s linear, top .18s linear; background: radial-gradient(circle at 40% 38%, #FFF6D8, #FFC93D 55%, #FF7A1A); box-shadow: 0 0 12px rgba(255,190,60,.95), 0 0 26px rgba(255,140,30,.55); }
 .bhard { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: linear-gradient(150deg, #6B7280, #374151); border: 2px solid rgba(220,230,255,.4); box-shadow: inset 0 0 0 2px rgba(0,0,0,.3), 0 3px 7px rgba(0,0,0,.5); }
 .bsoft { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: linear-gradient(150deg, #C98A4B, #96622A); border: 2px solid rgba(255,214,150,.55); box-shadow: inset 0 0 0 2px rgba(0,0,0,.22), 0 3px 7px rgba(0,0,0,.45); }
 .abomb { position: absolute; z-index: 2; transform: translate(-50%, -50%); pointer-events: none; font-size: 30px; line-height: 1; filter: drop-shadow(0 0 10px rgba(255,90,40,.75)); animation: bombPulse .5s ease-in-out infinite alternate; }
 @keyframes bombPulse { from { transform: translate(-50%, -50%) scale(1); } to { transform: translate(-50%, -50%) scale(1.22); } }
 .ablast { position: absolute; z-index: 2; pointer-events: none; border-radius: 6px; background: radial-gradient(circle, rgba(255,240,190,.95), rgba(255,140,40,.75) 60%, rgba(255,80,20,.25)); box-shadow: 0 0 18px rgba(255,150,50,.8); }
-.aslime { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50% 50% 46% 46%; z-index: 1; pointer-events: none; transition: left .25s linear, top .25s linear; background: radial-gradient(circle at 36% 30%, #C6FF9E, #58C472 55%, #1E7A46); box-shadow: 0 0 14px rgba(90,230,140,.75), 0 4px 7px rgba(0,0,0,.4); }
+.aslime { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50% 50% 46% 46%; z-index: 1; pointer-events: none; transition: left .18s linear, top .18s linear; background: radial-gradient(circle at 36% 30%, #C6FF9E, #58C472 55%, #1E7A46); box-shadow: 0 0 14px rgba(90,230,140,.75), 0 4px 7px rgba(0,0,0,.4); }
 .aslime.big { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
 .aslime i { position: absolute; top: 32%; width: 5px; height: 7px; border-radius: 50%; background: #10331C; }
 .aslime i:first-child { left: 30%; } .aslime i:last-child { right: 30%; }
@@ -3678,7 +3678,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .stage.neon-stage h2 { text-shadow: 0 0 18px rgba(130,190,255,.35), 0 3px 0 rgba(0,0,0,.35); }
 .aball { position: absolute; width: 26px; height: 26px; border-radius: 50%; z-index: 1;
   background: radial-gradient(circle at 35% 32%, #FFE3B3, #FF8C42 55%, #D63C14); transform: translate(-50%, -50%);
-  transition: left .25s linear, top .25s linear; box-shadow: 0 0 16px rgba(255,140,50,.9), 0 0 34px rgba(255,90,30,.45), 0 4px 8px rgba(0,0,0,.35); }
+  transition: left .18s linear, top .18s linear; box-shadow: 0 0 16px rgba(255,140,50,.9), 0 0 34px rgba(255,90,30,.45), 0 4px 8px rgba(0,0,0,.35); }
 .rope { position: relative; height: 40px; border-radius: 999px; margin: 16px 0;
   background: linear-gradient(90deg, #4FA8E8 0 50%, #F77FB0 50% 100%); box-shadow: inset 0 -6px 0 rgba(0,0,0,.18), 0 0 22px rgba(90,160,255,.28); }
 .rope .mid { position: absolute; left: 50%; top: -6px; bottom: -6px; width: 4px; background: #fff; transform: translateX(-50%); border-radius: 2px; }
@@ -3693,7 +3693,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
   transition: width .5s linear, height .5s linear; }
 .aring.danger { border-color: #FF4757; box-shadow: 0 0 34px rgba(255,71,87,.75), inset 0 0 50px rgba(255,71,87,.35); animation: ringPulse .5s ease-in-out infinite alternate; }
 @keyframes ringPulse { from { filter: brightness(1); } to { filter: brightness(1.7); } }
-.ablob { position: absolute; transform: translate(-50%, -50%); transition: left .25s linear, top .25s linear; text-align: center; z-index: 2; }
+.ablob { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 2; }
 .ablob svg { filter: drop-shadow(0 0 9px currentColor); display: block; margin: 0 auto; }
 .ablob.holder svg { filter: drop-shadow(0 0 16px #FFC93D) drop-shadow(0 0 5px #FFC93D); }
 .astar { position: absolute; transform: translate(-50%, -50%); z-index: 1; font-size: 24px; line-height: 1; color: #FFE066;
@@ -3701,9 +3701,9 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .astar.gold { font-size: 36px; color: #FFC93D; text-shadow: 0 0 14px rgba(255,201,61,1), 0 0 34px rgba(255,160,20,.8), 0 2px 4px rgba(0,0,0,.45); }
 @keyframes starBob { 0%,100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -62%) scale(1.12); } }
 .acrown { position: absolute; transform: translate(-50%, -135%); z-index: 3; pointer-events: none;
-  transition: left .25s linear, top .25s linear; filter: drop-shadow(0 0 12px rgba(255,201,61,.9)); animation: starBob 2s ease-in-out infinite; }
+  transition: left .18s linear, top .18s linear; filter: drop-shadow(0 0 12px rgba(255,201,61,.9)); animation: starBob 2s ease-in-out infinite; }
 .acrate { position: absolute; width: 13.3%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 2; pointer-events: none;
-  transition: left .25s linear, top .25s linear; display: flex; align-items: center; justify-content: center; font-size: 30px;
+  transition: left .18s linear, top .18s linear; display: flex; align-items: center; justify-content: center; font-size: 30px;
   background: linear-gradient(150deg, #B97B34, #8A5518); border: 3px solid #E8B96A; border-radius: 9px;
   box-shadow: 0 0 18px rgba(255,180,80,.5), 0 6px 12px rgba(0,0,0,.45), inset 0 0 0 3px rgba(0,0,0,.18); }
 .agoal { position: absolute; z-index: 0; pointer-events: none; border: 3px dashed #3ED97E; border-radius: 10px;
