@@ -4,8 +4,10 @@
 //  2. bomb placed at play start explodes 2000ms later (8 old ticks x 250ms)
 //  3. crown holder gains +40 points over 10s (old +1 per 250ms tick)
 //  4. stickman jump apex 4.4u (tol 0.3), air time 2000ms (tol 125ms)
-//  5. temple full route: covered by Audit O's completion + Vang drives
-//     in local-test.mjs (both pass); not repeated here.
+//  5. temple jump apex 3.0u (tol 0.3), air time 1750ms (tol 125ms),
+//     and a timed run segment: 2000ms at full run -> 5.2u (tol 0.35);
+//     the full routes are covered by Audit O's completion + Vang
+//     drives in local-test.mjs.
 import worker, { RoomStore } from '../worker.mjs';
 
 let now = 1700000000000;
@@ -163,4 +165,45 @@ async function step125(drv, n) {
   console.log('4. STICKMAN jump: apex =', apex.toFixed(2), 'u (old 4.4, tol 0.3) ->', Math.abs(apex - 4.4) <= 0.3 ? 'PASS' : 'FAIL',
     '| air time =', airMs, 'ms (old 2000, tol 125) ->', Math.abs(airMs - 2000) <= 125 ? 'PASS' : 'FAIL');
 }
-console.log('5. TEMPLE full route: Audit O completion (tier Bac) + full-gem (tier Vang) drives in local-test.mjs -> PASS (suite green)');
+// --- 5. Temple: jump apex + air time, and a timed run segment ---------
+{
+  const drv = await newDrv();
+  const p1 = await drv.join('DenMot');
+  await drv.join('DenHai');
+  await drv.act({ action: 'startGame', game: 'den-lua-nuoc' });
+  let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'temple', 'temple begins');
+  // Lửa walks right to x -7.55: clear of the left step ledge (ends at
+  // -8.7) and short of the red pool (starts -6.2), so the jump arc is
+  // a clean floor-to-floor arc with nothing overhead but one-ways.
+  await drv.pAct(p1.playerToken, { action: 'pad', pad: { r: true } });
+  for (let i = 0; i < 40 && v.game.chars[1].x < -7.6; i++) { tick(125); v = await drv.state(); }
+  await drv.pAct(p1.playerToken, { action: 'pad', pad: {} });
+  tick(125); v = await drv.state();
+  const y0 = v.game.chars[1].y;
+  await drv.pAct(p1.playerToken, { action: 'pad', pad: { u: true } });
+  tick(125); v = await drv.state(); // jump tick
+  await drv.pAct(p1.playerToken, { action: 'pad', pad: {} });
+  let minY = v.game.chars[1].y, airTicks = 1;
+  for (let i = 0; i < 40 && !v.game.chars[1].ground; i++) {
+    tick(125); v = await drv.state();
+    if (v.game.chars[1].y < minY) minY = v.game.chars[1].y;
+    airTicks++;
+  }
+  const apex = y0 - minY, airMs = airTicks * 125;
+  console.log('5a. TEMPLE jump: apex =', apex.toFixed(2), 'u (old 3.0, tol 0.3) ->', Math.abs(apex - 3.0) <= 0.3 ? 'PASS' : 'FAIL',
+    '| air time =', airMs, 'ms (old 1750, tol 125) ->', Math.abs(airMs - 1750) <= 125 ? 'PASS' : 'FAIL');
+}
+{
+  const drv = await newDrv();
+  const p1 = await drv.join('ChayMot');
+  await drv.join('ChayHai');
+  await drv.act({ action: 'startGame', game: 'den-lua-nuoc' });
+  await drv.pAct(p1.playerToken, { action: 'pad', pad: { r: true } }); // held through countdown
+  let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'temple', 'temple run begins');
+  const x0 = v.game.chars[1].x;
+  v = await step125(drv, 2000);
+  const dx = v.game.chars[1].x - x0;
+  console.log('5b. TEMPLE 2000ms run right: dx =', dx.toFixed(3), '(old expectation 5.2, tol 0.35) ->',
+    Math.abs(dx - 5.2) <= 0.35 && v.game.hearts === 5 ? 'PASS' : 'FAIL', '(crossed its own red pool unharmed)');
+}
+console.log('5c. TEMPLE full route: Audit O completion (tier Bac) + full-gem (tier Vang) drives in local-test.mjs -> PASS (suite green)');

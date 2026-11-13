@@ -159,8 +159,9 @@ const MEMORY_INPUT_MS = 12000, MEMORY_PAUSE_MS = 3000;
 // (A*h^2) and jump velocities re-tuned to the same discrete apexes
 // (FIGHT_JUMP 1.2 -> apex 4.2 vs 4.4 before), and per-tick friction
 // factors rescale to their square roots so decay per second is kept.
-// The TEMPLE game is gated back to the old 250ms tick entirely — see
-// TEMPLE_TICK_MS below for the geometry reason.
+// The TEMPLE game originally stayed on the old 250ms tick (its gate
+// slabs shadowed the mid-floor pool jumps — see the note at
+// TEMPLE_LEVEL); it has since joined the shared 125ms tick too.
 const ARENA_R0 = 10, ARENA_RMIN = 4, ARENA_MS = 90000, ARENA_LIVES = 3, TICK_MS = 125;
 const MOVE_STEP = 0.25, DASH_CD_TICKS = 24, SHOVE_CD_TICKS = 12;
 // A dash is a x3 speed boost lasting DASH_BOOST_TICKS ticks: 2 ticks
@@ -260,7 +261,7 @@ const DECODE_SYMBOLS = [
 // [-12, 12] unit space so the page's % mapping works unchanged. Gravity
 // is applied BEFORE the move each tick (semi-implicit Euler), so the
 // discrete jump apex for velocity V is sum(V - k*GRAV) over the rising
-// ticks: at the 125ms tick, V=1.2 -> ~4.2 units, V=1.02 -> ~3.0 units
+// ticks: at the 125ms tick, V=1.2 -> ~4.2 units, V=1.05 -> ~3.15 units
 // (the pre-retune 250ms values were V=2.6 -> ~4.4, V=2.2 -> ~3.0).
 // Every step-up in both stages below is sized against those apexes,
 // never the naive V²/2G.
@@ -291,18 +292,23 @@ const FIGHT_SPAWN_X = [-6, -2, 2, 6];
 // for them in turn. Wrong-element (or green) pool = death: respawn at
 // the element start, the team loses one of TEMP_HEARTS hearts.
 const TEMP_MS = 150000, TEMP_HEARTS = 5;
-const TEMP_RUN = 0.65, TEMP_JUMP = 2.2;
-// TEMPLE EXCEPTION to the 125ms wave: the temple sim stays on the
-// old 250ms tick (TEMPLE_TICK_MS) with its original per-tick constants
-// (TEMP_RUN/TEMP_JUMP above, TEMPLE_GRAV/TEMPLE_MAXFALL below). Its
-// level geometry cannot be halved faithfully: gate slab 2 starts at
-// x 5.5, only 0.2 past the mid-floor red pool's edge (5.3), so the
-// jump-off window is one old tick of run (0.65) wide — at 125ms the
-// first jump tick moves the box only 0.325, it stays under the slab,
-// head-bonks, and drops into the pool. Rather than redesign the level
-// or the shared platform physics, the temple ticks every other tick.
-const TEMPLE_TICK_MS = 250;
-const TEMPLE_GRAV = 0.6, TEMPLE_MAXFALL = 2.6;
+// Temple runs on the shared 125ms tick with the shared platform
+// physics (PLAT_GRAV / PLAT_MAXFALL via platStep), rescaled like the
+// fighter's: TEMP_RUN is the old 0.65 per 250ms tick halved, and
+// TEMP_JUMP 1.05 reproduces the old discrete arc (apex 3.15 vs the
+// old 3.0; air time 14 ticks = 1750ms and jump range 4.55u, both
+// exactly the old values). It originally kept its own 250ms tick
+// because gate slab 2 began at x 5.5, only 0.2 past the mid-floor red
+// pool's end (5.3): a pool-jump takeoff from the pool's edge clears
+// the slab's shadow in the first tick at 0.65u/tick but not at
+// 0.325u/tick — the jumper stayed under the slab, head-bonked, and
+// dropped into the lethal pool (mirrored at gate 1 / the blue pool).
+// Both slabs now sit 0.4 further out (gate 1 x -6.6, gate 2 x 5.9),
+// which reopens that first-tick window while the slabs still flank
+// the balcony stairs and block the climb exactly as before (the 0.4
+// gap to the balcony edge is narrower than a character's 0.9 body,
+// and a stair jump's apex never rises past the slab tops).
+const TEMP_RUN = 0.325, TEMP_JUMP = 1.05;
 const TEMPLE_LEVEL = {
   solids: [
     { x: -12, y: 10, w: 24, h: 2.4 },
@@ -318,8 +324,8 @@ const TEMPLE_LEVEL = {
     { x: 8.6, y: 2.9, w: 2.3, h: 0.7, oneWay: true },
   ],
   gates: [
-    { x: -6.2, y: -1.4, w: 0.7, h: 4.5 },
-    { x: 5.5, y: -1.4, w: 0.7, h: 4.5 },
+    { x: -6.6, y: -1.4, w: 0.7, h: 4.5 },
+    { x: 5.9, y: -1.4, w: 0.7, h: 4.5 },
   ],
   buttons: [
     { x: 9.2, y: 2.3, w: 1.1, h: 0.6 },
@@ -1122,7 +1128,7 @@ function beginRound(room) {
     });
   } else if (g.id === 'den-lua-nuoc') {
     g.phase = 'temple';
-    g.tickCount = 0; g.nextTickAt = t + TEMPLE_TICK_MS; g.endsAt = t + TEMP_MS;
+    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + TEMP_MS;
     g.hearts = TEMP_HEARTS; preservePads(room); g.botIntent = {};
     g.chars = {}; g.elOf = {}; g.wpIdx = {}; g.wpAt = {};
     g.gems = TEMPLE_LEVEL.gems.map((gm) => ({ x: gm.x, y: gm.y, el: gm.el, taken: false }));
@@ -3279,8 +3285,8 @@ function stepTemple(room, t) {
   if (t >= g.endsAt) { finishTemple(room, false); return true; }
   if (t >= g.nextTickAt) {
     simulateTempleTick(room);
-    g.nextTickAt += TEMPLE_TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TEMPLE_TICK_MS;
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
     return true;
   }
   return false;
@@ -3314,7 +3320,7 @@ function simulateTempleTick(room) {
     const it = templeIntent(room, p);
     if (it.jump && c.ground) { c.vy = -TEMP_JUMP; c.ground = false; }
     c.vx = it.x * TEMP_RUN;
-    platStep(c, solids, TEMPLE_GRAV, TEMPLE_MAXFALL);
+    platStep(c, solids, PLAT_GRAV, PLAT_MAXFALL);
     // Pools: only the feet box counts, so jumping a pool is safe.
     for (const pool of TEMPLE_LEVEL.pools) {
       const inX = c.x + 0.25 > pool.x && c.x - 0.25 < pool.x + pool.w;
@@ -3355,7 +3361,7 @@ function botBrainTemple(room, p) {
       if (!g.wpAt[p.seat]) g.wpAt[p.seat] = g.tickCount;
       const partnersIn = room.players.every((q) => q.seat === p.seat
         || (g.chars[q.seat] && (g.chars[q.seat].home || g.chars[q.seat].y < 1.0)));
-      if (!partnersIn && g.tickCount - g.wpAt[p.seat] < 120) return intent; // keep holding (30s at the temple's 250ms tick)
+      if (!partnersIn && g.tickCount - g.wpAt[p.seat] < 240) return intent; // keep holding (30s at the shared 125ms tick)
     }
     g.wpIdx[p.seat] = idx + 1;
     g.wpAt[p.seat] = 0;

@@ -2046,13 +2046,14 @@ async function main() {
   // rooms (no bots => no bot RNG) except the last temple drive, and
   // every expectation is hand-computed from the platform constants:
   // gravity is applied BEFORE each move, so a jump with velocity V
-  // rises sum(V - gk) over its rising ticks. The fighter runs on the
-  // 125ms tick (gravity 0.15, jump 1.2 -> apex 4.2, run 0.34); the
-  // temple is gated to the old 250ms tick (gravity 0.6, jump 2.2 ->
-  // apex 3.0, run 0.65) — see TEMPLE_TICK_MS in the worker for why.
-  // padTicksO advances in 250ms units (two 125ms ticks for the
-  // fighter, one temple tick), so the choreographies below keep
-  // their original wall-clock meaning.
+  // rises sum(V - gk) over its rising ticks. Both platformers run on
+  // the shared 125ms tick (gravity 0.15; fighter jump 1.2 -> apex
+  // 4.2, run 0.34; temple jump 1.05 -> apex 3.15, air 1750ms, run
+  // 0.325 — the temple originally kept a gated 250ms tick until its
+  // gate slabs were shifted 0.4 out; see the note at TEMPLE_LEVEL).
+  // padTicksO advances in 250ms units (two 125ms ticks for both
+  // games), so the choreographies below keep their original
+  // wall-clock meaning.
   {
   console.log('Audit O: platformers — Người Que Đại Chiến + Đền Lửa & Nước');
   assert(home.text.indexOf('stickSVG') >= 0 && home.text.indexOf('charSVG') >= 0
