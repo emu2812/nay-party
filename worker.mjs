@@ -72,6 +72,27 @@ export const EST_BANK = [
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
+export const IMPOSTOR_BANK = [
+  { cat: 'Địa lý', real: 'Thủ đô của nước Pháp là thành phố nào?', fake: 'Thủ đô của nước Ý là thành phố nào?', options: ['Paris', 'Rome', 'Berlin', 'Madrid'] },
+  { cat: 'Thiên văn', real: 'Hành tinh nào gần Mặt Trời nhất?', fake: 'Hành tinh nào xa Mặt Trời nhất trong bốn hành tinh này?', options: ['Sao Thủy', 'Sao Kim', 'Sao Hỏa', 'Sao Mộc'] },
+  { cat: 'Động vật', real: 'Loài nào trong bốn loài này đẻ trứng?', fake: 'Loài nào trong bốn loài này đẻ con?', options: ['Gà', 'Chó', 'Mèo', 'Lợn'] },
+  { cat: 'Đời sống', real: 'Một tuần có bao nhiêu ngày?', fake: 'Một tháng có khoảng bao nhiêu tuần?', options: ['4', '7', '12', '30'] },
+  { cat: 'Thể thao', real: 'Một đội bóng đá có bao nhiêu cầu thủ trên sân?', fake: 'Một đội bóng rổ có bao nhiêu cầu thủ trên sân?', options: ['5', '7', '9', '11'] },
+  { cat: 'Cơ thể', real: 'Người trưởng thành có tối đa bao nhiêu chiếc răng vĩnh viễn?', fake: 'Một bàn tay người có bao nhiêu ngón?', options: ['5', '10', '28', '32'] },
+  { cat: 'Việt Nam', real: 'Vịnh Hạ Long thuộc tỉnh nào?', fake: 'Đảo Phú Quốc thuộc tỉnh nào?', options: ['Quảng Ninh', 'Kiên Giang', 'Khánh Hòa', 'Bình Thuận'] },
+  { cat: 'Văn học', real: 'Truyện Kiều là tác phẩm của ai?', fake: 'Truyện Lục Vân Tiên là tác phẩm của ai?', options: ['Nguyễn Du', 'Nguyễn Đình Chiểu', 'Hồ Xuân Hương', 'Nguyễn Trãi'] },
+  { cat: 'Khoa học', real: 'Ở áp suất thường, nước sôi ở bao nhiêu độ C?', fake: 'Ở áp suất thường, nước đóng băng ở bao nhiêu độ C?', options: ['0', '50', '90', '100'] },
+  { cat: 'Động vật', real: 'Loài nào có sọc đen trắng và thích ăn tre trúc?', fake: 'Loài nào có sọc đen trắng và sống ở đồng cỏ châu Phi?', options: ['Gấu trúc', 'Ngựa vằn', 'Hổ', 'Gấu mèo'] },
+  { cat: 'Địa lý', real: 'Ngọn núi nào cao nhất Việt Nam?', fake: 'Ngọn núi nào cao nhất thế giới?', options: ['Fansipan', 'Everest', 'Phú Sĩ', 'Bà Đen'] },
+  { cat: 'Ẩm thực', real: 'Bánh chưng truyền thống có hình gì?', fake: 'Bánh tét truyền thống có hình gì?', options: ['Hình vuông', 'Hình tròn dài', 'Hình tam giác', 'Hình trăng khuyết'] },
+  { cat: 'Âm nhạc', real: 'Đàn guitar thông thường có bao nhiêu dây?', fake: 'Đàn violin thông thường có bao nhiêu dây?', options: ['4', '5', '6', '7'] },
+  { cat: 'Toán học', real: 'Hình tam giác có bao nhiêu cạnh?', fake: 'Hình ngũ giác có bao nhiêu cạnh?', options: ['3', '4', '5', '6'] },
+  { cat: 'Sinh học', real: 'Con nhện có bao nhiêu chân?', fake: 'Côn trùng trưởng thành có bao nhiêu chân?', options: ['4', '6', '8', '10'] },
+  { cat: 'Địa lý', real: 'Sa mạc nào lớn nhất thế giới?', fake: 'Đại dương nào lớn nhất thế giới?', options: ['Sahara', 'Thái Bình Dương', 'Đại Tây Dương', 'Gobi'] },
+  { cat: 'Thể thao', real: 'Một hiệp bóng đá kéo dài bao nhiêu phút?', fake: 'Một hiệp bóng rổ FIBA kéo dài bao nhiêu phút?', options: ['10', '12', '40', '45'] },
+  { cat: 'Văn hóa', real: 'Tết Nguyên Đán là ngày đầu của tháng mấy âm lịch?', fake: 'Tết Trung Thu là rằm tháng mấy âm lịch?', options: ['Tháng 1', 'Tháng 5', 'Tháng 8', 'Tháng 12'] },
+];
+
 export const SEAT_COLORS = ['blue', 'pink', 'green', 'purple'];
 export const PLACEMENT_POINTS = [300, 200, 100, 50];
 export const DIFFS = ['de', 'vua', 'kho'];
@@ -93,9 +114,14 @@ export const GAMES = {
   'giu-vuong-mien': { name: 'Giữ Vương Miện', desc: 'Gamepad: giành vương miện và giữ càng lâu càng tốt!', rounds: 1, cat: 'versus' },
   'son-san': { name: 'Sơn Sàn', desc: 'Gamepad: chạy sơn sàn, chiếm thật nhiều ô!', rounds: 1, cat: 'versus' },
   'cao-boi': { name: 'Cao Bồi', desc: 'Đợi hiệu lệnh BẮN — rút súng nhanh nhất!', rounds: 5, cat: 'versus' },
+  'xe-tank': { name: 'Xe Tăng Đấu Trường', desc: 'Gamepad: lái xe tăng, bắn hạ đối thủ, núp sau vật chắn!', rounds: 1, cat: 'versus' },
+  'dat-bom': { name: 'Đặt Bom', desc: 'Gamepad: đặt bom phá tường gỗ, né vụ nổ chữ thập!', rounds: 1, cat: 'versus' },
+  'ke-gia-mao': { name: 'Kẻ Giả Mạo', desc: 'Một người nhận câu hỏi giả — bàn luận và tố cáo cho đúng!', rounds: 3, cat: 'versus' },
   'chung-mot-than': { name: 'Chung Một Thân', desc: 'Hợp tác: cả đội lái chung một quả bóng, mỗi người giữ một hướng!', rounds: 1, cat: 'coop' },
   'day-hop': { name: 'Đẩy Hộp Về Đích', desc: 'Hợp tác: cùng đẩy hộp qua mê cung về ô đích!', rounds: 1, cat: 'coop' },
   'cheo-thuyen': { name: 'Chèo Thuyền', desc: 'Hợp tác: chèo thuyền theo nhịp, cả đội cùng trúng nhịp mới đi xa!', rounds: 1, cat: 'coop' },
+  'thu-thanh': { name: 'Thủ Thành', desc: 'Hợp tác: bắn hạ đàn slime, giữ pha lê nguyên vẹn đến cuối!', rounds: 1, cat: 'coop' },
+  'giai-ma-chung': { name: 'Giải Mã Chung', desc: 'Hợp tác: mỗi người giữ một phần mật mã — phối hợp bấm đúng thứ tự!', rounds: 1, cat: 'coop' },
 };
 
 // Bot behaviour per difficulty. Bots are simulated server-side from plans
@@ -177,6 +203,35 @@ const ROW_PERFECT = ROW_BEATS * ROW_FULL_STROKE; // 450 m
 const ROW_TIERS = [[90, 'vang'], [70, 'bac'], [45, 'dong']];
 // Bot press timing error (+/-ms) by difficulty for Chèo Thuyền.
 const ROW_ERR = { kho: 120, vua: 220, de: 380 };
+// Xe Tăng Đấu Trường + Thủ Thành share the gun/shell sim: shells fly
+// straight at SHELL_SPEED units/tick, firing costs a SHELL_CD_TICKS
+// (1s) cooldown, and a player hit costs 1 life + INVULN_TICKS (2s) of
+// cover. Xe Tăng cover blocks are arena rects in {x,y,w,h} top-left
+// form, kept off the spawn axes so every spawn lane starts clear.
+const TANK_MS = 75000, TANK_LIVES = 3, SHELL_SPEED = 1.2, SHELL_CD_TICKS = 4, SHELL_HIT_DIST = 1.0;
+const TANK_BLOCKS = [
+  { x: 2.2, y: -3.2, w: 2, h: 1.4 }, { x: -4.2, y: 1.8, w: 2, h: 1.4 },
+  { x: -4.2, y: -3.2, w: 2, h: 1.4 }, { x: 2.2, y: 1.8, w: 2, h: 1.4 },
+];
+// Đặt Bom: 11x9 grid of 2-unit cells over the arena; hard pillars sit
+// on odd/odd cells (classic bomber layout), soft blocks are dealt per
+// match with Math.random so tests can queue the exact layout.
+const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 11, BOM_ROWS = 9, BOM_FUSE_TICKS = 8, BOM_SOFT_P = 0.62;
+// Kẻ Giả Mạo: one secret impostor per round secretly gets the variant
+// question; catching pays every other player, escaping pays the
+// impostor (doubled in the final round).
+const IMP_ANSWER_MS = 30000, IMP_DISCUSS_MS = 45000, IMP_VOTE_MS = 20000, IMP_REVEAL_MS = 9000;
+// Thủ Thành: the crystal's remaining HP decides the tier on survival.
+const DEF_MS = 60000, DEF_CRYSTAL_HP = 10;
+const DEF_TIERS = [[7, 'vang'], [4, 'bac'], [1, 'dong']];
+// Giải Mã Chung: levels escalate (longer sequences); the team shares
+// DECODE_HEARTS hearts for the whole game. Tiers by levels completed.
+const DECODE_MS = 75000, DECODE_HEARTS = 3;
+const DECODE_TIERS = [[5, 'vang'], [4, 'bac'], [3, 'dong']];
+const DECODE_SYMBOLS = [
+  { name: 'ĐỎ', color: '#FF4757' }, { name: 'XANH', color: '#3FA9F5' },
+  { name: 'VÀNG', color: '#FFC93D' }, { name: 'HỒNG', color: '#F77FB0' },
+];
 
 // ---------------------------------------------------------------------------
 // Small utilities
@@ -358,6 +413,11 @@ function createGame(room, gameId) {
     teamResult: null, owners: null, shared: null, star: null, starTick: 0, hearts: 0, checks: 0, sharedInvuln: 0,
     crate: null, goal: null, walls: null, layout: 0, deliveries: 0,
     rowStart: 0, distance: 0, hits: {}, splash: {}, stroked: {}, beatDone: 0,
+    shells: [], shellSeq: 0, facing: {}, fireCd: {},
+    votes: {}, imp: null, usedPairs: [], chatLog: [],
+    hardCells: [], softCells: [], bombs: [], bombSeq: 0, blasts: [],
+    slimes: [], slimeSeq: 0, crystal: null, kills: 0,
+    level: 0, levelsDone: 0, stepIdx: 0, botPressAt: 0, decodeAt: 0,
   };
   room.players.forEach((p) => { game.points[p.seat] = 0; game.streaks[p.seat] = 0; });
   if (gameId === 'do-vui') game.order = shuffle(QUIZ_BANK.map((_, i) => i)).slice(0, meta.rounds);
@@ -413,6 +473,61 @@ const NEGOT_LINES = [
   'Cướp là tui không nể đâu nha.',
   'Thương lượng đàng hoàng nè, chia nhé?',
 ];
+// Kẻ Giả Mạo bot discussion lines: deliberately generic — a bot must
+// never reference either question (it only knows its own, and saying
+// it out loud would break the secrecy rule for everyone).
+const IMP_CHAT_LINES = [
+  'Hmm… câu này ai cũng biết mà nhỉ?',
+  'Tôi trả lời chắc chắn 100% luôn.',
+  'Có người đang giấu đấy, nhìn là biết.',
+  'Mọi người bình tĩnh, tôi vô tội!',
+  'Câu này dễ ợt, khỏi bàn.',
+  'Ai cười tủm tỉm nãy giờ ấy nhỉ?',
+  'Tôi nghi người im lặng nhất phòng này.',
+  'Thề luôn, đáp án của tôi là thật.',
+];
+// Round setup must not erase a gamepad state the player is physically
+// still holding: both clients send pad state only when it changes, so
+// wiping g.pad at spawn would freeze anyone who grabbed a direction (or
+// held A/B) during the 3-2-1 countdown until they happened to re-touch.
+// Keep the held state, pruned to the seats currently at the table (a
+// seat that left between rounds must not resurrect), and clear padPrev
+// so a held button reads as a fresh rising edge on the round's first
+// tick (a held A fires at once, a held B dashes at once).
+function preservePads(room) {
+  const g = room.game;
+  const kept = {};
+  room.players.forEach((p) => { if (g.pad && g.pad[p.seat]) kept[p.seat] = g.pad[p.seat]; });
+  g.pad = kept;
+  g.padPrev = {};
+}
+// Shared spawn for the walled tick-arena games: blobs on the ring at
+// ARENA_R0*0.55 with fresh cooldown / invulnerability maps.
+function spawnArenaBlobs(room, lives) {
+  const g = room.game;
+  g.blobs = {}; g.elimOrder = []; g.elimTick = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
+  room.players.forEach((p, i) => {
+    const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
+    g.blobs[p.seat] = {
+      x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * 100) / 100,
+      y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * 100) / 100,
+      lives, alive: true,
+    };
+    g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0; g.invuln[p.seat] = 0;
+  });
+}
+// Guns for Xe Tăng / Thủ Thành: facing starts aimed at the centre
+// (the last-movement direction from then on), fire cooldowns clear.
+function initGuns(room) {
+  const g = room.game;
+  g.shells = []; g.shellSeq = 0; g.facing = {}; g.fireCd = {};
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat];
+    const d = Math.hypot(b.x, b.y) || 1;
+    g.facing[p.seat] = { x: Math.round(-b.x / d * 100) / 100, y: Math.round(-b.y / d * 100) / 100 };
+    g.fireCd[p.seat] = 0;
+  });
+}
 function beginRound(room) {
   const g = room.game; const t = now();
   g.inputs = {}; g.botPlan = {}; g.reveal = null;
@@ -463,7 +578,7 @@ function beginRound(room) {
   } else if (g.id === 'day-ra') {
     g.phase = 'arena';
     g.arenaR = ARENA_R0; g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + ARENA_MS;
-    g.blobs = {}; g.elimOrder = []; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; g.pad = {}; g.padPrev = {};
+    g.blobs = {}; g.elimOrder = []; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room);
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
@@ -477,7 +592,7 @@ function beginRound(room) {
     g.phase = 'dodge';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + DODGE_MS;
     g.blobs = {}; g.balls = []; g.spawnIn = 6; g.elimOrder = []; g.elimTick = {};
-    g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; g.pad = {}; g.padPrev = {}; g.invuln = {};
+    g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
@@ -490,7 +605,7 @@ function beginRound(room) {
   } else if (g.id === 'keo-co') {
     g.phase = 'pull';
     g.endsAt = t + TUG_MS; g.tickCount = 0; g.nextTickAt = t + TUG_TICK_MS;
-    g.presses = {}; g.knot = 0; g.winnerTeam = null; g.pad = {}; g.padPrev = {};
+    g.presses = {}; g.knot = 0; g.winnerTeam = null; preservePads(room);
     const teamA = [], teamB = [];
     room.players.forEach((p) => {
       g.presses[p.seat] = 0;
@@ -514,7 +629,7 @@ function beginRound(room) {
   } else if (g.id === 'cuop-sao') {
     g.phase = 'steal';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + STEAL_MS;
-    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; g.pad = {}; g.padPrev = {};
+    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room);
     g.stars = []; g.starSeq = 0; g.goldIn = GOLD_EVERY_TICKS; g.banked = {};
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
@@ -529,7 +644,7 @@ function beginRound(room) {
   } else if (g.id === 'giu-vuong-mien') {
     g.phase = 'crown';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + CROWN_MS;
-    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; g.pad = {}; g.padPrev = {};
+    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room);
     g.hold = {}; g.crown = { holder: null, x: 0, y: 0, lockTicks: 0 };
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
@@ -543,7 +658,7 @@ function beginRound(room) {
   } else if (g.id === 'son-san') {
     g.phase = 'splat';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + SPLAT_MS;
-    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.paintCd = {}; g.pad = {}; g.padPrev = {};
+    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.paintCd = {}; preservePads(room);
     g.grid = new Array(SPLAT_N * SPLAT_N).fill(0);
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
@@ -577,12 +692,12 @@ function beginRound(room) {
     ['u', 'r', 'd', 'l'].forEach((d, i) => { g.owners[d] = seats[i % seats.length]; });
     g.shared = { x: 0, y: 0 };
     g.hearts = SHARED_HEARTS; g.checks = 0; g.sharedInvuln = 0;
-    g.balls = []; g.spawnIn = 10; g.pad = {}; g.padPrev = {}; g.botIntent = {};
+    g.balls = []; g.spawnIn = 10; preservePads(room); g.botIntent = {};
     spawnSharedStar(room);
   } else if (g.id === 'day-hop') {
     g.phase = 'box';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + BOX_MS;
-    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.pad = {}; g.padPrev = {};
+    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; preservePads(room);
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
@@ -599,6 +714,60 @@ function beginRound(room) {
     g.rowStart = t; g.endsAt = t + ROW_BEATS * ROW_BEAT_MS;
     g.distance = 0; g.hits = {}; g.splash = {}; g.stroked = {}; g.beatDone = 0;
     room.players.forEach((p) => { g.hits[p.seat] = 0; g.splash[p.seat] = 0; });
+  } else if (g.id === 'xe-tank') {
+    g.phase = 'tank';
+    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + TANK_MS;
+    spawnArenaBlobs(room, TANK_LIVES);
+    initGuns(room);
+  } else if (g.id === 'dat-bom') {
+    g.phase = 'bomber';
+    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + BOM_MS;
+    g.blobs = {}; g.elimOrder = []; g.elimTick = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
+    // Spawns are the four corner cells, dealt in seat order.
+    const corners = [[0, 0], [BOM_COLS - 1, BOM_ROWS - 1], [BOM_COLS - 1, 0], [0, BOM_ROWS - 1]];
+    room.players.forEach((p, i) => {
+      const c = corners[i % corners.length];
+      g.blobs[p.seat] = { x: bomCellX(c[0]), y: bomCellY(c[1]), lives: BOM_LIVES, alive: true };
+      g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0; g.invuln[p.seat] = 0;
+    });
+    g.hardCells = []; g.softCells = []; g.bombs = []; g.bombSeq = 0; g.blasts = [];
+    for (let r = 0; r < BOM_ROWS; r++) {
+      for (let c = 0; c < BOM_COLS; c++) {
+        if (bomIsHard(c, r)) { g.hardCells.push([c, r]); continue; }
+        if (bomIsSafe(c, r)) continue;
+        if (Math.random() < BOM_SOFT_P) g.softCells.push([c, r]);
+      }
+    }
+  } else if (g.id === 'ke-gia-mao') {
+    // Secrecy starts here: the impostor seat and the question pair live
+    // only in g.imp on the server; views hand each player their OWN
+    // question and the host nothing but status (see gameView).
+    const impostor = pick(room.players);
+    const avail = IMPOSTOR_BANK.map((_, i) => i).filter((i) => (g.usedPairs || []).indexOf(i) < 0);
+    const pairIdx = avail.length ? pick(avail) : randInt(0, IMPOSTOR_BANK.length - 1);
+    g.usedPairs.push(pairIdx);
+    g.imp = { seat: impostor.seat, pair: pairIdx };
+    g.votes = {}; g.chatLog = [];
+    g.phase = 'answer'; g.endsAt = t + IMP_ANSWER_MS;
+    bots.forEach((p) => {
+      g.botPlan[p.seat] = {
+        answerAt: t + Math.round(rand(3000, 20000)), answer: randInt(0, 3),
+        chatAt: t + IMP_ANSWER_MS + Math.round(rand(4000, 30000)), chatLine: pick(IMP_CHAT_LINES), chatted: false,
+        voteAt: 0, vote: null,
+      };
+    });
+  } else if (g.id === 'thu-thanh') {
+    g.phase = 'defend';
+    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + DEF_MS;
+    spawnArenaBlobs(room, 0);
+    initGuns(room);
+    g.crystal = { hp: DEF_CRYSTAL_HP };
+    g.slimes = []; g.slimeSeq = 0; g.kills = 0; g.spawnIn = 4;
+  } else if (g.id === 'giai-ma-chung') {
+    g.phase = 'decode';
+    g.endsAt = t + DECODE_MS;
+    g.hearts = DECODE_HEARTS; g.level = 0; g.levelsDone = 0;
+    startDecodeLevel(room, t);
   }
 }
 
@@ -634,6 +803,11 @@ function step(room) {
   if (g.id === 'chung-mot-than') return stepShared(room, t);
   if (g.id === 'day-hop') return stepBox(room, t);
   if (g.id === 'cheo-thuyen') return stepRow(room, t);
+  if (g.id === 'xe-tank') return stepTank(room, t);
+  if (g.id === 'dat-bom') return stepBomber(room, t);
+  if (g.id === 'ke-gia-mao') return stepImpostor(room, t);
+  if (g.id === 'thu-thanh') return stepDefend(room, t);
+  if (g.id === 'giai-ma-chung') return stepDecode(room, t);
   return false;
 }
 function humansAllIn(room, has) {
@@ -1948,6 +2122,570 @@ function moodOf(room, p) {
   if (n > 2 && rank === n - 1) return 'buon';
   return 'cuoi';
 }
+// ---------------------------------------------------------------------------
+// Wave 3: Xe Tăng / Đặt Bom / Kẻ Giả Mạo / Thủ Thành / Giải Mã Chung
+// ---------------------------------------------------------------------------
+// Shared movement for the walled tick games: dash handling matches
+// applyMoves, then either a slideCircle pass against wall rects or the
+// plain radial wall clamp.
+function moveBlobsWalled(room, moves, walls, clampM) {
+  const g = room.game;
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat]; const mv = moves[p.seat];
+    if (!b || !b.alive || !mv) return;
+    if (g.dashCd[p.seat] > 0) g.dashCd[p.seat] -= 1;
+    let stepMul = 1;
+    if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { stepMul = 3; g.dashCd[p.seat] = DASH_CD_TICKS; }
+    if (walls) {
+      slideCircle(b, mv.x * MOVE_STEP * stepMul, mv.y * MOVE_STEP * stepMul, 0.8, walls, clampM);
+    } else {
+      b.x += mv.x * MOVE_STEP * stepMul; b.y += mv.y * MOVE_STEP * stepMul;
+      const d = Math.hypot(b.x, b.y); const maxR = ARENA_R0 - 0.8;
+      if (d > maxR) { b.x *= maxR / d; b.y *= maxR / d; }
+    }
+  });
+}
+function damageBlob(room, seat) {
+  const g = room.game;
+  const b = g.blobs[seat];
+  if (!b || !b.alive) return;
+  b.lives -= 1;
+  g.invuln[seat] = INVULN_TICKS;
+  if (b.lives <= 0) { b.alive = false; g.elimOrder.push(seat); g.elimTick[seat] = g.tickCount; }
+}
+// Guns: facing follows the last movement direction; the A rising edge
+// (collectMoves' burst) fires one shell per SHELL_CD_TICKS.
+function processGuns(room, moves) {
+  const g = room.game;
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat]; const mv = moves[p.seat];
+    if (!b || !b.alive) return;
+    if (g.fireCd[p.seat] > 0) g.fireCd[p.seat] -= 1;
+    if (!mv) return;
+    if (mv.x || mv.y) {
+      const dd = Math.hypot(mv.x, mv.y);
+      g.facing[p.seat] = { x: mv.x / dd, y: mv.y / dd };
+    }
+    if (mv.burst && g.fireCd[p.seat] <= 0) {
+      const f = g.facing[p.seat] || { x: 1, y: 0 };
+      g.shellSeq += 1;
+      g.shells.push({
+        id: g.shellSeq, seat: p.seat,
+        x: Math.round((b.x + f.x * 1.1) * 100) / 100, y: Math.round((b.y + f.y * 1.1) * 100) / 100,
+        vx: f.x * SHELL_SPEED, vy: f.y * SHELL_SPEED,
+      });
+      g.fireCd[p.seat] = SHELL_CD_TICKS;
+    }
+  });
+}
+// Shells fly straight; they die on cover walls and out of bounds, and
+// hit the first valid target: enemy players (never the owner, never an
+// invulnerable one — the shell passes through those) and/or slimes.
+function stepShells(room, opts) {
+  const g = room.game;
+  const keep = [];
+  for (const s of g.shells) {
+    s.x += s.vx; s.y += s.vy;
+    let dead = Math.hypot(s.x, s.y) > 11.5;
+    if (!dead && opts.walls) {
+      dead = opts.walls.some((w) => s.x >= w.x - 0.1 && s.x <= w.x + w.w + 0.1 && s.y >= w.y - 0.1 && s.y <= w.y + w.h + 0.1);
+    }
+    if (!dead && opts.hitPlayers) {
+      for (const q of room.players) {
+        if (q.seat === s.seat) continue;
+        const tb = g.blobs[q.seat];
+        if (tb && tb.alive && (g.invuln[q.seat] || 0) <= 0 && Math.hypot(tb.x - s.x, tb.y - s.y) <= SHELL_HIT_DIST) {
+          damageBlob(room, q.seat); dead = true; break;
+        }
+      }
+    }
+    if (!dead && opts.hitSlimes) {
+      for (const sl of g.slimes) {
+        if (Math.hypot(sl.x - s.x, sl.y - s.y) <= sl.r + 0.35) {
+          sl.hp -= 1;
+          if (sl.hp <= 0) { sl.dead = true; g.kills += 1; }
+          dead = true; break;
+        }
+      }
+    }
+    if (!dead) keep.push(s);
+  }
+  g.shells = keep;
+}
+function tickInvuln(room) {
+  const g = room.game;
+  room.players.forEach((p) => { if ((g.invuln[p.seat] || 0) > 0) g.invuln[p.seat] -= 1; });
+}
+
+// --- Game 17: Xe Tăng Đấu Trường (tick arena, cover blocks) ---------------
+// Tanks trade shells across a walled arena with four cover blocks
+// (slideCircle collisions; shells die on the blocks). Placement is the
+// shared arena rule (finishArena): alive first by lives, then the
+// elimination order reversed.
+function stepTank(room, t) {
+  const g = room.game;
+  if (g.phase !== 'tank') return false;
+  if (t >= g.endsAt) { finishArena(room); return true; }
+  if (t >= g.nextTickAt) {
+    simulateTankTick(room);
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    return true;
+  }
+  return false;
+}
+function simulateTankTick(room) {
+  const g = room.game;
+  g.tickCount += 1;
+  const moves = collectMoves(room, botBrainTank);
+  moveBlobsWalled(room, moves, TANK_BLOCKS, 9.2);
+  separateBlobs(room);
+  processGuns(room, moves);
+  stepShells(room, { walls: TANK_BLOCKS, hitPlayers: true });
+  tickInvuln(room);
+  snapshotPad(room);
+  const aliveCount = room.players.filter((p) => g.blobs[p.seat] && g.blobs[p.seat].alive).length;
+  if (aliveCount <= 1) finishArena(room);
+}
+function shellPathBlocked(x1, y1, x2, y2) {
+  for (let i = 1; i < 10; i++) {
+    const x = x1 + (x2 - x1) * i / 10, y = y1 + (y2 - y1) * i / 10;
+    if (TANK_BLOCKS.some((w) => x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h)) return true;
+  }
+  return false;
+}
+function botBrainTank(room, p) {
+  const g = room.game;
+  const cached = cachedIntent(room, p);
+  if (cached) return cached;
+  const me = g.blobs[p.seat];
+  let tx = 0, ty = 0, burst = false, dash = false;
+  // Sidestep a shell that is closing in on me.
+  let dodge = null;
+  (g.shells || []).forEach((s) => {
+    if (s.seat === p.seat) return;
+    const rx = me.x - s.x, ry = me.y - s.y;
+    const d = Math.hypot(rx, ry);
+    if (d < 4 && rx * s.vx + ry * s.vy > 0 && (!dodge || d < dodge.d)) {
+      dodge = { x: Math.sign(-s.vy) || 1, y: Math.sign(s.vx) || 0, d };
+    }
+  });
+  if (dodge) { tx = dodge.x; ty = dodge.y; dash = p.difficulty === 'kho'; }
+  else {
+    const near = nearestFoe(room, p);
+    if (near.foe) {
+      tx = near.foe.x - me.x; ty = near.foe.y - me.y;
+      const f = g.facing[p.seat] || { x: 1, y: 0 };
+      const dd = Math.hypot(tx, ty) || 1;
+      const aligned = (tx / dd) * f.x + (ty / dd) * f.y > 0.9;
+      if (aligned && !shellPathBlocked(me.x, me.y, near.foe.x, near.foe.y)) burst = true;
+      if (near.foeD < 2.2) { tx = -tx; ty = -ty; } // keep some distance
+    }
+  }
+  const intent = Object.assign(dirIntent(tx, ty), { burst, dash });
+  g.botIntent[p.seat] = intent;
+  return intent;
+}
+
+// --- Game 18: Đặt Bom (tick, grid arena, chain reactions) -----------------
+function bomCellX(c) { return -10 + c * 2; }
+function bomCellY(r) { return -8 + r * 2; }
+function bomColOf(x) { return Math.max(0, Math.min(BOM_COLS - 1, Math.floor((x + 11) / 2))); }
+function bomRowOf(y) { return Math.max(0, Math.min(BOM_ROWS - 1, Math.floor((y + 9) / 2))); }
+function bomIsHard(c, r) { return c % 2 === 1 && r % 2 === 1; }
+function bomIsSafe(c, r) {
+  return (c <= 1 && r <= 1) || (c >= BOM_COLS - 2 && r >= BOM_ROWS - 2)
+    || (c >= BOM_COLS - 2 && r <= 1) || (c <= 1 && r >= BOM_ROWS - 2);
+}
+function bomCellRect(c, r) { return { x: bomCellX(c) - 1, y: bomCellY(r) - 1, w: 2, h: 2 }; }
+function blastCells(room, bomb) {
+  const g = room.game;
+  const hard = new Set(g.hardCells.map(([c, r]) => c + ',' + r));
+  const soft = new Set(g.softCells.map(([c, r]) => c + ',' + r));
+  const cells = [[bomb.col, bomb.row]];
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (const [dc, dr] of dirs) {
+    for (let k = 1; k <= 2; k++) {
+      const c = bomb.col + dc * k, r = bomb.row + dr * k;
+      if (c < 0 || c >= BOM_COLS || r < 0 || r >= BOM_ROWS) break;
+      const key = c + ',' + r;
+      if (hard.has(key)) break;
+      cells.push([c, r]);
+      if (soft.has(key)) break;
+    }
+  }
+  return cells;
+}
+function detonateBombs(room, initial) {
+  const g = room.game;
+  const queue = initial.slice();
+  const done = new Set();
+  const allCells = [];
+  const cellSet = new Set();
+  while (queue.length) {
+    const bomb = queue.shift();
+    if (done.has(bomb.id)) continue;
+    done.add(bomb.id);
+    const cells = blastCells(room, bomb);
+    cells.forEach(([c, r]) => {
+      const key = c + ',' + r;
+      if (!cellSet.has(key)) { cellSet.add(key); allCells.push([c, r]); }
+    });
+    // Chain reaction: any other live bomb caught in the blast goes off
+    // in the same tick, with its own full blast cross.
+    g.bombs.forEach((b) => {
+      if (!done.has(b.id) && cells.some(([c, r]) => c === b.col && r === b.row)) queue.push(b);
+    });
+  }
+  g.softCells = g.softCells.filter(([c, r]) => !cellSet.has(c + ',' + r));
+  g.bombs = g.bombs.filter((b) => !done.has(b.id));
+  g.blasts.push({ cells: allCells, until: now() + 650 });
+  if (g.blasts.length > 3) g.blasts = g.blasts.slice(-3);
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat];
+    if (!b || !b.alive || (g.invuln[p.seat] || 0) > 0) return;
+    if (cellSet.has(bomColOf(b.x) + ',' + bomRowOf(b.y))) damageBlob(room, p.seat);
+  });
+}
+function bomberWalls(room) {
+  const g = room.game;
+  const walls = [];
+  g.hardCells.forEach(([c, r]) => walls.push(bomCellRect(c, r)));
+  g.softCells.forEach(([c, r]) => walls.push(bomCellRect(c, r)));
+  g.bombs.forEach((b) => { if (b.solid) walls.push({ x: b.x - 0.95, y: b.y - 0.95, w: 1.9, h: 1.9 }); });
+  return walls;
+}
+function stepBomber(room, t) {
+  const g = room.game;
+  if (g.phase !== 'bomber') return false;
+  if (t >= g.endsAt) { finishArena(room); return true; }
+  if (t >= g.nextTickAt) {
+    simulateBomberTick(room);
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    return true;
+  }
+  return false;
+}
+function simulateBomberTick(room) {
+  const g = room.game;
+  g.tickCount += 1;
+  // A bomb turns solid only once nobody stands on its cell, so the
+  // planter can always walk off their own fresh bomb.
+  g.bombs.forEach((b) => {
+    if (b.solid) return;
+    const occupied = room.players.some((p) => {
+      const bb = g.blobs[p.seat];
+      return bb && bb.alive && bomColOf(bb.x) === b.col && bomRowOf(bb.y) === b.row;
+    });
+    if (!occupied) b.solid = true;
+  });
+  const moves = collectMoves(room, botBrainBomber);
+  moveBlobsWalled(room, moves, bomberWalls(room), 10.2);
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat];
+    if (b) b.y = Math.max(-8.2, Math.min(8.2, b.y)); // grid is 11 wide but 9 tall
+  });
+  separateBlobs(room);
+  // A places a bomb on the current cell; one live bomb per player.
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat]; const mv = moves[p.seat];
+    if (!b || !b.alive || !mv || !mv.burst) return;
+    if (g.bombs.some((x) => x.seat === p.seat)) return;
+    const col = bomColOf(b.x), row = bomRowOf(b.y);
+    if (g.bombs.some((x) => x.col === col && x.row === row)) return;
+    g.bombSeq += 1;
+    g.bombs.push({ id: g.bombSeq, seat: p.seat, col, row, x: bomCellX(col), y: bomCellY(row), boomTick: g.tickCount + BOM_FUSE_TICKS, solid: false });
+  });
+  const due = g.bombs.filter((b) => g.tickCount >= b.boomTick);
+  if (due.length) detonateBombs(room, due);
+  tickInvuln(room);
+  snapshotPad(room);
+  const aliveCount = room.players.filter((p) => g.blobs[p.seat] && g.blobs[p.seat].alive).length;
+  if (aliveCount <= 1) finishArena(room);
+}
+function botBrainBomber(room, p) {
+  const g = room.game;
+  const cached = cachedIntent(room, p);
+  if (cached) return cached;
+  const me = g.blobs[p.seat];
+  const danger = new Set();
+  g.bombs.forEach((b) => { blastCells(room, b).forEach(([c, r]) => danger.add(c + ',' + r)); });
+  const myBomb = g.bombs.find((b) => b.seat === p.seat);
+  let tx = 0, ty = 0, burst = false;
+  if (myBomb || danger.has(bomColOf(me.x) + ',' + bomRowOf(me.y))) {
+    // Retreat to the nearest cell outside every blast cross.
+    let best = null, bd = 1e9;
+    for (let r = 0; r < BOM_ROWS; r++) {
+      for (let c = 0; c < BOM_COLS; c++) {
+        if (bomIsHard(c, r) || danger.has(c + ',' + r)) continue;
+        if (g.softCells.some(([sc, sr]) => sc === c && sr === r)) continue;
+        const d = Math.hypot(bomCellX(c) - me.x, bomCellY(r) - me.y);
+        if (d < bd) { bd = d; best = { x: bomCellX(c), y: bomCellY(r) }; }
+      }
+    }
+    if (best) { tx = best.x - me.x; ty = best.y - me.y; }
+  } else {
+    // Hunt: nearest soft block or enemy; plant when adjacent-ish.
+    let target = null, td = 1e9;
+    g.softCells.forEach(([c, r]) => {
+      const d = Math.hypot(bomCellX(c) - me.x, bomCellY(r) - me.y);
+      if (d < td) { td = d; target = { x: bomCellX(c), y: bomCellY(r) }; }
+    });
+    const near = nearestFoe(room, p);
+    if (near.foe && near.foeD < td) { target = { x: near.foe.x, y: near.foe.y }; td = near.foeD; }
+    if (target) {
+      tx = target.x - me.x; ty = target.y - me.y;
+      if (td <= 2.6) burst = true;
+    }
+  }
+  const intent = Object.assign(dirIntent(tx, ty), { burst });
+  g.botIntent[p.seat] = intent;
+  return intent;
+}
+
+// --- Game 19: Kẻ Giả Mạo (rounds-based social deduction) ------------------
+// Phases answer -> discuss -> vote -> reveal per round. Scoring: a
+// strict plurality accusation against the impostor catches them
+// (everyone else +150); any tie or a wrong plurality lets the impostor
+// escape (+300, doubled in the final round).
+function stepImpostor(room, t) {
+  const g = room.game;
+  if (g.phase === 'answer') {
+    room.players.forEach((p) => {
+      if (p.type !== 'bot') return;
+      const plan = g.botPlan[p.seat];
+      if (plan && plan.answerAt <= t && !g.inputs[p.seat]) g.inputs[p.seat] = { choice: plan.answer, at: plan.answerAt };
+    });
+    if (t >= g.endsAt || humansAllIn(room, (s) => !!g.inputs[s])) {
+      g.phase = 'discuss'; g.endsAt = t + IMP_DISCUSS_MS;
+      return true;
+    }
+    return false;
+  }
+  if (g.phase === 'discuss') {
+    room.players.forEach((p) => {
+      if (p.type !== 'bot') return;
+      const plan = g.botPlan[p.seat];
+      if (plan && !plan.chatted && plan.chatAt <= t) {
+        plan.chatted = true;
+        g.chatLog.push({ seat: p.seat, text: plan.chatLine, at: t });
+        if (g.chatLog.length > 30) g.chatLog = g.chatLog.slice(-30);
+      }
+    });
+    if (t >= g.endsAt) {
+      g.phase = 'vote'; g.endsAt = t + IMP_VOTE_MS;
+      room.players.forEach((p) => {
+        if (p.type !== 'bot') return;
+        const others = room.players.filter((q) => q.seat !== p.seat).map((q) => q.seat);
+        g.botPlan[p.seat].voteAt = t + Math.round(rand(2000, 14000));
+        g.botPlan[p.seat].vote = pick(others);
+      });
+      return true;
+    }
+    return false;
+  }
+  if (g.phase === 'vote') {
+    room.players.forEach((p) => {
+      if (p.type !== 'bot') return;
+      const plan = g.botPlan[p.seat];
+      if (plan && plan.voteAt && plan.voteAt <= t && g.votes[p.seat] == null) g.votes[p.seat] = plan.vote;
+    });
+    if (t >= g.endsAt || humansAllIn(room, (s) => g.votes[s] != null)) { resolveImpostor(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'reveal') {
+    if (t >= g.endsAt) { nextRoundOrEnd(room); return true; }
+  }
+  return false;
+}
+function resolveImpostor(room, t) {
+  const g = room.game;
+  const counts = {};
+  Object.keys(g.votes).forEach((s) => { counts[g.votes[s]] = (counts[g.votes[s]] || 0) + 1; });
+  let topSeat = null, topCount = 0, tie = false;
+  Object.keys(counts).forEach((s) => {
+    const c = counts[s];
+    if (c > topCount) { topCount = c; topSeat = +s; tie = false; }
+    else if (c === topCount) tie = true;
+  });
+  const caught = !tie && topCount > 0 && topSeat === g.imp.seat;
+  const pts = {};
+  room.players.forEach((p) => {
+    let v = 0;
+    if (caught) v = p.seat === g.imp.seat ? 0 : 150;
+    else if (p.seat === g.imp.seat) v = isFinalRound(g) ? 600 : 300;
+    pts[p.seat] = v;
+    g.points[p.seat] = (g.points[p.seat] || 0) + v;
+  });
+  const answers = {};
+  room.players.forEach((p) => { answers[p.seat] = g.inputs[p.seat] ? g.inputs[p.seat].choice : null; });
+  g.reveal = { impostor: g.imp.seat, pair: g.imp.pair, caught, votes: Object.assign({}, g.votes), answers, points: pts };
+  g.lastRound = { round: g.round, entries: room.players.map((p) => ({ seat: p.seat, points: pts[p.seat] })) };
+  finishTimedRound(room, 'reveal', t + IMP_REVEAL_MS);
+}
+
+// --- Game 20: Thủ Thành (COOP tick arena defence) --------------------------
+// Slimes spawn at the rim and march straight at the crystal; players
+// shoot them with the shared shell sim. Surviving DEF_MS pays the tier
+// of the crystal's remaining HP; losing the crystal ends the game at
+// once with the participation tier. Team score = slimes destroyed.
+function stepDefend(room, t) {
+  const g = room.game;
+  if (g.phase !== 'defend') return false;
+  if (t >= g.endsAt) { finishCoop(room, g.kills, coopTier(g.crystal.hp, DEF_TIERS), 'slime bị hạ'); return true; }
+  if (t >= g.nextTickAt) {
+    simulateDefendTick(room);
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    return true;
+  }
+  return false;
+}
+function simulateDefendTick(room) {
+  const g = room.game;
+  g.tickCount += 1;
+  const moves = collectMoves(room, botBrainDefend);
+  moveBlobsWalled(room, moves, null, 0);
+  separateBlobs(room);
+  processGuns(room, moves);
+  stepShells(room, { hitSlimes: true });
+  if (g.slimes.some((sl) => sl.dead)) g.slimes = g.slimes.filter((sl) => !sl.dead);
+  // Waves: spawn interval ramps 12 -> 5 ticks across the minute;
+  // bigger, slower 3-HP slimes join from the 20 second mark.
+  g.spawnIn -= 1;
+  if (g.spawnIn <= 0) {
+    const ang = rand(0, Math.PI * 2);
+    const big = g.tickCount >= 80 && Math.random() < 0.3;
+    g.slimeSeq += 1;
+    g.slimes.push({
+      id: g.slimeSeq,
+      x: Math.round(Math.cos(ang) * 10.6 * 100) / 100, y: Math.round(Math.sin(ang) * 10.6 * 100) / 100,
+      hp: big ? 3 : 1, maxHp: big ? 3 : 1, r: big ? 1.05 : 0.7, speed: big ? 0.16 : 0.26, big,
+    });
+    g.spawnIn = Math.max(5, Math.round(12 - 7 * (g.tickCount / (DEF_MS / TICK_MS))));
+  }
+  let crystalDown = false;
+  g.slimes.forEach((sl) => {
+    const d = Math.hypot(sl.x, sl.y) || 1;
+    sl.x -= (sl.x / d) * sl.speed; sl.y -= (sl.y / d) * sl.speed;
+    if (Math.hypot(sl.x, sl.y) <= 1.35) {
+      sl.dead = true;
+      g.crystal.hp -= 1;
+      if (g.crystal.hp <= 0) crystalDown = true;
+    }
+  });
+  if (g.slimes.some((sl) => sl.dead)) g.slimes = g.slimes.filter((sl) => !sl.dead);
+  snapshotPad(room);
+  if (crystalDown) finishCoop(room, g.kills, 'none', 'slime bị hạ');
+}
+function botBrainDefend(room, p) {
+  const g = room.game;
+  const cached = cachedIntent(room, p);
+  if (cached) return cached;
+  const me = g.blobs[p.seat];
+  let sl = null, sd = 1e9;
+  (g.slimes || []).forEach((s) => {
+    const d = Math.hypot(s.x - me.x, s.y - me.y);
+    if (d < sd) { sd = d; sl = s; }
+  });
+  let tx = 0, ty = 0, burst = false;
+  if (sl) {
+    tx = sl.x - me.x; ty = sl.y - me.y;
+    const f = g.facing[p.seat] || { x: 1, y: 0 };
+    const dd = Math.hypot(tx, ty) || 1;
+    if ((tx / dd) * f.x + (ty / dd) * f.y > 0.92 && sd < 9.5) burst = true;
+    if (sd < 2.4) { tx = -tx; ty = -ty; }
+  } else { tx = -me.x; ty = -me.y; }
+  const intent = Object.assign(dirIntent(tx, ty), { burst });
+  g.botIntent[p.seat] = intent;
+  return intent;
+}
+
+// --- Game 21: Giải Mã Chung (COOP phase puzzle) ----------------------------
+// A level deals a secret step sequence round-robin across the seats;
+// only the owner's phone lists their steps. A press is right iff the
+// presser owns the current step AND the symbol matches; anything else
+// costs the team a heart. Bots press their own step correctly ~800ms
+// after it becomes current and never press otherwise.
+function startDecodeLevel(room, t) {
+  const g = room.game;
+  g.level += 1;
+  const len = Math.min(3 + g.level - 1, 7);
+  const seats = room.players.map((p) => p.seat).sort((x, y) => x - y);
+  const startIdx = randInt(0, seats.length - 1);
+  g.seq = [];
+  for (let i = 0; i < len; i++) g.seq.push({ seat: seats[(startIdx + i) % seats.length], sym: randInt(0, 3) });
+  g.stepIdx = 0;
+  decodeArmBot(room, t);
+}
+function decodeArmBot(room, t) {
+  const g = room.game;
+  g.botPressAt = 0;
+  const step = g.seq && g.seq[g.stepIdx];
+  if (!step) return;
+  const p = playerAt(room, step.seat);
+  if (p && p.type === 'bot') g.botPressAt = t + 800;
+}
+function decodePress(room, seat, sym, t) {
+  const g = room.game;
+  if (g.phase !== 'decode') return;
+  const step = g.seq && g.seq[g.stepIdx];
+  if (!step) return;
+  if (seat === step.seat && sym === step.sym) {
+    g.stepIdx += 1;
+    if (g.stepIdx >= g.seq.length) {
+      g.levelsDone = g.level;
+      g.phase = 'levelup';
+      g.decodeAt = t + 1500;
+    } else decodeArmBot(room, t);
+  } else {
+    g.hearts -= 1;
+    if (g.hearts <= 0) finishCoop(room, g.levelsDone, coopTier(g.levelsDone, DECODE_TIERS), 'màn đã qua');
+  }
+}
+function stepDecode(room, t) {
+  const g = room.game;
+  if (g.phase === 'decode') {
+    if (t >= g.endsAt) { finishCoop(room, g.levelsDone, coopTier(g.levelsDone, DECODE_TIERS), 'màn đã qua'); return true; }
+    const step = g.seq && g.seq[g.stepIdx];
+    if (step && g.botPressAt && t >= g.botPressAt) {
+      g.botPressAt = 0;
+      decodePress(room, step.seat, step.sym, t);
+      return true;
+    }
+    return false;
+  }
+  if (g.phase === 'levelup') {
+    if (t >= g.endsAt) { finishCoop(room, g.levelsDone, coopTier(g.levelsDone, DECODE_TIERS), 'màn đã qua'); return true; }
+    if (t >= g.decodeAt) { g.phase = 'decode'; startDecodeLevel(room, t); return true; }
+  }
+  return false;
+}
+
+function blobsView(room) {
+  const g = room.game;
+  const out = {};
+  room.players.forEach((p) => {
+    const b = g.blobs ? g.blobs[p.seat] : null;
+    if (b) out[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
+  });
+  return out;
+}
+function facingView(room) {
+  const g = room.game;
+  const out = {};
+  room.players.forEach((p) => {
+    const f = g.facing ? g.facing[p.seat] : null;
+    if (f) out[p.seat] = { x: Math.round(f.x * 100) / 100, y: Math.round(f.y * 100) / 100 };
+  });
+  return out;
+}
+function shellsView(room) {
+  const g = room.game;
+  return (g.shells || []).map((s) => ({ id: s.id, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100 }));
+}
+
 function gameView(room, role, seat, t) {
   const g = room.game;
   const v = {
@@ -2118,6 +2856,70 @@ function gameView(room, role, seat, t) {
     v.statuses = statuses;
     if (role === 'host' && g.phase === 'show') v.seq = g.seq;
     if (seat) { const inp = g.inputs[seat]; v.mine = inp ? { taps: inp.taps.length, status: inp.status } : { taps: 0, status: 'playing' }; }
+  } else if (g.id === 'xe-tank') {
+    v.arenaR = ARENA_R0;
+    v.blobs = blobsView(room);
+    v.facing = facingView(room);
+    v.blocks = TANK_BLOCKS;
+    v.shells = shellsView(room);
+  } else if (g.id === 'dat-bom') {
+    v.arenaR = ARENA_R0;
+    v.blobs = blobsView(room);
+    v.hard = g.hardCells;
+    v.soft = g.softCells;
+    v.bombs = (g.bombs || []).map((b) => ({ id: b.id, x: b.x, y: b.y, left: Math.max(0, (b.boomTick - g.tickCount) * TICK_MS) }));
+    v.blasts = (g.blasts || []).filter((bl) => bl.until > t).map((bl) => ({ cells: bl.cells }));
+  } else if (g.id === 'ke-gia-mao') {
+    // SECRECY (hard rule, asserted in tests by string search): before
+    // the reveal phase NO view — host or player — may carry the other
+    // question's text or anyone's answer. A player view carries only
+    // that player's own question + the shared options; the host gets
+    // category + answered/voted status only. Chat is public by design.
+    const pair = IMPOSTOR_BANK[g.imp.pair];
+    v.category = pair.cat;
+    v.phaseDur = g.phase === 'answer' ? IMP_ANSWER_MS : g.phase === 'discuss' ? IMP_DISCUSS_MS : g.phase === 'vote' ? IMP_VOTE_MS : IMP_REVEAL_MS;
+    const answered = {}; const voted = {};
+    room.players.forEach((p) => {
+      answered[p.seat] = p.type === 'human' ? !!g.inputs[p.seat] : !!(g.botPlan[p.seat] && g.botPlan[p.seat].answerAt <= t);
+      voted[p.seat] = g.votes[p.seat] != null;
+    });
+    v.answered = answered; v.voted = voted;
+    if (g.phase === 'discuss' || g.phase === 'vote' || g.phase === 'reveal') v.chatLog = g.chatLog || [];
+    if (g.phase === 'reveal' && g.reveal) {
+      v.reveal = {
+        impostor: g.reveal.impostor, caught: g.reveal.caught,
+        realQ: pair.real, fakeQ: pair.fake, options: pair.options,
+        votes: g.reveal.votes, answers: g.reveal.answers, points: g.reveal.points,
+      };
+    }
+    if (seat) {
+      v.myQuestion = g.imp.seat === seat ? pair.fake : pair.real;
+      v.options = pair.options;
+      v.mine = g.inputs[seat] ? g.inputs[seat].choice : null;
+      v.myVote = g.votes[seat] != null ? g.votes[seat] : null;
+    }
+  } else if (g.id === 'thu-thanh') {
+    v.arenaR = ARENA_R0;
+    v.blobs = blobsView(room);
+    v.facing = facingView(room);
+    v.shells = shellsView(room);
+    v.slimes = (g.slimes || []).map((s) => ({ id: s.id, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, hp: s.hp, maxHp: s.maxHp, big: s.big }));
+    v.crystal = g.crystal ? { hp: g.crystal.hp, max: DEF_CRYSTAL_HP } : null;
+    v.kills = g.kills;
+  } else if (g.id === 'giai-ma-chung') {
+    // SECRECY: the host view carries level/hearts/progress counts only
+    // — never a step's symbol or owner. A player view lists ONLY their
+    // own steps (position + symbol); nobody sees anyone else's steps.
+    v.level = g.level;
+    v.hearts = g.hearts;
+    v.total = g.seq ? g.seq.length : 0;
+    v.done = g.phase === 'levelup' ? v.total : g.stepIdx;
+    v.levelsDone = g.levelsDone;
+    v.phaseDur = DECODE_MS;
+    if (seat) {
+      v.mySteps = (g.seq || []).filter((s) => s.seat === seat)
+        .map((s) => ({ pos: g.seq.indexOf(s) + 1, sym: s.sym, name: DECODE_SYMBOLS[s.sym].name }));
+    }
   }
   return v;
 }
@@ -2186,6 +2988,7 @@ function hostAction(room, body) {
     if (!GAMES[body.game]) return 'Không có game này.';
     const err = startCheck(room);
     if (err) return err;
+    if (body.game === 'ke-gia-mao' && room.players.length < 3) return 'Kẻ Giả Mạo cần ít nhất 3 người chơi mới chơi được (thêm Máy hoặc rủ thêm bạn).';
     createGame(room, body.game);
     return null;
   }
@@ -2225,7 +3028,8 @@ function playerAction(room, player, body) {
   if (a === 'pad') {
     if (g.id !== 'day-ra' && g.id !== 'ne-dan' && g.id !== 'keo-co' && g.id !== 'chia-cuop'
       && g.id !== 'cuop-sao' && g.id !== 'giu-vuong-mien' && g.id !== 'son-san'
-      && g.id !== 'chung-mot-than' && g.id !== 'day-hop') return null;
+      && g.id !== 'chung-mot-than' && g.id !== 'day-hop'
+      && g.id !== 'xe-tank' && g.id !== 'dat-bom' && g.id !== 'thu-thanh') return null;
     const pd = body.pad || {};
     const np = { u: !!pd.u, d: !!pd.d, l: !!pd.l, r: !!pd.r, a: !!pd.a, b: !!pd.b };
     const prev = g.pad[seat] || {};
@@ -2251,6 +3055,16 @@ function playerAction(room, player, body) {
     return null;
   }
   if (a === 'chat') {
+    if (g.id === 'ke-gia-mao') {
+      // Public discussion: EVERY player may chat (unlike Chia Hay
+      // Cướp's pair-only negotiation). Stored as a scrolling log.
+      if (g.phase !== 'discuss') return 'Chỉ trò chuyện được trong lúc bàn luận.';
+      const text = String(body.text || '').trim().slice(0, 60);
+      if (!text) return 'Hãy nhập lời nhắn.';
+      g.chatLog.push({ seat, text, at: t });
+      if (g.chatLog.length > 30) g.chatLog = g.chatLog.slice(-30);
+      return null;
+    }
     if (g.id !== 'chia-cuop' || g.phase !== 'talk') return 'Chỉ trò chuyện được trong lúc thương lượng.';
     if (!g.pair || g.pair.indexOf(seat) < 0) return 'Chỉ hai người trong cặp mới thương lượng.';
     const text = String(body.text || '').trim().slice(0, 60);
@@ -2295,6 +3109,16 @@ function playerAction(room, player, body) {
     return 'Game này không dùng nút bấm.';
   }
   if (a === 'answer') {
+    if (g.id === 'ke-gia-mao') {
+      // The choice answers the question THIS player was dealt (real or
+      // variant); it stays secret until the reveal phase.
+      if (g.phase !== 'answer') return 'Chưa đến lúc trả lời.';
+      if (g.inputs[seat]) return null;
+      const ci = body.choice;
+      if (!Number.isInteger(ci) || ci < 0 || ci > 3) return 'Đáp án không hợp lệ.';
+      g.inputs[seat] = { choice: ci, at: t };
+      return null;
+    }
     if (g.id !== 'do-vui' || g.phase !== 'question') return 'Chưa đến lúc trả lời.';
     if (g.inputs[seat]) return null;
     const c = body.choice;
@@ -2320,6 +3144,21 @@ function playerAction(room, player, body) {
     const idx = inp.taps.length - 1;
     if (c !== g.seq[idx]) inp.status = 'failed';
     else if (inp.taps.length === g.seq.length) { inp.status = 'done'; inp.doneAt = t; }
+    return null;
+  }
+  if (a === 'vote') {
+    if (g.id !== 'ke-gia-mao' || g.phase !== 'vote') return 'Chưa đến lúc tố cáo.';
+    if (g.votes[seat] != null) return null;
+    const target = body.seat;
+    if (!Number.isInteger(target) || target === seat || !playerAt(room, target)) return 'Không tố cáo được người này.';
+    g.votes[seat] = target;
+    return null;
+  }
+  if (a === 'symbol') {
+    if (g.id !== 'giai-ma-chung' || g.phase !== 'decode') return 'Chưa đến lúc bấm ký hiệu.';
+    const sym = body.sym;
+    if (!Number.isInteger(sym) || sym < 0 || sym > 3) return 'Ký hiệu không hợp lệ.';
+    decodePress(room, seat, sym, t);
     return null;
   }
   return 'Hành động không hợp lệ.';
@@ -2552,6 +3391,36 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .g-cao-boi { background-color: #170B04; background-image: radial-gradient(ellipse 70% 60% at 50% 30%, rgba(255,176,66,.32), transparent 65%), linear-gradient(rgba(255,190,110,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,190,110,.04) 1px, transparent 1px), linear-gradient(165deg, #2A1503, #3A1C05 58%, #180B02); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(22,10,2,.5); }
 .g-chung-mot-than { background-color: #0D0620; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(167,139,250,.3), transparent 62%), linear-gradient(rgba(180,160,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(180,160,255,.05) 1px, transparent 1px), linear-gradient(165deg, #1E1040, #2A1458 58%, #0C0518); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(14,4,30,.5); }
 .g-day-hop { background-color: #160D02; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(255,170,60,.26), transparent 62%), linear-gradient(rgba(255,190,100,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,190,100,.045) 1px, transparent 1px), linear-gradient(165deg, #241503, #331D04 58%, #120A01); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(20,12,2,.5); }
+.g-xe-tank { background-color: #0A1410; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(80,255,170,.24), transparent 62%), linear-gradient(rgba(120,255,190,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(120,255,190,.045) 1px, transparent 1px), linear-gradient(165deg, #0B2018, #0E2A1E 58%, #060F0B); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(2,16,10,.5); }
+.g-dat-bom { background-color: #160A04; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(255,120,60,.26), transparent 62%), linear-gradient(rgba(255,160,110,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,160,110,.045) 1px, transparent 1px), linear-gradient(165deg, #241006, #301605 58%, #120702); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(18,8,2,.5); }
+.g-ke-gia-mao { background-color: #12081C; background-image: radial-gradient(ellipse 70% 60% at 50% 30%, rgba(190,90,255,.22), transparent 65%), linear-gradient(rgba(200,150,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(200,150,255,.04) 1px, transparent 1px), linear-gradient(165deg, #1E0A38, #2A0E44 58%, #0C0516); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(12,4,24,.5); }
+.g-thu-thanh { background-color: #03141C; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(80,220,255,.26), transparent 62%), linear-gradient(rgba(140,230,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(140,230,255,.045) 1px, transparent 1px), linear-gradient(165deg, #06222E, #08303F 58%, #02101A); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(2,14,20,.5); }
+.g-giai-ma-chung { background-color: #0C0A1E; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(130,120,255,.28), transparent 62%), linear-gradient(rgba(160,150,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(160,150,255,.05) 1px, transparent 1px), linear-gradient(165deg, #191238, #120E30 58%, #08061A); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(6,4,20,.5); }
+.aframe { position: absolute; border: 3px solid rgba(120,220,255,.85); border-radius: 14px; box-shadow: 0 0 24px rgba(80,200,255,.4), inset 0 0 40px rgba(80,200,255,.14); pointer-events: none; }
+.ablock { position: absolute; z-index: 1; pointer-events: none; border-radius: 6px; background: linear-gradient(150deg, #3E5A4C, #22392E); border: 2px solid rgba(140,255,200,.5); box-shadow: 0 3px 8px rgba(0,0,0,.5), inset 0 0 0 2px rgba(0,0,0,.25); }
+.orbwrap { position: relative; display: inline-block; }
+.abarrel { position: absolute; left: 50%; top: 50%; width: 27px; height: 8px; margin-top: -4px; transform-origin: 0 50%; border-radius: 4px; background: linear-gradient(90deg, rgba(255,255,255,.15), #FFC93D); box-shadow: 0 0 8px rgba(255,201,61,.8); pointer-events: none; }
+.ashell { position: absolute; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; z-index: 3; pointer-events: none; transition: left .25s linear, top .25s linear; background: radial-gradient(circle at 40% 38%, #FFF6D8, #FFC93D 55%, #FF7A1A); box-shadow: 0 0 12px rgba(255,190,60,.95), 0 0 26px rgba(255,140,30,.55); }
+.bhard { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: linear-gradient(150deg, #6B7280, #374151); border: 2px solid rgba(220,230,255,.4); box-shadow: inset 0 0 0 2px rgba(0,0,0,.3), 0 3px 7px rgba(0,0,0,.5); }
+.bsoft { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: linear-gradient(150deg, #C98A4B, #96622A); border: 2px solid rgba(255,214,150,.55); box-shadow: inset 0 0 0 2px rgba(0,0,0,.22), 0 3px 7px rgba(0,0,0,.45); }
+.abomb { position: absolute; z-index: 2; transform: translate(-50%, -50%); pointer-events: none; font-size: 30px; line-height: 1; filter: drop-shadow(0 0 10px rgba(255,90,40,.75)); animation: bombPulse .5s ease-in-out infinite alternate; }
+@keyframes bombPulse { from { transform: translate(-50%, -50%) scale(1); } to { transform: translate(-50%, -50%) scale(1.22); } }
+.ablast { position: absolute; z-index: 2; pointer-events: none; border-radius: 6px; background: radial-gradient(circle, rgba(255,240,190,.95), rgba(255,140,40,.75) 60%, rgba(255,80,20,.25)); box-shadow: 0 0 18px rgba(255,150,50,.8); }
+.aslime { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50% 50% 46% 46%; z-index: 1; pointer-events: none; transition: left .25s linear, top .25s linear; background: radial-gradient(circle at 36% 30%, #C6FF9E, #58C472 55%, #1E7A46); box-shadow: 0 0 14px rgba(90,230,140,.75), 0 4px 7px rgba(0,0,0,.4); }
+.aslime.big { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
+.aslime i { position: absolute; top: 32%; width: 5px; height: 7px; border-radius: 50%; background: #10331C; }
+.aslime i:first-child { left: 30%; } .aslime i:last-child { right: 30%; }
+.acrystal { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; text-align: center; pointer-events: none; font-size: 44px; line-height: 1; filter: drop-shadow(0 0 16px rgba(120,230,255,.9)); }
+.acrystal .chp { font-size: 13px; letter-spacing: 1px; }
+.pips { display: flex; gap: 9px; justify-content: center; margin: 16px 0; }
+.pip { width: 30px; height: 30px; border-radius: 50%; border: 3px solid rgba(255,255,255,.5); background: rgba(255,255,255,.08); }
+.pip.done { background: #FFC93D; border-color: #FFE9A8; box-shadow: 0 0 16px rgba(255,201,61,.85); }
+.pip.now { border-color: #FFC93D; animation: ringPulse .6s ease-in-out infinite alternate; }
+.symbtn { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 21px; border: none; border-radius: 16px; padding: 16px 0; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.45); box-shadow: 0 5px 0 rgba(0,0,0,.3); }
+.symgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.impq { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+.impq .qcard { background: rgba(255,255,255,.1); border: 2px solid rgba(255,255,255,.25); border-radius: 16px; padding: 14px; }
+.mystep { display: inline-block; background: rgba(255,255,255,.13); border-radius: 12px; padding: 7px 13px; margin: 4px; font-weight: 800; }
 .g-cheo-thuyen { background-color: #02141F; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(56,189,248,.3), transparent 62%), linear-gradient(rgba(125,211,252,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(125,211,252,.05) 1px, transparent 1px), linear-gradient(165deg, #062A3F, #083A56 58%, #02101A); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(2,16,26,.5); }
 .g-day-ra { background-color: #170A18; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(255,92,60,.34), transparent 62%), linear-gradient(rgba(255,130,90,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(255,130,90,.055) 1px, transparent 1px), linear-gradient(165deg, #1D0B20, #2B0A18 58%, #140A24); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.6), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(20,4,16,.45); }
 .g-ne-dan { background-color: #0C0618; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(190,90,255,.3), transparent 62%), linear-gradient(rgba(170,120,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(170,120,255,.05) 1px, transparent 1px), linear-gradient(165deg, #150826, #200A33 58%, #0A0618); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(14,4,28,.5); }
@@ -2687,6 +3556,8 @@ var COLORS = { blue: '#4FA8E8', pink: '#F77FB0', green: '#58C472', purple: '#A78
 var LIGHT = { blue: '#9AD1F5', pink: '#FFB3D1', green: '#A9E8B2', purple: '#CDBFFD', orange: '#FFD29B' };
 var MEM = ['#E84F4F', '#58C472', '#4FA8E8', '#FFC93D'];
 var MEMNAME = ['Đỏ', 'Xanh lá', 'Xanh dương', 'Vàng'];
+var SYMNAMES = ['ĐỎ', 'XANH', 'VÀNG', 'HỒNG'];
+var SYMCOLORS = ['#FF4757', '#3FA9F5', '#FFC93D', '#F77FB0'];
 var LETTERS = ['A', 'B', 'C', 'D'];
 var S = { role: null, code: null, token: null, seat: null, view: null, sig: '', serverOffset: 0,
   audio: null, muted: localStorage.getItem('np_muted') === '1', lastCd: -1, lastTickSec: -1,
@@ -2928,10 +3799,13 @@ var GCOLORS = {
   'cuop-sao': 'linear-gradient(160deg,#8A5A00,#E8A812)', 'giu-vuong-mien': 'linear-gradient(160deg,#5B21B6,#B8860B)',
   'son-san': 'linear-gradient(160deg,#0E7490,#22C55E)', 'cao-boi': 'linear-gradient(160deg,#7C2D12,#B45309)',
   'chung-mot-than': 'linear-gradient(160deg,#312E81,#7C3AED)', 'day-hop': 'linear-gradient(160deg,#92400E,#D97706)',
-  'cheo-thuyen': 'linear-gradient(160deg,#0C4A6E,#0284C7)'
+  'cheo-thuyen': 'linear-gradient(160deg,#0C4A6E,#0284C7)',
+  'xe-tank': 'linear-gradient(160deg,#14532D,#22C55E)', 'dat-bom': 'linear-gradient(160deg,#7C2D12,#F97316)',
+  'ke-gia-mao': 'linear-gradient(160deg,#4C1D95,#A855F7)',
+  'thu-thanh': 'linear-gradient(160deg,#0E7490,#67E8F9)', 'giai-ma-chung': 'linear-gradient(160deg,#3730A3,#818CF8)'
 };
-function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen'; }
-function isActionGame(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'chia-cuop' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen'; }
+function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'giai-ma-chung'; }
+function isActionGame(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'chia-cuop' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh'; }
 function topbarHTML(v, isHost) {
   var h = '<div class="topbar"><span class="baloo" style="font-size:24px">Nảy Party</span>';
   h += '<span class="chip cool">Phòng ' + esc(v.code) + '</span>';
@@ -3255,6 +4129,78 @@ function hostStage(v) {
       for (var rI3 = 0; rI3 < v.players.length; rI3++) { var rp3 = v.players[rI3]; h += '<span class="scorechip">' + orbSVG(rp3.color, 26) + ' ' + esc(rp3.name) + ' · trúng nhịp <span id="rowhit-' + rp3.seat + '">' + (g.hits ? (g.hits[rp3.seat] || 0) : 0) + '</span></span>'; }
       h += '</div>';
     }
+  } else if (g.id === 'xe-tank') {
+    if (g.phase === 'tank') {
+      h += '<div class="baloo" style="font-size:25px">Lái xe tăng, bắn hạ đối thủ! Núp sau thùng chắn — đạn không xuyên qua được</div>';
+      h += '<div class="afield" id="afield"><div class="aframe" style="left:11.67%;top:11.67%;width:76.67%;height:76.67%"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
+      if (g.blocks) for (var kI = 0; kI < g.blocks.length; kI++) { var kb = g.blocks[kI]; h += '<div class="ablock" style="left:' + ((kb.x + 12) / 24 * 100) + '%;top:' + ((kb.y + 12) / 24 * 100) + '%;width:' + (kb.w / 24 * 100) + '%;height:' + (kb.h / 24 * 100) + '%"></div>'; }
+      for (var tI2 = 0; tI2 < v.players.length; tI2++) { var tp2 = v.players[tI2]; var fc = g.facing ? g.facing[tp2.seat] : null; var deg = fc ? Math.round(Math.atan2(fc.y, fc.x) * 180 / Math.PI) : 0; h += '<div class="ablob" id="ablob-' + tp2.seat + '" style="left:50%;top:50%;color:' + COLORS[tp2.color] + '"><span class="orbwrap">' + orbSVG(tp2.color, 46) + '<span class="abarrel" id="barrel-' + tp2.seat + '" style="transform:rotate(' + deg + 'deg)"></span></span><div class="aname">' + esc(tp2.name) + '</div><div class="alives" id="alives-' + tp2.seat + '"></div></div>'; }
+      h += '</div>';
+      h += '<p class="center">Trúng đạn mất 1 mạng · Hết 3 mạng là bị loại · A: bắn · B: lướt nhanh</p>';
+    }
+  } else if (g.id === 'dat-bom') {
+    if (g.phase === 'bomber') {
+      h += '<div class="baloo" style="font-size:25px">Đặt bom phá tường gỗ, thổi bay đối thủ! Né xa vụ nổ chữ thập</div>';
+      h += '<div class="afield" id="afield">';
+      if (g.hard) for (var hI2 = 0; hI2 < g.hard.length; hI2++) h += '<div class="bhard" style="left:' + ((1 + 2 * g.hard[hI2][0]) / 24 * 100) + '%;top:' + ((3 + 2 * g.hard[hI2][1]) / 24 * 100) + '%;width:8.33%;height:8.33%"></div>';
+      if (g.soft) for (var sI4 = 0; sI4 < g.soft.length; sI4++) h += '<div class="bsoft" style="left:' + ((1 + 2 * g.soft[sI4][0]) / 24 * 100) + '%;top:' + ((3 + 2 * g.soft[sI4][1]) / 24 * 100) + '%;width:8.33%;height:8.33%"></div>';
+      if (g.blasts) for (var bI3 = 0; bI3 < g.blasts.length; bI3++) for (var cI5 = 0; cI5 < g.blasts[bI3].cells.length; cI5++) { var bc = g.blasts[bI3].cells[cI5]; h += '<div class="ablast" style="left:' + ((1 + 2 * bc[0]) / 24 * 100) + '%;top:' + ((3 + 2 * bc[1]) / 24 * 100) + '%;width:8.33%;height:8.33%"></div>'; }
+      if (g.bombs) for (var boI = 0; boI < g.bombs.length; boI++) { var bo = g.bombs[boI]; h += '<div class="abomb" id="abomb-' + bo.id + '" style="left:' + ((bo.x + 12) / 24 * 100) + '%;top:' + ((bo.y + 12) / 24 * 100) + '%">💣</div>'; }
+      for (var bI4 = 0; bI4 < v.players.length; bI4++) { var bp4 = v.players[bI4]; h += '<div class="ablob" id="ablob-' + bp4.seat + '" style="left:50%;top:50%;color:' + COLORS[bp4.color] + '">' + orbSVG(bp4.color, 42) + '<div class="aname">' + esc(bp4.name) + '</div><div class="alives" id="alives-' + bp4.seat + '"></div></div>'; }
+      h += '</div>';
+      h += '<p class="center">Tường xám không phá được · Tường gỗ phá được · Nổ dây chuyền khi lửa chạm bom khác · Trúng nổ mất 1 mạng (có 2 mạng)</p>';
+    }
+  } else if (g.id === 'ke-gia-mao') {
+    h += '<div class="center baloo" style="font-size:31px">🕵️ AI LÀ KẺ GIẢ MẠO?</div>';
+    h += '<div class="center"><span class="chip cool">Chủ đề: ' + esc(g.category || '') + '</span></div>';
+    if (g.phase === 'answer') {
+      h += '<div class="baloo" style="font-size:24px">Mỗi người đang trả lời MỘT câu hỏi bí mật trên điện thoại của mình… và một người nhận câu hỏi KHÁC!</div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      h += '<div class="scorebar">';
+      for (var iI = 0; iI < v.players.length; iI++) { var ip = v.players[iI]; h += '<span class="scorechip">' + blobSVG(ip.color, ip.mood, 28) + ' ' + esc(ip.name) + ' ' + (g.answered && g.answered[ip.seat] ? 'đã trả lời ✓' : 'đang nghĩ…') + '</span>'; }
+      h += '</div>';
+    } else if (g.phase === 'discuss') {
+      h += '<div class="baloo" style="font-size:24px">Bàn luận đi! Ai đang nói dối về câu hỏi của mình?</div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 45000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      if (g.chatLog) for (var cI6 = 0; cI6 < g.chatLog.length; cI6++) { var cp6 = playerOf(v, g.chatLog[cI6].seat); h += '<div class="chatrow">' + blobSVG(cp6 ? cp6.color : 'blue', 'cuoi', 26) + ' <b>' + esc(cp6 ? cp6.name : '') + ':</b> ' + esc(g.chatLog[cI6].text) + '</div>'; }
+    } else if (g.phase === 'vote') {
+      h += '<div class="baloo" style="font-size:26px">Tố cáo! Mọi người chọn kẻ giả mạo trên điện thoại…</div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 20000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      h += '<div class="scorebar">';
+      for (var vI2 = 0; vI2 < v.players.length; vI2++) { var vp3 = v.players[vI2]; h += '<span class="scorechip">' + blobSVG(vp3.color, vp3.mood, 28) + ' ' + esc(vp3.name) + ' ' + (g.voted && g.voted[vp3.seat] ? 'đã tố cáo ✓' : 'đang chọn…') + '</span>'; }
+      h += '</div>';
+    } else if (g.phase === 'reveal' && g.reveal) {
+      var rv = g.reveal; var imp = playerOf(v, rv.impostor);
+      h += '<div class="center baloo" style="font-size:29px">' + (rv.caught ? '🎉 BẮT ĐƯỢC KẺ GIẢ MẠO!' : '😈 KẺ GIẢ MẠO ĐÃ THOÁT!') + '</div>';
+      h += '<div class="center"><span class="blobbob">' + orbSVG(imp.color, 84, !rv.caught) + '</span><div class="baloo" style="font-size:24px">Kẻ giả mạo là: ' + esc(imp.name) + '!</div></div>';
+      h += '<div class="impq"><div class="qcard"><b>Câu hỏi thật:</b><br>' + esc(rv.realQ) + '</div><div class="qcard"><b>Câu hỏi của kẻ giả mạo:</b><br>' + esc(rv.fakeQ) + '</div></div>';
+      h += '<div class="rows">';
+      for (var rI4 = 0; rI4 < v.players.length; rI4++) {
+        var rp4 = v.players[rI4]; var vt = rv.votes ? rv.votes[rp4.seat] : null; var tp4 = vt ? playerOf(v, vt) : null;
+        var ans = rv.answers ? rv.answers[rp4.seat] : null;
+        h += '<div class="rrow">' + blobSVG(rp4.color, rp4.mood, 34) + ' ' + esc(rp4.name) + (rp4.seat === rv.impostor ? '<span class="chip hot">GIẢ MẠO</span>' : '') + '<span class="muted">' + (ans == null ? 'không trả lời' : 'đã chọn ' + LETTERS[ans]) + ' · tố cáo: ' + (tp4 ? esc(tp4.name) : '—') + '</span><span class="pts">' + (rv.points[rp4.seat] > 0 ? '+' : '') + fmt(rv.points[rp4.seat] || 0) + '</span></div>';
+      }
+      h += '</div>';
+    }
+  } else if (g.id === 'thu-thanh') {
+    if (g.phase === 'defend') {
+      h += '<div class="scorebar"><span class="scorechip">💎 Pha lê: <b id="crystalhp">' + (g.crystal ? g.crystal.hp : 10) + '</b>/10</span><span class="scorechip">🟢 Đã hạ: <b id="killn">' + (g.kills || 0) + '</b> slime</span></div>';
+      h += '<div class="afield" id="afield"><div class="aring" style="width:83.4%;height:83.4%"></div>';
+      h += '<div class="acrystal">💎<div class="chp" id="crystalhearts">' + (g.crystal ? '❤'.repeat(Math.max(0, g.crystal.hp)) : '') + '</div></div>';
+      for (var dI4 = 0; dI4 < v.players.length; dI4++) { var dp4 = v.players[dI4]; var fc2 = g.facing ? g.facing[dp4.seat] : null; var deg2 = fc2 ? Math.round(Math.atan2(fc2.y, fc2.x) * 180 / Math.PI) : 0; h += '<div class="ablob" id="ablob-' + dp4.seat + '" style="left:50%;top:50%;color:' + COLORS[dp4.color] + '"><span class="orbwrap">' + orbSVG(dp4.color, 46) + '<span class="abarrel" id="barrel-' + dp4.seat + '" style="transform:rotate(' + deg2 + 'deg)"></span></span><div class="aname">' + esc(dp4.name) + '</div></div>'; }
+      h += '</div>';
+      h += '<p class="center">Đừng để slime chạm vào pha lê! Sống sót hết giờ: pha lê còn ≥7 tim = hạng VÀNG · ≥4 = BẠC · ≥1 = ĐỒNG</p>';
+    }
+  } else if (g.id === 'giai-ma-chung') {
+    if (g.phase === 'decode' || g.phase === 'levelup') {
+      h += '<div class="teambanner">MÀN ' + (g.level || 1) + ' · Tim đội: ' + '❤'.repeat(Math.max(0, g.hearts || 0)) + ' · Đã qua: ' + (g.levelsDone || 0) + ' màn</div>';
+      if (g.phase === 'levelup') h += '<div class="center baloo" style="font-size:30px">QUA MÀN! 🎉 Chuẩn bị màn tiếp theo…</div>';
+      h += '<div class="pips">';
+      for (var pI5 = 0; pI5 < (g.total || 0); pI5++) h += '<div class="pip' + (pI5 < (g.done || 0) ? ' done' : pI5 === (g.done || 0) ? ' now' : '') + '"></div>';
+      h += '</div>';
+      h += '<div class="baloo center" style="font-size:22px">Mỗi người chỉ thấy phần mật mã CỦA MÌNH trên điện thoại — gọi nhau mà bấm cho đúng thứ tự!</div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 75000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    }
   }
   return h;
 }
@@ -3333,6 +4279,22 @@ function viewSig(v) {
       gp = [g.id, g.phase, g.deliveries, g.layout, g.lastRound];
     } else if (g.id === 'cheo-thuyen') {
       gp = [g.id, g.phase, g.lastRound];
+    } else if (g.id === 'xe-tank') {
+      var tk = '';
+      if (g.blobs) for (var ts in g.blobs) tk += ts + (g.blobs[ts].alive ? '1' : '0') + g.blobs[ts].lives;
+      gp = [g.id, g.phase, tk, g.lastRound];
+    } else if (g.id === 'dat-bom') {
+      var bk = '';
+      if (g.blobs) for (var bs3 in g.blobs) bk += bs3 + (g.blobs[bs3].alive ? '1' : '0') + g.blobs[bs3].lives;
+      gp = pl ? [g.id, g.phase, bk, g.lastRound]
+        : [g.id, g.phase, bk, g.bombs ? g.bombs.length : 0, g.soft ? g.soft.length : 0, g.blasts, g.lastRound];
+    } else if (g.id === 'thu-thanh') {
+      gp = [g.id, g.phase, g.crystal ? g.crystal.hp : 0, g.kills, g.lastRound];
+    } else if (g.id === 'ke-gia-mao') {
+      gp = [g.id, g.phase, g.round, g.points, g.answered, g.voted, g.chatLog, g.reveal, g.mine, g.myVote, g.lastRound];
+    } else if (g.id === 'giai-ma-chung') {
+      gp = pl ? [g.id, g.phase, g.level, g.hearts, g.done, g.mySteps, g.levelsDone, g.lastRound]
+        : [g.id, g.phase, g.level, g.hearts, g.done, g.total, g.levelsDone, g.lastRound];
     } else {
       if (pl) {
       // PLAYER signature for the tap/answer games: keep only what the
@@ -3549,6 +4511,28 @@ function arenaFX(v, g) {
     P.ballN = g.balls.length;
   }
 }
+// Create/move/remove the transient field entities (shells, slimes)
+// whose DOM nodes cannot be rendered once by hostStage: they are keyed
+// by server id inside #afield and pruned when the server drops them.
+function syncDyn(items, prefix, cls, decorate) {
+  var field = el('afield');
+  if (!field) return;
+  var seen = {};
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i]; var id = prefix + it.id; seen[id] = 1;
+    var n = el(id);
+    if (!n) {
+      n = document.createElement('div');
+      n.id = id; n.className = cls;
+      if (decorate) decorate(n, it);
+      field.appendChild(n);
+    }
+    n.style.left = ((it.x + 12) / 24 * 100) + '%';
+    n.style.top = ((it.y + 12) / 24 * 100) + '%';
+  }
+  var olds = field.querySelectorAll('.' + cls);
+  for (var j = 0; j < olds.length; j++) if (!seen[olds[j].id]) olds[j].remove();
+}
 function tick() {
   var v = S.view;
   if (!v || !S.role) return;
@@ -3620,6 +4604,33 @@ function tick() {
     }
   }
   if (g && (g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) arenaFX(v, g);
+  if (g && (g.id === 'xe-tank' || g.id === 'dat-bom' || g.id === 'thu-thanh') && g.blobs) {
+    for (var wSeat in g.blobs) {
+      var wb = g.blobs[wSeat];
+      var wn = el('ablob-' + wSeat);
+      if (wn) {
+        wn.style.left = ((wb.x + 12) / 24 * 100) + '%';
+        wn.style.top = ((wb.y + 12) / 24 * 100) + '%';
+        wn.style.opacity = wb.alive ? '1' : '0.25';
+      }
+      var lv2 = el('alives-' + wSeat);
+      if (lv2) lv2.textContent = '❤'.repeat(Math.max(0, wb.lives));
+      var brl = el('barrel-' + wSeat);
+      if (brl && g.facing && g.facing[wSeat]) brl.style.transform = 'rotate(' + Math.round(Math.atan2(g.facing[wSeat].y, g.facing[wSeat].x) * 180 / Math.PI) + 'deg)';
+    }
+    var ml2 = el('mylives');
+    if (ml2 && g.blobs[S.seat]) ml2.textContent = '❤'.repeat(Math.max(0, g.blobs[S.seat].lives));
+    if (g.shells) syncDyn(g.shells, 'shell-', 'ashell', null);
+    if (g.id === 'xe-tank' || g.id === 'dat-bom') arenaFX(v, g);
+  }
+  if (g && g.id === 'thu-thanh') {
+    if (g.slimes) syncDyn(g.slimes, 'slime-', 'aslime', function (n, it) { n.className = 'aslime' + (it.big ? ' big' : ''); n.innerHTML = '<i></i><i></i>'; });
+    var ch2 = el('crystalhp'); if (ch2 && g.crystal) ch2.textContent = g.crystal.hp;
+    var chh = el('crystalhearts'); if (chh && g.crystal) chh.textContent = '❤'.repeat(Math.max(0, g.crystal.hp));
+    var kn = el('killn'); if (kn) kn.textContent = g.kills || 0;
+    var chp2 = el('crystalhp2'); if (chp2 && g.crystal) chp2.textContent = g.crystal.hp;
+    var kn2 = el('killn2'); if (kn2) kn2.textContent = g.kills || 0;
+  }
   if (g && (g.id === 'cuop-sao' || g.id === 'giu-vuong-mien' || g.id === 'son-san') && g.blobs) {
     for (var nSeat in g.blobs) {
       var nb2 = g.blobs[nSeat];
@@ -3731,7 +4742,7 @@ function homeHTML() {
   h += '</div>';
   h += '<p><input type="text" id="joinName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
   h += '<p><button class="btn pink" data-cmd="join" style="font-size:22px">Vào phòng</button></p></div>';
-  h += '<p class="center muted small" style="margin-top:14px">16 game: Nhanh Tay · Đố Vui Tốc Độ · Đoán Số Chuẩn · Đua Bấm Nút · Nhớ Màu · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền — 13 game đấu + 3 game hợp tác!</p>';
+  h += '<p class="center muted small" style="margin-top:14px">21 game: Nhanh Tay · Đố Vui Tốc Độ · Đoán Số Chuẩn · Đua Bấm Nút · Nhớ Màu · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung — 16 game đấu + 5 game hợp tác!</p>';
   return h;
 }
 function playerHTML(v) {
@@ -3984,6 +4995,76 @@ function playerGame(v) {
       h += '<div class="center baloo" style="font-size:20px">Bạn trúng nhịp: <span id="rowhits">' + (g.mine || 0) + '</span> · Trượt (tạt nước): <span id="rowsplash">' + (g.mySplash || 0) + '</span></div>';
       h += '<div class="tbar"><i data-start="' + g.rowStart + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
+  } else if (g.id === 'xe-tank' || g.id === 'dat-bom' || g.id === 'thu-thanh') {
+    var myB2 = g.blobs ? g.blobs[S.seat] : null;
+    if (g.phase === 'tank' || g.phase === 'bomber' || g.phase === 'defend') {
+      if (myB2 && !myB2.alive) {
+        h += '<div class="center"><div class="ko-big">K.O.!</div>' + orbSVG(me.color, 110, true) + '<div class="baloo" style="font-size:27px">Bạn đã bị loại!</div><p>Xem TV đợi kết quả nhé…</p></div>';
+      } else {
+        if (g.id === 'thu-thanh') h += '<div class="center baloo" style="font-size:20px">💎 Pha lê: <span id="crystalhp2">' + (g.crystal ? g.crystal.hp : 10) + '</span>/10 · Đã hạ: <span id="killn2">' + (g.kills || 0) + '</span> slime</div>';
+        else h += '<div class="center baloo" style="font-size:20px">Mạng của bạn: <span id="mylives" style="color:#FFD7DE">' + (myB2 ? '❤'.repeat(myB2.lives) : '') + '</span></div>';
+        h += '<div class="padwrap"><div class="dpad">'
+          + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
+          + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
+          + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
+          + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>Lướt</span></button><button class="abtn abtnA" data-pad="a">A<span>' + (g.id === 'dat-bom' ? 'ĐẶT BOM' : 'BẮN') + '</span></button></div></div>';
+        h += '<p class="center small">' + (g.id === 'xe-tank' ? 'Nòng súng hướng theo hướng di chuyển cuối · A: bắn (hồi 1 giây) · Núp sau thùng chắn' : g.id === 'dat-bom' ? 'A: đặt bom (mỗi người 1 quả một lúc) · Bom nổ sau 2 giây theo hình chữ thập — đặt xong chạy ngay!' : 'Bắn slime trước khi chúng chạm vào pha lê · Nòng súng hướng theo hướng di chuyển cuối') + '</p>';
+      }
+    }
+  } else if (g.id === 'ke-gia-mao') {
+    if (g.phase === 'answer') {
+      h += '<div class="center"><span class="chip cool">Chủ đề: ' + esc(g.category || '') + '</span></div>';
+      h += '<div class="baloo" style="font-size:22px">' + esc(g.myQuestion || '') + '</div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      if (g.mine == null) {
+        h += '<div class="optgrid">';
+        for (var a2 = 0; a2 < 4; a2++) h += '<button class="opt" data-cmd="answer" data-i="' + a2 + '">' + LETTERS[a2] + '. ' + esc(g.options[a2]) + '</button>';
+        h += '</div>';
+        h += '<p class="center small">Trả lời bí mật — đừng đọc to câu hỏi hay đáp án của bạn!</p>';
+      } else {
+        h += '<div class="center baloo" style="font-size:26px">Đã trả lời! Đợi mọi người…</div>';
+      }
+    } else if (g.phase === 'discuss') {
+      h += '<div class="baloo" style="font-size:22px">Bàn luận: ai đang giả vờ?</div>';
+      if (g.chatLog) for (var pI6 = 0; pI6 < g.chatLog.length; pI6++) { var pp6 = playerOf(v, g.chatLog[pI6].seat); h += '<div class="chatrow">' + blobSVG(pp6 ? pp6.color : 'blue', 'cuoi', 24) + ' <b>' + esc(pp6 ? pp6.name : '') + ':</b> ' + esc(g.chatLog[pI6].text) + '</div>'; }
+      h += '<p class="center"><input type="text" id="chatText" maxlength="60" placeholder="Nói gì đó…" style="width:min(70vw,300px)"> <button class="btn small blue" data-cmd="chatSend">Gửi</button></p>';
+      h += '<p class="center small">Đừng lộ đáp án của bạn — kẻ giả mạo đang nghe đấy!</p>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 45000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    } else if (g.phase === 'vote') {
+      if (g.myVote == null) {
+        h += '<div class="baloo" style="font-size:23px">Bạn tố cáo ai là kẻ giả mạo?</div>';
+        h += '<div class="optgrid">';
+        for (var vI3 = 0; vI3 < v.players.length; vI3++) { var vp4 = v.players[vI3]; if (vp4.seat === S.seat) continue; h += '<button class="opt" data-cmd="vote" data-i="' + vp4.seat + '">' + esc(vp4.name) + '</button>'; }
+        h += '</div>';
+      } else {
+        h += '<div class="center baloo" style="font-size:26px">Đã tố cáo! Đợi công bố…</div>';
+      }
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 20000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    } else if (g.phase === 'reveal' && g.reveal) {
+      var rv2 = g.reveal; var iAmImp = rv2.impostor === S.seat;
+      var iWon = (rv2.caught && !iAmImp) || (!rv2.caught && iAmImp);
+      h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, iWon ? 'reo' : 'buon', 100) + '</span>';
+      h += '<div class="baloo" style="font-size:27px">' + (rv2.caught ? 'Bắt được kẻ giả mạo!' : 'Kẻ giả mạo đã thoát!') + '</div>';
+      var impP = playerOf(v, rv2.impostor);
+      h += '<p>Kẻ giả mạo: <b>' + esc(impP ? impP.name : '') + '</b>' + (iAmImp ? ' — chính là BẠN!' : '') + '</p>';
+      h += '<div class="baloo" style="font-size:24px">+' + fmt(rv2.points[S.seat] || 0) + ' điểm</div></div>';
+    }
+  } else if (g.id === 'giai-ma-chung') {
+    if (g.phase === 'decode' || g.phase === 'levelup') {
+      h += '<div class="center baloo" style="font-size:21px">Màn ' + (g.level || 1) + ' · Tim đội: <span style="color:#FFD7DE">' + '❤'.repeat(Math.max(0, g.hearts || 0)) + '</span> · Đã qua ' + (g.levelsDone || 0) + ' màn</div>';
+      h += '<div class="center baloo" style="font-size:20px">Tiến độ màn này: ' + (g.done || 0) + '/' + (g.total || 0) + ' bước</div>';
+      if (g.phase === 'levelup') h += '<div class="center baloo" style="font-size:26px">QUA MÀN! 🎉</div>';
+      h += '<div class="center"><b>Phần mật mã của bạn:</b><br>';
+      var ms = g.mySteps || [];
+      if (!ms.length) h += '<span class="mystep">Màn này bạn không giữ bước nào — cổ vũ đồng đội nhé!</span>';
+      for (var sI6 = 0; sI6 < ms.length; sI6++) h += '<span class="mystep">Bước ' + ms[sI6].pos + ': <span style="color:' + SYMCOLORS[ms[sI6].sym] + '">' + ms[sI6].name + '</span></span>';
+      h += '</div>';
+      h += '<div class="symgrid">';
+      for (var yI = 0; yI < 4; yI++) h += '<button class="symbtn" data-cmd="symbol" data-i="' + yI + '" style="background:' + SYMCOLORS[yI] + '">' + SYMNAMES[yI] + '</button>';
+      h += '</div>';
+      h += '<p class="center small">Chỉ bấm khi tới lượt bước của bạn và đúng ký hiệu của bước đó — bấm sai cả đội mất 1 tim!</p>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 75000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    }
   }
   return h + '</div>';
 }
@@ -4023,7 +5104,7 @@ function tryJoin(code, name, attempt) {
 // navigation) keep the plain click path, as do clicks with no press
 // before them (keyboard / assistive tech).
 // ---------------------------------------------------------------------
-var GAME_CMDS = { tap: 1, answer: 1, color: 1, key: 1, guessSubmit: 1, choose: 1 };
+var GAME_CMDS = { tap: 1, answer: 1, color: 1, key: 1, guessSubmit: 1, choose: 1, vote: 1, symbol: 1 };
 var cmdGuard = {};
 function findCmdNode(node) {
   while (node && node !== document.body) { if (node.getAttribute && node.getAttribute('data-cmd')) return node; node = node.parentNode; }
@@ -4109,6 +5190,13 @@ function runCmd(node) {
   } else if (cmd === 'choose') {
     sfxTap();
     act({ action: 'choose', choice: node.getAttribute('data-c') });
+  } else if (cmd === 'vote') {
+    sfxTap();
+    act({ action: 'vote', seat: +node.getAttribute('data-i') });
+  } else if (cmd === 'symbol') {
+    var sy = +node.getAttribute('data-i');
+    beep(320 + sy * 130, 0.1, 'triangle', 0.14);
+    act({ action: 'symbol', sym: sy });
   } else if (cmd === 'chatSend') {
     var ct = el('chatText'); var txt = ct ? ct.value.trim() : '';
     if (!txt) { toast('Nhập lời nhắn trước đã.'); return; }
@@ -4269,7 +5357,7 @@ if (!window.PointerEvent) {
   setInterval(tick, 150);
   setInterval(function () {
     var v = S.view;
-    if (v && v.game && ((v.game.id === 'nhanh-tay' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row'))) poll();
+    if (v && v.game && ((v.game.id === 'nhanh-tay' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend'))) poll();
   }, 220);
 })();
 </script>
