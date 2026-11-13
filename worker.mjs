@@ -3536,6 +3536,8 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 .digits input { width: 48px; height: 60px; text-align: center; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 30px; padding: 4px; }
 #toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: #4A3226; color: #FFF3DF; font-weight: 700;
   padding: 12px 22px; border-radius: 999px; box-shadow: 0 12px 24px rgba(0,0,0,.3); display: none; z-index: 50; max-width: 92vw; text-align: center; }
+#recon { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); background: #B3261E; color: #FFE9E6; font-weight: 700;
+  padding: 9px 18px; border-radius: 999px; box-shadow: 0 10px 22px rgba(0,0,0,.35); display: none; z-index: 60; max-width: 92vw; text-align: center; }
 #confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 40; }
 #confetti .cf { position: absolute; top: -20px; width: 10px; height: 15px; border-radius: 2px; animation-name: fall; animation-timing-function: linear; animation-fill-mode: forwards; }
 @keyframes fall { to { transform: translateY(108vh) rotate(680deg); } }
@@ -3551,6 +3553,7 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 <div id="app" class="wrap"></div>
 <div id="confetti"></div>
 <div id="toast"></div>
+<div id="recon">Đang kết nối lại…</div>
 <script>
 var COLORS = { blue: '#4FA8E8', pink: '#F77FB0', green: '#58C472', purple: '#A78BFA', orange: '#FFB35C' };
 var LIGHT = { blue: '#9AD1F5', pink: '#FFB3D1', green: '#A9E8B2', purple: '#CDBFFD', orange: '#FFD29B' };
@@ -3561,7 +3564,8 @@ var SYMCOLORS = ['#FF4757', '#3FA9F5', '#FFC93D', '#F77FB0'];
 var LETTERS = ['A', 'B', 'C', 'D'];
 var S = { role: null, code: null, token: null, seat: null, view: null, sig: '', serverOffset: 0,
   audio: null, muted: localStorage.getItem('np_muted') === '1', lastCd: -1, lastTickSec: -1,
-  fxReveal: '', fxRound: '', fxConfetti: '', guess: '', blobN: 0, fxP: null, _nb: null, _koT: 0, _smT: 0 };
+  fxReveal: '', fxRound: '', fxConfetti: '', guess: '', blobN: 0, fxP: null, _nb: null, _koT: 0, _smT: 0,
+  lastOkAt: 0 };
 function el(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
 function fmt(n) { var s = String(Math.round(Math.abs(n))); var out = ''; while (s.length > 3) { out = '.' + s.slice(-3) + out; s = s.slice(0, -3); } return (n < 0 ? '-' : '') + s + out; }
@@ -3744,10 +3748,40 @@ function api(path, body, cb) {
   fetch(path, opt).then(function (r) { return r.json(); }).then(cb).catch(function () { cb({ ok: false, error: 'Mất kết nối, thử lại nhé.', net: true }); });
 }
 function stateUrl() { return '/api/rooms/' + S.code + '/state?role=' + S.role + '&token=' + encodeURIComponent(S.token); }
+// Stale-view watchdog. poll()'s own failure counter only counts failures
+// spaced >=600ms apart, so when polls fail FAST (flaky WiFi against the
+// 220ms in-game poll) an outage never registers and the screen can sit
+// frozen on the last good frame forever. noteOk() stamps every successful
+// state application; watchdog() (driven from tick) shows a reconnecting
+// badge after 3s of silence and self-heals with ONE location.reload()
+// after 8s — the session restores from sessionStorage and rejoins the
+// same room view. The reload budget (one per 60s) is kept in
+// sessionStorage so it survives the reload itself; on the home screen
+// (no role) the watchdog is inert and the badge stays hidden.
+function noteOk() {
+  S.lastOkAt = Date.now();
+  var b = el('recon'); if (b) b.style.display = 'none';
+}
+function watchdog() {
+  var b = el('recon');
+  if (!S.role || !S.code) { if (b) b.style.display = 'none'; return; }
+  if (!S.lastOkAt) { S.lastOkAt = Date.now(); return; }
+  var stale = Date.now() - S.lastOkAt;
+  if (stale <= 3000) { if (b) b.style.display = 'none'; return; }
+  if (b) b.style.display = 'block';
+  if (stale > 8000) {
+    var last = 0;
+    try { last = +sessionStorage.getItem('np_reload_at') || 0; } catch (e) {}
+    if (Date.now() - last > 60000) {
+      try { sessionStorage.setItem('np_reload_at', String(Date.now())); } catch (e) {}
+      location.reload();
+    }
+  }
+}
 function poll() {
   if (!S.code) return;
   api(stateUrl(), null, function (v) {
-    if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; S.serverOffset = v.serverNow - Date.now(); render(); return; }
+    if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; S.serverOffset = v.serverNow - Date.now(); noteOk(); render(); return; }
     if (v && v.net) {
       // No answer at all (offline / DNS / non-JSON reply): the room may
       // well still exist, so keep waiting — but never spin on the
@@ -3759,6 +3793,15 @@ function poll() {
       if (!S.failSince) S.failSince = t;
       if (t - (S.failLast || 0) >= 600) { S.failN = (S.failN || 0) + 1; S.failLast = t; }
       if (S.failN >= 5 && t - S.failSince >= 3000) {
+        if (S.view && (S.view.phase === 'playing' || S.view.phase === 'results' || S.view.phase === 'podium')) {
+          // Mid-match (or on the results/podium screens) a dead connection
+          // must NOT nuke the host session: the room lives on server-side,
+          // and the stale-view watchdog recovers more gently (badge, then
+          // one session-restoring reload). Just restart the failure count
+          // and keep waiting for the watchdog to escalate.
+          S.failN = 0; S.failSince = 0; S.failLast = 0;
+          return;
+        }
         S.failN = 0; S.failSince = 0;
         clearSession();
         toast('Mất kết nối với phòng, về trang chính nhé.');
@@ -3779,7 +3822,7 @@ function poll() {
 function act(body, cb) {
   body.role = S.role; body.token = S.token;
   api('/api/rooms/' + S.code + '/action', body, function (v) {
-    if (v && v.ok) { S.view = v; S.serverOffset = v.serverNow - Date.now(); S.sig = ''; render(); }
+    if (v && v.ok) { S.view = v; S.serverOffset = v.serverNow - Date.now(); S.sig = ''; noteOk(); render(); }
     else if (v && v.error && v.error.indexOf('Không thấy phòng này') >= 0) { clearSession(); toast('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.'); }
     else if (v && v.error && v.error.indexOf('không hợp lệ') >= 0) clearSession();
     else if (v && v.error) toast(v.error);
@@ -4364,6 +4407,11 @@ function afterRender(v) {
     var key3 = 'w' + v.lastGame.at;
     if (S.fxRound !== key3) { S.fxRound = key3; if (mine > 0 && mine === max) { sfxWin(); vibrate([70, 50, 70]); } }
   }
+  // The full render above rebuilt the field DOM from scratch: arena
+  // pieces were created at their CSS default position (centre). Patch
+  // them onto the current view NOW, in the same task, so the browser
+  // never paints the centred frame (the life-loss centre-flash).
+  patchPositions(v);
 }
 function countUp(row) {
   var out = row.querySelector('.gv'); if (!out) return;
@@ -4533,50 +4581,19 @@ function syncDyn(items, prefix, cls, decorate) {
   var olds = field.querySelectorAll('.' + cls);
   for (var j = 0; j < olds.length; j++) if (!seen[olds[j].id]) olds[j].remove();
 }
-function tick() {
-  var v = S.view;
-  if (!v || !S.role) return;
+// Position + label sync for every arena-style game (blobs, cannonballs,
+// barrels, shells, slimes, stars, crown, paint grid, shared blob, crate,
+// boat). tick() runs this every 150ms; render() ALSO runs it once via
+// afterRender, because a full re-render rebuilds the field DOM with
+// elements at their CSS default (left/top 50%) — without an immediate
+// patch they would flash at the arena centre until the next tick.
+// Everything here is a pure function of the current view (idempotent),
+// and arenaFX keeps its own delta snapshot, so an extra call after a
+// render can only fire a pending effect once, never twice.
+function patchPositions(v) {
+  var g = v && v.game;
+  if (!g) return;
   var t = serverNow();
-  var g = v.game;
-  var cd = el('cdnum');
-  if (g && g.phase === 'countdown' && cd) {
-    var sec = Math.max(1, Math.ceil((g.endsAt - t) / 1000));
-    if (String(sec) !== cd.textContent) {
-      cd.textContent = sec;
-      cd.classList.remove('punch'); void cd.offsetWidth; cd.classList.add('punch');
-    }
-    if (sec !== S.lastCd) { S.lastCd = sec; sfxCount(sec === 1); }
-  } else S.lastCd = -1;
-  var bars = document.querySelectorAll('.tbar i');
-  for (var i = 0; i < bars.length; i++) {
-    var start = +bars[i].getAttribute('data-start'); var end = +bars[i].getAttribute('data-end');
-    var pct = Math.max(0, Math.min(100, (end - t) / (end - start) * 100));
-    bars[i].style.width = pct + '%';
-  }
-  if (g && ((g.id === 'do-vui' && g.phase === 'question') || (g.id === 'dua-bam' && g.phase === 'race') || (g.id === 'doan-so' && g.phase === 'guess'))) {
-    var rem = g.endsAt - t;
-    if (rem <= 3000 && rem > 0) { var s2 = Math.ceil(rem / 1000); if (s2 !== S.lastTickSec) { S.lastTickSec = s2; beep(1150, 0.045, 'square', 0.09); } }
-    else if (rem > 3000) S.lastTickSec = -1;
-  }
-  if (g && g.id === 'nho-mau' && g.phase === 'show' && S.role === 'host' && g.seq) {
-    var len = g.seq.length; var total = 900 + len * 750;
-    var elapsed = total - (g.endsAt - t);
-    var active = -1;
-    if (elapsed >= 450) { var idx = Math.floor((elapsed - 450) / 750); var within = (elapsed - 450) - idx * 750; if (idx < len && within < 450) active = g.seq[idx]; }
-    for (var pi = 0; pi < 4; pi++) { var pad = el('pad' + pi); if (pad) { if (pi === active) pad.classList.add('on'); else pad.classList.remove('on'); } }
-  }
-  if (g && g.id === 'dua-bam' && g.counts) {
-    var max = 1; var seat;
-    for (seat in g.counts) if (g.counts[seat] > max) max = g.counts[seat];
-    for (seat in g.counts) {
-      var bar = document.querySelector('.racebar i[data-seat="' + seat + '"]');
-      if (bar) bar.style.width = (g.counts[seat] / max * 100) + '%';
-      var lab = el('rcl-' + seat);
-      if (lab) { var pl = playerOf(v, +seat); lab.textContent = (pl ? pl.name : '') + ' · ' + g.counts[seat]; }
-    }
-    var mc = el('mycount');
-    if (mc && S.role === 'player') mc.textContent = g.counts[S.seat] || 0;
-  }
   if (g && (g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) {
     for (var bSeat in g.blobs) {
       var bb = g.blobs[bSeat];
@@ -4719,6 +4736,53 @@ function tick() {
     var rdm = el('rowdistm'); if (rdm) rdm.textContent = Math.round(g.distance || 0);
     var rpm = el('rowprogm'); if (rpm) rpm.style.width = pctR + '%';
   }
+}
+function tick() {
+  watchdog();
+  var v = S.view;
+  if (!v || !S.role) return;
+  var t = serverNow();
+  var g = v.game;
+  var cd = el('cdnum');
+  if (g && g.phase === 'countdown' && cd) {
+    var sec = Math.max(1, Math.ceil((g.endsAt - t) / 1000));
+    if (String(sec) !== cd.textContent) {
+      cd.textContent = sec;
+      cd.classList.remove('punch'); void cd.offsetWidth; cd.classList.add('punch');
+    }
+    if (sec !== S.lastCd) { S.lastCd = sec; sfxCount(sec === 1); }
+  } else S.lastCd = -1;
+  var bars = document.querySelectorAll('.tbar i');
+  for (var i = 0; i < bars.length; i++) {
+    var start = +bars[i].getAttribute('data-start'); var end = +bars[i].getAttribute('data-end');
+    var pct = Math.max(0, Math.min(100, (end - t) / (end - start) * 100));
+    bars[i].style.width = pct + '%';
+  }
+  if (g && ((g.id === 'do-vui' && g.phase === 'question') || (g.id === 'dua-bam' && g.phase === 'race') || (g.id === 'doan-so' && g.phase === 'guess'))) {
+    var rem = g.endsAt - t;
+    if (rem <= 3000 && rem > 0) { var s2 = Math.ceil(rem / 1000); if (s2 !== S.lastTickSec) { S.lastTickSec = s2; beep(1150, 0.045, 'square', 0.09); } }
+    else if (rem > 3000) S.lastTickSec = -1;
+  }
+  if (g && g.id === 'nho-mau' && g.phase === 'show' && S.role === 'host' && g.seq) {
+    var len = g.seq.length; var total = 900 + len * 750;
+    var elapsed = total - (g.endsAt - t);
+    var active = -1;
+    if (elapsed >= 450) { var idx = Math.floor((elapsed - 450) / 750); var within = (elapsed - 450) - idx * 750; if (idx < len && within < 450) active = g.seq[idx]; }
+    for (var pi = 0; pi < 4; pi++) { var pad = el('pad' + pi); if (pad) { if (pi === active) pad.classList.add('on'); else pad.classList.remove('on'); } }
+  }
+  if (g && g.id === 'dua-bam' && g.counts) {
+    var max = 1; var seat;
+    for (seat in g.counts) if (g.counts[seat] > max) max = g.counts[seat];
+    for (seat in g.counts) {
+      var bar = document.querySelector('.racebar i[data-seat="' + seat + '"]');
+      if (bar) bar.style.width = (g.counts[seat] / max * 100) + '%';
+      var lab = el('rcl-' + seat);
+      if (lab) { var pl = playerOf(v, +seat); lab.textContent = (pl ? pl.name : '') + ' · ' + g.counts[seat]; }
+    }
+    var mc = el('mycount');
+    if (mc && S.role === 'player') mc.textContent = g.counts[S.seat] || 0;
+  }
+  patchPositions(v);
   var rows = document.querySelectorAll('.rev');
   for (var ri = 0; ri < rows.length; ri++) {
     if (!rows[ri].classList.contains('shown') && t >= +rows[ri].getAttribute('data-reveal')) {
@@ -5083,7 +5147,7 @@ function clearSession() {
 var JOIN_RETRY_MS = 2000, JOIN_RETRY_MAX = 10;
 function tryJoin(code, name, attempt) {
   api('/api/rooms/' + code + '/join', { name: name }, function (v) {
-    if (v && v.ok) { S.role = 'player'; S.code = code; S.token = v.playerToken; S.seat = v.seat; saveSession(); S.sig = ''; poll(); return; }
+    if (v && v.ok) { S.role = 'player'; S.code = code; S.token = v.playerToken; S.seat = v.seat; noteOk(); saveSession(); S.sig = ''; poll(); return; }
     var err = v && v.error ? v.error : '';
     if (err.indexOf('Không thấy phòng này') >= 0 && attempt < JOIN_RETRY_MAX) {
       toast('Đang tìm phòng…');
@@ -5135,7 +5199,7 @@ function runCmd(node) {
   var cmd = node.getAttribute('data-cmd');
   if (cmd === 'create') {
     api('/api/rooms', {}, function (v) {
-      if (v && v.ok) { S.role = 'host'; S.code = v.code; S.token = v.hostToken; S.seat = null; saveSession(); S.sig = ''; poll(); }
+      if (v && v.ok) { S.role = 'host'; S.code = v.code; S.token = v.hostToken; S.seat = null; noteOk(); saveSession(); S.sig = ''; poll(); }
       else toast(v && v.error ? v.error : 'Không tạo được phòng.');
     });
   } else if (cmd === 'join') {
@@ -5350,7 +5414,7 @@ if (!window.PointerEvent) {
 (function init() {
   try {
     var raw = sessionStorage.getItem('np_session');
-    if (raw) { var s = JSON.parse(raw); if (s && s.code && s.token) { S.role = s.role; S.code = s.code; S.token = s.token; S.seat = s.seat; } }
+    if (raw) { var s = JSON.parse(raw); if (s && s.code && s.token) { S.role = s.role; S.code = s.code; S.token = s.token; S.seat = s.seat; S.lastOkAt = Date.now(); } }
   } catch (e) {}
   render();
   setInterval(poll, 800);

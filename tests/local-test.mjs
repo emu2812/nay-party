@@ -467,6 +467,8 @@ async function main() {
   assert(home.text.indexOf('21 game') >= 0, 'homepage footer counts all 21 games');
   assert(home.text.indexOf('astar') >= 0 && home.text.indexOf('acrown') >= 0 && home.text.indexOf('splatgrid') >= 0 && home.text.indexOf('duel-bang') >= 0, 'new-game renderers ship in the page (star / crown / splat grid / duel banner)');
   assert(home.text.indexOf('sharedblob') >= 0 && home.text.indexOf('acrate') >= 0 && home.text.indexOf('agoal') >= 0 && home.text.indexOf('aboat') >= 0 && home.text.indexOf('teambanner') >= 0 && home.text.indexOf('function sharedOrbSVG(') >= 0, 'co-op renderers ship in the page (shared orb / crate / goal / boat / team banner)');
+  assert(home.text.indexOf('id="recon"') >= 0 && home.text.indexOf('Đang kết nối lại') >= 0, 'stale-view watchdog badge ships in the page (recon element + label)');
+  assert(home.text.indexOf('function patchPositions(') >= 0 && home.text.indexOf('function watchdog(') >= 0 && home.text.indexOf('np_reload_at') >= 0, 'page ships patchPositions (post-render position patch) + watchdog with the sessionStorage reload budget');
   // A freshly created room can briefly be invisible somewhere, so the join
   // handler must auto-retry ONLY the room-not-found error (2s interval,
   // bounded attempts, subtle status).
