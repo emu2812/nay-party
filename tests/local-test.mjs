@@ -464,7 +464,7 @@ async function main() {
   assert(home.text.indexOf('Cướp Sao') >= 0 && home.text.indexOf('Giữ Vương Miện') >= 0 && home.text.indexOf('Sơn Sàn') >= 0 && home.text.indexOf('Cao Bồi') >= 0, 'page lists the 4 newest games (Cướp Sao, Giữ Vương Miện, Sơn Sàn, Cao Bồi)');
   assert(home.text.indexOf('Đấu với nhau') >= 0 && home.text.indexOf('Hợp tác') >= 0 && home.text.indexOf('Sắp ra mắt') < 0, 'game chooser is grouped by category: Đấu với nhau + Hợp tác, placeholder tile GONE (co-op wave shipped)');
   assert(home.text.indexOf('Chung Một Thân') >= 0 && home.text.indexOf('Đẩy Hộp Về Đích') >= 0 && home.text.indexOf('Chèo Thuyền') >= 0, 'page lists the 3 co-op games (Chung Một Thân, Đẩy Hộp Về Đích, Chèo Thuyền)');
-  assert(home.text.indexOf('21 game') >= 0, 'homepage footer counts all 21 games');
+  assert(home.text.indexOf('23 game') >= 0, 'homepage footer counts all 23 games');
   assert(home.text.indexOf('astar') >= 0 && home.text.indexOf('acrown') >= 0 && home.text.indexOf('splatgrid') >= 0 && home.text.indexOf('duel-bang') >= 0, 'new-game renderers ship in the page (star / crown / splat grid / duel banner)');
   assert(home.text.indexOf('sharedblob') >= 0 && home.text.indexOf('acrate') >= 0 && home.text.indexOf('agoal') >= 0 && home.text.indexOf('aboat') >= 0 && home.text.indexOf('teambanner') >= 0 && home.text.indexOf('function sharedOrbSVG(') >= 0, 'co-op renderers ship in the page (shared orb / crate / goal / boat / team banner)');
   assert(home.text.indexOf('id="recon"') >= 0 && home.text.indexOf('Đang kết nối lại') >= 0, 'stale-view watchdog badge ships in the page (recon element + label)');
@@ -521,9 +521,9 @@ async function main() {
   P1 = { seat: joined.seat, token: joined.playerToken };
   v = await hState();
   assert(v.players.length === 3, 'room has 3 filled seats (1 human + 2 bots)');
-  assert(v.games && v.games.length === 21, 'lobby game list carries all 21 games');
-  assert(v.games.filter((gm) => gm.cat === 'versus').length === 16, 'exactly 16 games are categorized versus');
-  assert(v.games.filter((gm) => gm.cat === 'coop').map((gm) => gm.id).sort().join(',') === 'cheo-thuyen,chung-mot-than,day-hop,giai-ma-chung,thu-thanh', 'co-op group is exactly the 5 co-op games (chung-mot-than, day-hop, cheo-thuyen, thu-thanh, giai-ma-chung)');
+  assert(v.games && v.games.length === 23, 'lobby game list carries all 23 games');
+  assert(v.games.filter((gm) => gm.cat === 'versus').length === 17, 'exactly 17 games are categorized versus');
+  assert(v.games.filter((gm) => gm.cat === 'coop').map((gm) => gm.id).sort().join(',') === 'cheo-thuyen,chung-mot-than,day-hop,den-lua-nuoc,giai-ma-chung,thu-thanh', 'co-op group is exactly the 6 co-op games (chung-mot-than, day-hop, cheo-thuyen, thu-thanh, giai-ma-chung, den-lua-nuoc)');
   assert(v.players.every((p) => typeof p.mood === 'string' && p.mood.length > 0), 'every player blob carries a mood/expression');
 
   collect(await playQuiz());
@@ -2021,6 +2021,468 @@ async function main() {
     const stillOk = await wsDrv.state();
     assert(stillOk && stillOk.ok === true && stillOk.phase === 'lobby',
       'ws gate: HTTP state polling is unaffected after the upgrade probes');
+  }
+
+  // Audit O: wave 4 — the two PLATFORMER games. Drives are 2-human
+  // rooms (no bots => no bot RNG) except the last temple drive, and
+  // every expectation is hand-computed from the platform constants:
+  // gravity 0.6 is applied BEFORE each move, so a jump with velocity V
+  // rises sum(V - 0.6k) over its rising ticks (fighter jump 2.6 ->
+  // apex 4.4, temple jump 2.2 -> apex 3.0, runs 0.68 / 0.65 a tick).
+  {
+  console.log('Audit O: platformers — Người Que Đại Chiến + Đền Lửa & Nước');
+  assert(home.text.indexOf('stickSVG') >= 0 && home.text.indexOf('charSVG') >= 0
+    && home.text.indexOf('tgate') >= 0 && home.text.indexOf('tpool') >= 0 && home.text.indexOf('tgem') >= 0,
+    'page ships the platformer renderers (stickSVG, charSVG, tgate/tpool/tgem)');
+  assert(home.text.indexOf("v.game.id === 'nguoi-que' && v.game.phase === 'fight'") >= 0
+    && home.text.indexOf("v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple'") >= 0,
+    'fast poll covers the two new play phases (fight / temple)');
+  {
+    const lv = await (await newDrv()).state();
+    const byId = {};
+    (lv.games || []).forEach((gm) => { byId[gm.id] = gm.cat; });
+    assert(byId['nguoi-que'] === 'versus' && byId['den-lua-nuoc'] === 'coop',
+      'chooser: Người Que Đại Chiến is versus, Đền Lửa & Nước is co-op');
+  }
+  async function padTicksO(drv, tok, pad, n) {
+    let v = null;
+    for (let i = 0; i < n; i++) { await drv.pAct(tok, { action: 'pad', pad }); tick(250); v = await drv.state(); }
+    return v;
+  }
+  // Hold one player's pad, one tick per step, until until(hostView)
+  // holds; then release the pad. The platformer drives are built from
+  // these legs: fixed pads, deterministic physics, exact landings.
+  async function leg(drv, tok, pad, until, label, max) {
+    for (let i = 0; i < (max || 500); i++) {
+      const v = await drv.state();
+      if (until(v)) { await drv.pAct(tok, { action: 'pad', pad: {} }); return v; }
+      await drv.pAct(tok, { action: 'pad', pad });
+      tick(250);
+    }
+    throw new Error('leg timeout: ' + label);
+  }
+
+  // --- Người Que: spawns, jump arc, one-way platform, double jump ---
+  const fqDrv = await newDrv();
+  const fq1 = await fqDrv.join('QueMot');
+  const fq2 = await fqDrv.join('QueHai');
+  await fqDrv.act({ action: 'startGame', game: 'nguoi-que' });
+  let fv = await pumpD(fqDrv, 250, (s) => s.game && s.game.phase === 'fight', 'fight begins');
+  assert(fv.game.blobs[1].x === -6 && fv.game.blobs[1].y === 5.1 && fv.game.blobs[1].lives === 3 && fv.game.blobs[1].dmg === 0,
+    'fight: seat 1 spawns on the main floor at (-6, 5.1) with 3 lives and 0% damage');
+  assert(fv.game.blobs[2].x === -2 && fv.game.blobs[2].y === 5.1 && fv.game.platforms.length === 4,
+    'fight: seat 2 spawns at (-2, 5.1); the stage carries 4 platforms');
+  fv = await padTicksO(fqDrv, fq1.playerToken, { u: true }, 1);
+  await fqDrv.pAct(fq1.playerToken, { action: 'pad', pad: {} });
+  assert(fv.game.blobs[1].y === 3.1 && fv.game.blobs[1].ground === false,
+    'fight: one tick into a jump the fighter is airborne at y 3.1 (vy -2.6 + gravity 0.6), got ' + JSON.stringify(fv.game.blobs[1]));
+  fv = await padTicksO(fqDrv, fq1.playerToken, {}, 12);
+  assert(fv.game.blobs[1].y === 1.1 && fv.game.blobs[1].ground === true,
+    'fight: the floater is one-way — the jump passes through it going up and lands on top (y 1.1), got y ' + fv.game.blobs[1].y);
+  fv = await padTicksO(fqDrv, fq1.playerToken, { r: true }, 9);
+  await fqDrv.pAct(fq1.playerToken, { action: 'pad', pad: {} });
+  assert(fv.game.blobs[1].y === 5.1 && fv.game.blobs[1].ground === true,
+    'fight: walking off the floater drops the fighter back to the main floor (y 5.1), got y ' + fv.game.blobs[1].y);
+  // Double jump: press, release, press again mid-air — the second
+  // jump peaks far above the single-jump apex (centre y 0.7).
+  await padTicksO(fqDrv, fq2.playerToken, { u: true }, 1);
+  await padTicksO(fqDrv, fq2.playerToken, {}, 1);
+  await padTicksO(fqDrv, fq2.playerToken, { u: true }, 1);
+  await fqDrv.pAct(fq2.playerToken, { action: 'pad', pad: {} });
+  let minY = 99;
+  for (let i = 0; i < 24; i++) {
+    const sv = await fqDrv.state();
+    if (sv.game.blobs[2].y < minY) minY = sv.game.blobs[2].y;
+    if (i > 6 && sv.game.blobs[2].ground) break;
+    tick(250);
+  }
+  assert(minY <= -1.0, 'fight: double jump apex reaches y ' + minY + ' (a single jump only reaches 0.7)');
+
+  // --- Người Que: attack damage and knockback that scales with % ---
+  const faDrv = await newDrv();
+  const fa1 = await faDrv.join('DanhMot');
+  const fa2 = await faDrv.join('DanhHai');
+  await faDrv.act({ action: 'startGame', game: 'nguoi-que' });
+  let av = await pumpD(faDrv, 250, (s) => s.game && s.game.phase === 'fight', 'attack fight begins');
+  av = await leg(faDrv, fa1.playerToken, { r: true },
+    (s) => (s.game.blobs[2].x - s.game.blobs[1].x) <= 1.85, 'fight: H1 closes in on H2');
+  const axBefore = av.game.blobs[2].x;
+  av = await padTicksO(faDrv, fa1.playerToken, { a: true }, 1);
+  await faDrv.pAct(fa1.playerToken, { action: 'pad', pad: {} });
+  const firstDisp = Math.abs(av.game.blobs[2].x - axBefore);
+  assert(av.game.blobs[2].dmg === 10 && firstDisp > 0.5,
+    'fight: a clean hit adds exactly 10% damage and knocks the victim ' + firstDisp.toFixed(2) + 'u on the hit tick');
+  const fpv = await faDrv.pState(fa1.playerToken);
+  assert(fpv.game.myDmg === 0 && fpv.game.blobs[2].dmg === 10,
+    'fight: the phone view carries myDmg and per-fighter damage %');
+  // Chase and land a second hit: at 20% the same punch must fly
+  // further (force 0.6 + dmg*0.05: 1.1 at 10%, 1.6 at 20%).
+  let lastDisp = 0, hits = 1;
+  for (let i = 0; i < 400 && hits < 2; i++) {
+    const sv = await faDrv.state();
+    const b1 = sv.game.blobs[1], b2 = sv.game.blobs[2];
+    const dx = b2.x - b1.x, dy = b2.y - b1.y;
+    if (Math.abs(dx) <= 1.9 && Math.abs(dy) <= 1.5 && b2.ground) {
+      const xb = b2.x, db = b2.dmg;
+      await padTicksO(faDrv, fa1.playerToken, { a: true }, 1);
+      await faDrv.pAct(fa1.playerToken, { action: 'pad', pad: {} });
+      const av2 = await faDrv.state();
+      if (av2.game.blobs[2].dmg > db) { hits++; lastDisp = Math.abs(av2.game.blobs[2].x - xb); }
+      await padTicksO(faDrv, fa1.playerToken, {}, 2);
+    } else if (!b2.ground || Math.abs(dy) > 1.5) {
+      await padTicksO(faDrv, fa1.playerToken, {}, 1);
+    } else {
+      await faDrv.pAct(fa1.playerToken, { action: 'pad', pad: dx > 0 ? { r: true } : { l: true } });
+      tick(250);
+    }
+  }
+  assert(hits === 2 && lastDisp > firstDisp + 0.3,
+    'fight: knockback grows with damage % — hit at 10% moved ' + firstDisp.toFixed(2) + 'u, hit at 20% moved ' + lastDisp.toFixed(2) + 'u');
+
+  // --- Người Que: ring-out, respawn, and the final placement -------
+  // H2 cooperates: after each respawn it walks off the top platform
+  // back down to the floor so H1 can keep fighting it there.
+  const frDrv = await newDrv();
+  const fr1 = await frDrv.join('BatMot');
+  const fr2 = await frDrv.join('BayHai');
+  await frDrv.act({ action: 'startGame', game: 'nguoi-que' });
+  await pumpD(frDrv, 250, (s) => s.game && s.game.phase === 'fight', 'ring-out fight begins');
+  let prevLives = 3, sawRespawn = false, finalV = null;
+  for (let i = 0; i < 3000; i++) {
+    const sv = await frDrv.state();
+    if (sv.phase === 'results') { finalV = sv; break; }
+    if (!sv.game || !sv.game.blobs) { tick(250); continue; }
+    const b1 = sv.game.blobs[1], b2 = sv.game.blobs[2];
+    if (b2.lives < prevLives) {
+      prevLives = b2.lives;
+      assert(b2.x === 0 && b2.y <= -2.4 && b2.dmg === 0 && b2.invuln === true,
+        'fight: ring-out costs a life and respawns on the top platform at 0% with brief invulnerability, got ' + JSON.stringify(b2));
+      sawRespawn = true;
+    }
+    if (b2.alive && b2.ground && b2.y < 0) {
+      await frDrv.pAct(fr2.playerToken, { action: 'pad', pad: b1.x < b2.x ? { l: true } : { r: true } });
+    } else {
+      await frDrv.pAct(fr2.playerToken, { action: 'pad', pad: {} });
+    }
+    const dx = b2.x - b1.x, dy = b2.y - b1.y;
+    if (b2.alive && Math.abs(dx) <= 1.9 && Math.abs(dy) <= 1.5) {
+      await frDrv.pAct(fr1.playerToken, { action: 'pad', pad: { a: true } });
+      tick(250);
+      await frDrv.pAct(fr1.playerToken, { action: 'pad', pad: {} });
+    } else if (Math.abs(b1.x) < 7.5 || (dx > 0 && b1.x < 0) || (dx < 0 && b1.x > 0)) {
+      await frDrv.pAct(fr1.playerToken, { action: 'pad', pad: dx > 0.25 ? { r: true } : dx < -0.25 ? { l: true } : {} });
+    } else {
+      await frDrv.pAct(fr1.playerToken, { action: 'pad', pad: {} });
+    }
+    tick(250);
+  }
+  assert(sawRespawn && !!finalV, 'fight: at least one ring-out happened and the match reached results');
+  assert(finalV.lastGame.points[1] === 300 && finalV.lastGame.points[2] === 200,
+    'fight: placement points are 300 / 200, got ' + JSON.stringify(finalV.lastGame.points));
+
+  // --- Đền Lửa & Nước: elements, pool matrix, gem gating, gates ----
+  const tpDrv = await newDrv();
+  const tp1 = await tpDrv.join('Lua');
+  const tp2 = await tpDrv.join('Nuoc');
+  await tpDrv.act({ action: 'startGame', game: 'den-lua-nuoc' });
+  let tv = await pumpD(tpDrv, 250, (s) => s.game && s.game.phase === 'temple', 'temple begins');
+  assert(tv.game.chars[1].el === 'lua' && tv.game.chars[2].el === 'nuoc',
+    'temple: elements alternate by seat — odd seat is Lửa, even seat is Nước');
+  const tpv1 = await tpDrv.pState(tp1.playerToken);
+  assert(tpv1.game.myEl === 'lua' && tv.game.hearts === 5 && tv.game.gems.length === 10 && tv.game.gateOpen === false,
+    'temple: phone view carries myEl; the team starts with 5 hearts, 10 gems, gates closed');
+  // The pool lethality matrix, walked out on the bottom floor.
+  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.chars[1].x > -3.2, 'lua crosses the red pool');
+  assert(tv.game.hearts === 5 && tv.game.gemCount.lua === 1,
+    'temple: the red pool is SAFE for Lửa (and the red gem inside it is collected)');
+  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.hearts === 4, 'the green pool kills lua');
+  assert(tv.game.chars[1].x === -9.5 && tv.game.chars[1].y === 9.1,
+    'temple: death costs a team heart and respawns Lửa at its own start pad');
+  tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.chars[2].x < 3.2, 'nuoc crosses the blue pool');
+  assert(tv.game.hearts === 4 && tv.game.gemCount.nuoc === 1,
+    'temple: the blue pool is SAFE for Nước (inverse of red)');
+  tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.hearts === 3, 'the green pool kills nuoc');
+  assert(tv.game.chars[2].x === 9.5, 'temple: the green pool kills BOTH elements — Nước respawns too');
+  tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 1.7, 'nuoc approaches the green pool');
+  await padTicksO(tpDrv, tp2.playerToken, { l: true, u: true }, 1);
+  tv = await padTicksO(tpDrv, tp2.playerToken, { l: true }, 6);
+  assert(tv.game.hearts === 3 && tv.game.chars[2].ground === true,
+    'temple: a clean jump clears a pool (feet-box test), landed at x ' + tv.game.chars[2].x);
+  tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.hearts === 2, 'the red pool kills nuoc');
+  assert(tv.game.chars[2].x === 9.5, 'temple: the red pool kills Nước — respawned');
+  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -1.7, 'lua approaches the green pool');
+  await padTicksO(tpDrv, tp1.playerToken, { r: true, u: true }, 1);
+  tv = await padTicksO(tpDrv, tp1.playerToken, { r: true }, 6);
+  assert(tv.game.hearts === 2 && tv.game.gemCount.lua === 2,
+    'temple: Lửa jumps the green pool and grabs the gem floating over it');
+  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.hearts === 1, 'the blue pool kills lua');
+  assert(tv.game.chars[1].x === -9.5, 'temple: the blue pool kills Lửa — respawned (matrix complete)');
+  // Gem colour gating: Lửa climbs to the mid floor's left end and
+  // stands right on the BLUE gem there — nothing is collected.
+  await padTicksO(tpDrv, tp1.playerToken, { u: true }, 1);
+  await tpDrv.pAct(tp1.playerToken, { action: 'pad', pad: {} });
+  tv = await leg(tpDrv, tp1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'lua lands on the left step');
+  await padTicksO(tpDrv, tp1.playerToken, { r: true, u: true }, 1);
+  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'lua lands on the mid floor');
+  tv = await leg(tpDrv, tp1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -7.7, 'lua stands on the blue gem');
+  await padTicksO(tpDrv, tp1.playerToken, {}, 3);
+  tv = await tpDrv.state();
+  assert(tv.game.gemCount.nuoc === 2 && tv.game.gemCount.lua === 2,
+    'temple: gems are colour-locked — Lửa standing on a blue gem collects nothing');
+  // The gate mechanics get their own room with full hearts: the
+  // matrix room above ends on 1 heart, and the blocked-climb attempts
+  // involve too much sliding around to share that budget.
+  const gtDrv = await newDrv();
+  const gt1 = await gtDrv.join('LuaCua');
+  const gt2 = await gtDrv.join('NuocCua');
+  await gtDrv.act({ action: 'startGame', game: 'den-lua-nuoc' });
+  let gv2 = await pumpD(gtDrv, 250, (s) => s.game && s.game.phase === 'temple', 'gate temple begins');
+  // Lửa climbs to the mid floor's stair foot first.
+  await padTicksO(gtDrv, gt1.playerToken, { u: true }, 1);
+  await gtDrv.pAct(gt1.playerToken, { action: 'pad', pad: {} });
+  gv2 = await leg(gtDrv, gt1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'gate room: lua lands on the left step');
+  await padTicksO(gtDrv, gt1.playerToken, { r: true, u: true }, 1);
+  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'gate room: lua lands on the mid floor');
+  // The closed gate blocks the balcony stair: repeated jump attempts
+  // from the stair never get Lửa's feet onto the balcony (grounded
+  // y would be -0.5 there; the stair itself is 2.2).
+  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -6.45, 'lua to the stair foot');
+  let gateMinGroundY = 99;
+  // Climb onto the stair (jump up-left, settle), then jump at the
+  // closed gate from the stair's right edge — twice. The grounded y
+  // is sampled after every batch: the balcony would read -0.5, the
+  // stair reads 2.2, the mid floor 4.3.
+  await padTicksO(gtDrv, gt1.playerToken, { u: true }, 1);
+  await padTicksO(gtDrv, gt1.playerToken, { l: true }, 3);
+  gv2 = await padTicksO(gtDrv, gt1.playerToken, { r: true }, 1);
+  if (gv2.game.chars[1].ground) gateMinGroundY = Math.min(gateMinGroundY, gv2.game.chars[1].y);
+  for (let gi = 0; gi < 2; gi++) {
+    if (gv2.game.chars[1].y > 3) { // fell back to the mid floor: climb again
+      await padTicksO(gtDrv, gt1.playerToken, { u: true }, 1);
+      await padTicksO(gtDrv, gt1.playerToken, { l: true }, 3);
+      gv2 = await padTicksO(gtDrv, gt1.playerToken, { r: true }, 1);
+      if (gv2.game.chars[1].ground) gateMinGroundY = Math.min(gateMinGroundY, gv2.game.chars[1].y);
+    }
+    await padTicksO(gtDrv, gt1.playerToken, { r: true }, 3);
+    await padTicksO(gtDrv, gt1.playerToken, { r: true, u: true }, 1);
+    gv2 = await padTicksO(gtDrv, gt1.playerToken, { r: true }, 5);
+    if (gv2.game.chars[1].ground) gateMinGroundY = Math.min(gateMinGroundY, gv2.game.chars[1].y);
+  }
+  assert(gateMinGroundY >= 2.2 && gv2.game.gateOpen === false,
+    'temple: with the gate closed, jump attempts from the stair never land on the balcony (best grounded y ' + gateMinGroundY + ')');
+  await gtDrv.pAct(gt1.playerToken, { action: 'pad', pad: {} }); // park Lửa (its pad was left holding right)
+  // Nước climbs to the button ledge: the gate opens; Lửa gets through.
+  await padTicksO(gtDrv, gt2.playerToken, { u: true }, 1);
+  await gtDrv.pAct(gt2.playerToken, { action: 'pad', pad: {} });
+  gv2 = await leg(gtDrv, gt2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 7, 'nuoc lands on the right step');
+  await padTicksO(gtDrv, gt2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(gtDrv, gt2.playerToken, { l: true }, 1);
+  gv2 = await leg(gtDrv, gt2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5, 'nuoc lands on the mid floor');
+  gv2 = await leg(gtDrv, gt2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 8.1, 'nuoc to the ledge jump point');
+  await padTicksO(gtDrv, gt2.playerToken, { r: true, u: true }, 1);
+  gv2 = await leg(gtDrv, gt2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.5, 'nuoc lands on the button ledge');
+  assert(gv2.game.gateOpen === true, 'temple: standing on the pressure button holds the gate open');
+  // Lửa re-climbs from the bottom floor to the stair foot first
+  // (the blocked attempts above left it down there), then goes
+  // through the now-open gate.
+  gv2 = await leg(gtDrv, gt1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -10.4 && s.game.chars[1].ground, 'lua back to its start corner');
+  await padTicksO(gtDrv, gt1.playerToken, { u: true }, 1);
+  await gtDrv.pAct(gt1.playerToken, { action: 'pad', pad: {} });
+  gv2 = await leg(gtDrv, gt1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'lua lands on the left step again');
+  await padTicksO(gtDrv, gt1.playerToken, { r: true, u: true }, 1);
+  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'lua lands on the mid floor again');
+  await padTicksO(gtDrv, gt1.playerToken, { u: true }, 1);
+  await padTicksO(gtDrv, gt1.playerToken, { l: true }, 3);
+  await padTicksO(gtDrv, gt1.playerToken, { r: true }, 3);
+  await padTicksO(gtDrv, gt1.playerToken, { r: true, u: true }, 1);
+  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 0, 'lua reaches the balcony');
+  assert(gv2.game.chars[1].y === -0.5 && gv2.game.gateOpen === true,
+    'temple: with a partner holding the button, Lửa climbs through the gate onto the balcony');
+  gv2 = await leg(gtDrv, gt2.playerToken, { l: true }, (s) => s.game.gateOpen === false, 'the gate closes on release');
+  assert(gv2.game.gateOpen === false, 'temple: the gate closes the moment the button is released');
+
+
+  // --- Đền Lửa & Nước: full co-op completion -> tier Bạc -----------
+  // Nước holds button 1 from the ledge; Lửa climbs through, holds
+  // button 2 on the balcony; Nước crosses and climbs in turn; both
+  // walk into their own doors on the same run.
+  const tcDrv = await newDrv();
+  const tc1 = await tcDrv.join('LuaHai');
+  const tc2 = await tcDrv.join('NuocHai');
+  await tcDrv.act({ action: 'startGame', game: 'den-lua-nuoc' });
+  let cv = await pumpD(tcDrv, 250, (s) => s.game && s.game.phase === 'temple', 'completion temple begins');
+  // Nước -> button ledge.
+  await padTicksO(tcDrv, tc2.playerToken, { u: true }, 1);
+  await tcDrv.pAct(tc2.playerToken, { action: 'pad', pad: {} });
+  cv = await leg(tcDrv, tc2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 7, 'C: nuoc lands on the right step');
+  await padTicksO(tcDrv, tc2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tcDrv, tc2.playerToken, { l: true }, 1);
+  cv = await leg(tcDrv, tc2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5, 'C: nuoc lands on the mid floor');
+  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 8.1, 'C: nuoc to the ledge jump point');
+  await padTicksO(tcDrv, tc2.playerToken, { r: true, u: true }, 1);
+  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.5, 'C: nuoc lands on the button ledge');
+  assert(cv.game.gateOpen === true, 'temple completion: Nước holds button 1 open');
+  // Lửa -> balcony -> button 2.
+  await padTicksO(tcDrv, tc1.playerToken, { u: true }, 1);
+  await tcDrv.pAct(tc1.playerToken, { action: 'pad', pad: {} });
+  cv = await leg(tcDrv, tc1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'C: lua lands on the left step');
+  await padTicksO(tcDrv, tc1.playerToken, { r: true, u: true }, 1);
+  cv = await leg(tcDrv, tc1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'C: lua lands on the mid floor');
+  await padTicksO(tcDrv, tc1.playerToken, { u: true }, 1);
+  await padTicksO(tcDrv, tc1.playerToken, { l: true }, 3);
+  await padTicksO(tcDrv, tc1.playerToken, { r: true }, 2);
+  await padTicksO(tcDrv, tc1.playerToken, { r: true, u: true }, 1);
+  cv = await leg(tcDrv, tc1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 0, 'C: lua reaches the balcony');
+  cv = await leg(tcDrv, tc1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -0.5, 'C: lua onto button 2');
+  assert(cv.game.chars[1].y === -0.5 && cv.game.gateOpen === true,
+    'temple completion: Lửa is on the balcony holding button 2');
+  // Nước crosses the mid floor (jumping its two lethal pools) and
+  // climbs the left stair through the gate Lửa now holds open.
+  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 1.9 && s.game.chars[2].y < 3 && s.game.chars[2].x <= 8.3, 'C: nuoc steps down to the right stair');
+  await padTicksO(tcDrv, tc2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tcDrv, tc2.playerToken, { l: true }, 2);
+  cv = await leg(tcDrv, tc2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y > 4, 'C: nuoc drops to the mid floor');
+  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 6.6, 'C: nuoc approaches the red pool');
+  await padTicksO(tcDrv, tc2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tcDrv, tc2.playerToken, { l: true }, 6);
+  await padTicksO(tcDrv, tc2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tcDrv, tc2.playerToken, { l: true }, 6);
+  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].x <= -6.45, 'C: nuoc to the left stair foot');
+  await padTicksO(tcDrv, tc2.playerToken, { u: true }, 1);
+  await padTicksO(tcDrv, tc2.playerToken, { l: true }, 3);
+  await padTicksO(tcDrv, tc2.playerToken, { r: true }, 2);
+  await padTicksO(tcDrv, tc2.playerToken, { r: true, u: true }, 1);
+  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 0, 'C: nuoc reaches the balcony');
+  assert(cv.game.chars[2].y === -0.5, 'temple completion: Nước climbed through the gate Lửa held open');
+  // Both into their own doors -> the level completes.
+  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => !s.game || s.game.chars[2].home, 'C: nuoc walks into the water door');
+  cv = await leg(tcDrv, tc1.playerToken, { l: true }, (s) => s.phase === 'results', 'C: lua walks into the fire door');
+  assert(cv.lastGame.teamResult && cv.lastGame.teamResult.tier === 'bac' && cv.lastGame.teamResult.pointsEach === 200,
+    'temple completion: everyone home with gems missing -> team tier Bạc (+200 each), got ' + JSON.stringify(cv.lastGame.teamResult));
+
+  // --- Đền Lửa & Nước: every gem collected -> tier Vàng ------------
+  // Same skeleton as the completion drive, with each character first
+  // running its own gem route: floor gems, mid-floor pool-jump gems,
+  // far-end gems, and the ledge gem for Nước.
+  const tgDrv = await newDrv();
+  const tg1 = await tgDrv.join('LuaBa');
+  const tg2 = await tgDrv.join('NuocBa');
+  await tgDrv.act({ action: 'startGame', game: 'den-lua-nuoc' });
+  let gv = await pumpD(tgDrv, 250, (s) => s.game && s.game.phase === 'temple', 'vang temple begins');
+  // Nước gem run (5 blue gems), ending on the button ledge.
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.gemCount.nuoc === 1, 'V: nuoc takes the bottom blue gem');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 1.7, 'V: nuoc approaches the green pool');
+  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
+  gv = await padTicksO(tgDrv, tg2.playerToken, { l: true }, 6);
+  assert(gv.game.gemCount.nuoc === 2, 'temple Vàng run: Nước jumps the green pool and takes its floating gem (2/5)');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= -2.2, 'V: nuoc back toward the green pool');
+  await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { r: true }, 6);
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 9.3, 'V: nuoc to its start corner');
+  await padTicksO(tgDrv, tg2.playerToken, { u: true }, 1);
+  await tgDrv.pAct(tg2.playerToken, { action: 'pad', pad: {} });
+  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 7, 'V: nuoc lands on the right step');
+  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 1);
+  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5, 'V: nuoc lands on the mid floor');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 5.6, 'V: nuoc approaches the red pool');
+  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
+  gv = await padTicksO(tgDrv, tg2.playerToken, { l: true }, 5);
+  assert(gv.game.gemCount.nuoc === 3, 'temple Vàng run: Nước jumps the red pool and takes its gem (3/5)');
+  gv = await padTicksO(tgDrv, tg2.playerToken, {}, 2);
+  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 6);
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.gemCount.nuoc === 4, 'V: nuoc takes the far-end gem');
+  // Return along the BOTTOM floor: the closed gate 2 slab blocks
+  // every mid-floor jump across its band, so Nước drops down, jumps
+  // the bottom red and green pools, and climbs back up at its corner.
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 6, 'V: nuoc drops toward the bottom floor');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 8, 'V: nuoc reaches the bottom floor');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= -6.85, 'V: nuoc to the bottom red pool');
+  await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { r: true }, 6);
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= -2.1, 'V: nuoc to the bottom green pool');
+  await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { r: true }, 6);
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 9.3, 'V: nuoc back to its start corner');
+  await padTicksO(tgDrv, tg2.playerToken, { u: true }, 1);
+  await tgDrv.pAct(tg2.playerToken, { action: 'pad', pad: {} });
+  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 7, 'V: nuoc lands on the right step again');
+  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5, 'V: nuoc lands on the mid floor again');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 8.1, 'V: nuoc to the ledge jump point');
+  await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.5, 'V: nuoc lands on the button ledge');
+  assert(gv.game.gemCount.nuoc === 5 && gv.game.gateOpen === true,
+    'temple Vàng run: Nước holds all 5 blue gems and the gate open (5/5)');
+  // Lửa gem run (5 red gems), ending on button 2.
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.gemCount.lua === 1, 'V: lua takes the bottom red gem');
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -1.7, 'V: lua approaches the green pool');
+  await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
+  gv = await padTicksO(tgDrv, tg1.playerToken, { r: true }, 6);
+  assert(gv.game.gemCount.lua === 2, 'temple Vàng run: Lửa jumps the green pool and takes its floating gem (2/5)');
+  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].x <= 2.2, 'V: lua back toward the green pool');
+  await padTicksO(tgDrv, tg1.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tgDrv, tg1.playerToken, { l: true }, 6);
+  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -9.3, 'V: lua to its start corner');
+  await padTicksO(tgDrv, tg1.playerToken, { u: true }, 1);
+  await tgDrv.pAct(tg1.playerToken, { action: 'pad', pad: {} });
+  gv = await leg(tgDrv, tg1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'V: lua lands on the left step');
+  await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'V: lua lands on the mid floor');
+  await padTicksO(tgDrv, tg1.playerToken, { r: true }, 1);
+  await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
+  gv = await padTicksO(tgDrv, tg1.playerToken, { r: true }, 5);
+  assert(gv.game.gemCount.lua === 4, 'temple Vàng run: one jump over the blue pool takes both mid-floor red gems (4/5)');
+  gv = await padTicksO(tgDrv, tg1.playerToken, {}, 2);
+  await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
+  await padTicksO(tgDrv, tg1.playerToken, { r: true }, 6);
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.gemCount.lua === 5, 'V: lua takes the far-end gem');
+  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].x <= 2.6, 'V: lua back to the green pool');
+  await padTicksO(tgDrv, tg1.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tgDrv, tg1.playerToken, { l: true }, 6);
+  await padTicksO(tgDrv, tg1.playerToken, { l: true, u: true }, 1);
+  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'V: lua lands back on the mid floor');
+  await padTicksO(tgDrv, tg1.playerToken, { u: true }, 1);
+  await padTicksO(tgDrv, tg1.playerToken, { l: true }, 1);
+  gv = await leg(tgDrv, tg1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 3, 'V: lua lands on the balcony stair');
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].x >= -6.9, 'V: lua to the gate foot');
+  await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 0, 'V: lua reaches the balcony');
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -0.5, 'V: lua onto button 2');
+  // Nước crosses and climbs, then both take their doors.
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 1.9 && s.game.chars[2].y < 3 && s.game.chars[2].x <= 8.3, 'V: nuoc steps down to the right stair');
+  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 2);
+  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y > 4, 'V: nuoc drops to the mid floor');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 6.6, 'V: nuoc approaches the red pool');
+  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 6);
+  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 6);
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= -6.45, 'V: nuoc to the left stair foot');
+  await padTicksO(tgDrv, tg2.playerToken, { u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 3);
+  await padTicksO(tgDrv, tg2.playerToken, { r: true }, 2);
+  await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 0, 'V: nuoc reaches the balcony');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => !s.game || s.game.chars[2].home, 'V: nuoc walks into the water door');
+  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.phase === 'results', 'V: lua walks into the fire door');
+  assert(gv.lastGame.teamResult && gv.lastGame.teamResult.tier === 'vang' && gv.lastGame.teamResult.score === 10 && gv.lastGame.teamResult.pointsEach === 300,
+    'temple Vàng run: completed with all 10 gems -> team tier Vàng (+300 each), got ' + JSON.stringify(gv.lastGame.teamResult));
+
+  // --- Đền Lửa & Nước: a bot-inclusive drive stays healthy ---------
+  const tbDrv = await newDrv();
+  await tbDrv.join('NguoiThat');
+  await tbDrv.act({ action: 'addBot', seat: 2 });
+  await tbDrv.act({ action: 'addBot', seat: 3 });
+  await tbDrv.act({ action: 'startGame', game: 'den-lua-nuoc' });
+  let bv = await pumpD(tbDrv, 250, (s) => s.game && s.game.phase === 'temple', 'bot temple begins');
+  for (let i = 0; i < 240; i++) { tick(250); bv = await tbDrv.state(); if (bv.phase === 'results') break; }
+  const botGems = bv.game ? ((bv.game.gemCount.lua || 0) + (bv.game.gemCount.nuoc || 0))
+    : (bv.lastGame && bv.lastGame.teamResult ? bv.lastGame.teamResult.score : 0);
+  assert(botGems >= 1, 'temple: a 60s bot-inclusive drive runs clean and the waypoint bots collect at least one gem (got ' + botGems + ')');
+  assert(bv.phase === 'playing' || bv.phase === 'results', 'temple: the bot drive ends in a sane phase (' + bv.phase + ')');
   }
 
   // --- Storage routing: with ROOMS_DO bound, everything above must have

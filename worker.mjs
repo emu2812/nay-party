@@ -126,6 +126,8 @@ export const GAMES = {
   'cheo-thuyen': { name: 'Chèo Thuyền', desc: 'Hợp tác: chèo thuyền theo nhịp, cả đội cùng trúng nhịp mới đi xa!', rounds: 1, cat: 'coop' },
   'thu-thanh': { name: 'Thủ Thành', desc: 'Hợp tác: bắn hạ đàn slime, giữ pha lê nguyên vẹn đến cuối!', rounds: 1, cat: 'coop' },
   'giai-ma-chung': { name: 'Giải Mã Chung', desc: 'Hợp tác: mỗi người giữ một phần mật mã — phối hợp bấm đúng thứ tự!', rounds: 1, cat: 'coop' },
+  'nguoi-que': { name: 'Người Que Đại Chiến', desc: 'Gamepad: người que đấu võ — đánh đối thủ văng khỏi sàn!', rounds: 1, cat: 'versus' },
+  'den-lua-nuoc': { name: 'Đền Lửa & Nước', desc: 'Hợp tác: Lửa và Nước cùng vượt đền — nhặt ngọc, giữ cổng cho nhau, về đúng cửa!', rounds: 1, cat: 'coop' },
 };
 
 // Bot behaviour per difficulty. Bots are simulated server-side from plans
@@ -236,6 +238,109 @@ const DECODE_SYMBOLS = [
   { name: 'ĐỎ', color: '#FF4757' }, { name: 'XANH', color: '#3FA9F5' },
   { name: 'VÀNG', color: '#FFC93D' }, { name: 'HỒNG', color: '#F77FB0' },
 ];
+// ---------------------------------------------------------------------------
+// Wave 4: the two PLATFORMER games (Người Que Đại Chiến + Đền Lửa & Nước)
+// share one small platform-physics helper (platStep below): entities are
+// centre-anchored AABBs {x, y, vx, vy, hw, hh, ground}; solids are
+// top-left rects {x, y, w, h} exactly like TANK_BLOCKS, in the arena's
+// [-12, 12] unit space so the page's % mapping works unchanged. Gravity
+// is applied BEFORE the move each tick (semi-implicit Euler), so the
+// discrete jump apex for velocity V is sum(V - k*GRAV) over the rising
+// ticks: V=2.6 -> ~4.4 units, V=2.2 -> ~3.0 units. Every step-up in both
+// stages below is sized against those apexes, never the naive V²/2G.
+const PLAT_GRAV = 0.6, PLAT_MAXFALL = 2.6, PLAT_HW = 0.45, PLAT_HH = 0.9;
+// Người Que Đại Chiến: %-based knockback fighting on an open stage.
+// A hit adds FIGHT_DMG %; the knockback force 0.6 + dmg*0.05 is applied
+// AFTER the damage lands, so the same punch flies further the more
+// hurt the victim already is. Ring-out (past the blast bounds) costs a
+// life; respawn is on the top platform, damage reset, 2s invulnerable.
+const FIGHT_MS = 90000, FIGHT_LIVES = 3;
+const FIGHT_RUN = 0.68, FIGHT_JUMP = 2.6, FIGHT_DJUMP = 2.3;
+const FIGHT_ATK_CD = 3, FIGHT_DMG = 10, FIGHT_HITSTUN = 3;
+const FIGHT_DASH_CD = 8, FIGHT_DASH_TICKS = 3, FIGHT_DASH_SPEED = 1.9;
+const FIGHT_PLATFORMS = [
+  { x: -8.5, y: 6, w: 17, h: 2.5 },
+  { x: -8, y: 2, w: 4.5, h: 0.7, oneWay: true },
+  { x: 3.5, y: 2, w: 4.5, h: 0.7, oneWay: true },
+  { x: -2.5, y: -1.5, w: 5, h: 0.7, oneWay: true },
+];
+const FIGHT_SPAWN_X = [-6, -2, 2, 6];
+// Đền Lửa & Nước: co-op temple. Seats alternate elements by seat order
+// (odd seat = Lửa 'lua', even = Nước 'nuoc'). One handcrafted enclosed
+// level: three floors, element pools, colour-locked gems, and one
+// linked pair of pressure gates — the portcullis slabs beside the two
+// balcony stairs stay down unless SOMEONE stands on a button: button 1
+// sits on a ledge on the Nước side, button 2 on the balcony itself, so
+// the first climber is held up by a partner and then holds the gate
+// for them in turn. Wrong-element (or green) pool = death: respawn at
+// the element start, the team loses one of TEMP_HEARTS hearts.
+const TEMP_MS = 150000, TEMP_HEARTS = 5;
+const TEMP_RUN = 0.65, TEMP_JUMP = 2.2;
+const TEMPLE_LEVEL = {
+  solids: [
+    { x: -12, y: 10, w: 24, h: 2.4 },
+    { x: -12, y: -12, w: 1, h: 22.4 },
+    { x: 11, y: -12, w: 1, h: 22.4 },
+    { x: -12, y: -12, w: 24, h: 1 },
+    { x: -10.9, y: 7.6, w: 2.2, h: 0.7, oneWay: true },
+    { x: 8.7, y: 7.6, w: 2.2, h: 0.7, oneWay: true },
+    { x: -8.5, y: 5.2, w: 17, h: 1, oneWay: true },
+    { x: -8.9, y: 3.1, w: 2, h: 0.7, oneWay: true },
+    { x: 6.9, y: 3.1, w: 2, h: 0.7, oneWay: true },
+    { x: -5.5, y: 0.4, w: 11, h: 1, oneWay: true },
+    { x: 8.6, y: 2.9, w: 2.3, h: 0.7, oneWay: true },
+  ],
+  gates: [
+    { x: -6.2, y: -1.4, w: 0.7, h: 4.5 },
+    { x: 5.5, y: -1.4, w: 0.7, h: 4.5 },
+  ],
+  buttons: [
+    { x: 9.2, y: 2.3, w: 1.1, h: 0.6 },
+    { x: -0.55, y: -0.2, w: 1.1, h: 0.6 },
+  ],
+  pools: [
+    { x: -6.2, y: 9.4, w: 2.8, h: 0.6, kind: 'red' },
+    { x: -1.4, y: 9.4, w: 2.8, h: 0.6, kind: 'green' },
+    { x: 3.4, y: 9.4, w: 2.8, h: 0.6, kind: 'blue' },
+    { x: -5.3, y: 4.6, w: 2.4, h: 0.6, kind: 'blue' },
+    { x: -1.1, y: 4.6, w: 2.2, h: 0.6, kind: 'green' },
+    { x: 2.9, y: 4.6, w: 2.4, h: 0.6, kind: 'red' },
+  ],
+  gems: [
+    { x: -4.8, y: 8.9, el: 'lua' }, { x: -0.7, y: 8.3, el: 'lua' }, { x: -4.2, y: 2.2, el: 'lua' },
+    { x: 7.8, y: 4.5, el: 'lua' }, { x: -3.9, y: 1.9, el: 'lua' },
+    { x: 4.8, y: 8.9, el: 'nuoc' }, { x: 0.7, y: 8.3, el: 'nuoc' }, { x: 4.2, y: 2.2, el: 'nuoc' },
+    { x: -7.8, y: 4.5, el: 'nuoc' }, { x: 9.7, y: 2.2, el: 'nuoc' },
+  ],
+  doors: {
+    lua: { x: -5.4, y: -1.4, w: 1.7, h: 1.8 },
+    nuoc: { x: 3.7, y: -1.4, w: 1.7, h: 1.8 },
+  },
+  starts: { lua: { x: -9.5, y: 9.1 }, nuoc: { x: 9.5, y: 9.1 } },
+};
+// Bot waypoint routes through the temple (target = character centre).
+// The bot brain adds two generic rules on top of plain steering: jump
+// when a waypoint sits above and the bot is close + grounded, and jump
+// any pool ahead that is lethal to the bot's own element. 'holdBtn'
+// waypoints park the bot on a gate button until every other character
+// is on the balcony (centre y < 1.0) or home, with a 30s timeout so a
+// stuck partner can never freeze the bot forever.
+const TEMPLE_WP = {
+  lua: [
+    { x: -9.8, y: 6.7 }, { x: -2.6, y: 4.3 }, { x: 0.5, y: 4.3 },
+    { x: -7.3, y: 2.2 }, { x: -4.9, y: -0.5 },
+    { x: -0.45, y: -0.5, holdBtn: true }, { x: -4.55, y: -0.5 },
+  ],
+  nuoc: [
+    { x: 9.8, y: 6.7 }, { x: 2.6, y: 4.3 },
+    { x: 9.7, y: 2.0, holdBtn: true },
+    { x: 0.5, y: 4.3 }, { x: 7.3, y: 2.2 }, { x: 4.9, y: -0.5 },
+    { x: 0.45, y: -0.5, holdBtn: true }, { x: 4.55, y: -0.5 },
+  ],
+};
+// Temple finish tiers: completed + every gem = Vàng, completed = Bạc,
+// at least half of all gems (even unfinished) = Đồng.
+const TEMP_GEMS_TOTAL = 10;
 
 // ---------------------------------------------------------------------------
 // Small utilities
@@ -624,6 +729,8 @@ function createGame(room, gameId) {
     hardCells: [], softCells: [], bombs: [], bombSeq: 0, blasts: [],
     slimes: [], slimeSeq: 0, crystal: null, kills: 0,
     level: 0, levelsDone: 0, stepIdx: 0, botPressAt: 0, decodeAt: 0,
+    vel: {}, dmg: {}, face: {}, jumps: {}, atkCd: {}, hitT: {}, atkT: {}, dashT: {}, dashDir: {},
+    chars: null, gems: null, gemCount: {}, gateOpen: false, elOf: {}, wpIdx: {}, wpAt: {},
   };
   room.players.forEach((p) => { game.points[p.seat] = 0; game.streaks[p.seat] = 0; });
   if (gameId === 'do-vui') game.order = shuffle(QUIZ_BANK.map((_, i) => i)).slice(0, meta.rounds);
@@ -974,6 +1081,33 @@ function beginRound(room) {
     g.endsAt = t + DECODE_MS;
     g.hearts = DECODE_HEARTS; g.level = 0; g.levelsDone = 0;
     startDecodeLevel(room, t);
+  } else if (g.id === 'nguoi-que') {
+    g.phase = 'fight';
+    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + FIGHT_MS;
+    g.blobs = {}; g.elimOrder = []; g.elimTick = {}; g.botIntent = {}; preservePads(room); g.invuln = {};
+    g.vel = {}; g.dmg = {}; g.face = {}; g.jumps = {}; g.atkCd = {}; g.hitT = {}; g.atkT = {}; g.dashT = {}; g.dashDir = {};
+    room.players.forEach((p, i) => {
+      const sx = FIGHT_SPAWN_X[i % FIGHT_SPAWN_X.length];
+      g.blobs[p.seat] = { x: sx, y: 6 - PLAT_HH, vx: 0, vy: 0, ground: true, lives: FIGHT_LIVES, alive: true };
+      g.dmg[p.seat] = 0; g.face[p.seat] = sx < 0 ? 1 : -1; g.jumps[p.seat] = 0;
+      g.atkCd[p.seat] = 0; g.hitT[p.seat] = 0; g.atkT[p.seat] = 0; g.dashT[p.seat] = 0; g.dashDir[p.seat] = 1;
+      g.invuln[p.seat] = 0;
+    });
+  } else if (g.id === 'den-lua-nuoc') {
+    g.phase = 'temple';
+    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + TEMP_MS;
+    g.hearts = TEMP_HEARTS; preservePads(room); g.botIntent = {};
+    g.chars = {}; g.elOf = {}; g.wpIdx = {}; g.wpAt = {};
+    g.gems = TEMPLE_LEVEL.gems.map((gm) => ({ x: gm.x, y: gm.y, el: gm.el, taken: false }));
+    g.gemCount = { lua: 0, nuoc: 0 };
+    g.gateOpen = false;
+    room.players.forEach((p) => {
+      const el = p.seat % 2 === 1 ? 'lua' : 'nuoc';
+      const st = TEMPLE_LEVEL.starts[el];
+      g.elOf[p.seat] = el;
+      g.chars[p.seat] = { x: st.x, y: st.y, vx: 0, vy: 0, ground: true, el, home: false };
+      g.wpIdx[p.seat] = 0; g.wpAt[p.seat] = 0;
+    });
   }
 }
 
@@ -1014,6 +1148,8 @@ function step(room) {
   if (g.id === 'ke-gia-mao') return stepImpostor(room, t);
   if (g.id === 'thu-thanh') return stepDefend(room, t);
   if (g.id === 'giai-ma-chung') return stepDecode(room, t);
+  if (g.id === 'nguoi-que') return stepFight(room, t);
+  if (g.id === 'den-lua-nuoc') return stepTemple(room, t);
   return false;
 }
 function humansAllIn(room, has) {
@@ -2869,6 +3005,344 @@ function stepDecode(room, t) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Wave 4: platformers — one shared physics helper, then the two games.
+// ---------------------------------------------------------------------------
+// platStep moves ONE centre-anchored AABB entity (half extents
+// PLAT_HW x PLAT_HH, fields {x, y, vx, vy, ground}) through a list of
+// top-left rect solids. Gravity is applied first, then the axes are
+// integrated and resolved SEPARATELY — X against solid sides, Y
+// against tops/bottoms — so characters slide along walls and land
+// cleanly on ledges. A solid flagged oneWay only catches a falling
+// entity whose feet were at/above its top before the Y move; jumping
+// up through it is free (the fighter stage's floaters).
+function platOverlap(e, s) {
+  return e.x - PLAT_HW < s.x + s.w && e.x + PLAT_HW > s.x
+    && e.y - PLAT_HH < s.y + s.h && e.y + PLAT_HH > s.y;
+}
+function platStep(e, solids) {
+  e.vy = Math.min(PLAT_MAXFALL, e.vy + PLAT_GRAV);
+  e.x += e.vx;
+  for (const s of solids) {
+    if (s.oneWay) continue;
+    if (!platOverlap(e, s)) continue;
+    if (e.vx > 0) e.x = s.x - PLAT_HW;
+    else if (e.vx < 0) e.x = s.x + s.w + PLAT_HW;
+    else {
+      // No horizontal motion but already inside (a gate slab closed
+      // onto the entity): leave by the shorter side, never stay buried.
+      const dl = (e.x + PLAT_HW) - s.x, dr = (s.x + s.w) - (e.x - PLAT_HW);
+      e.x = dl < dr ? s.x - PLAT_HW : s.x + s.w + PLAT_HW;
+    }
+    e.vx = 0;
+  }
+  const prevFeet = e.y + PLAT_HH;
+  e.y += e.vy;
+  e.ground = false;
+  for (const s of solids) {
+    if (!platOverlap(e, s)) continue;
+    if (e.vy >= 0 && prevFeet <= s.y + 0.05) { e.y = s.y - PLAT_HH; e.vy = 0; e.ground = true; }
+    else if (e.vy < 0 && !s.oneWay) { e.y = s.y + s.h + PLAT_HH; e.vy = 0; }
+  }
+}
+
+// --- Game 22: Người Que Đại Chiến (versus platform fighter) -------------
+// Stick fighters on an open stage: run, double jump, dash, and a melee
+// swing whose knockback scales with the VICTIM's damage %. Blast
+// bounds on every side (past |x| 13, below y 12.5, above y -15) cost a
+// life; the last fighter standing wins, and at the 90s cap the ranking
+// is lives first, then LOWEST damage. Placement 300/200/100/50 once.
+function stepFight(room, t) {
+  const g = room.game;
+  if (g.phase !== 'fight') return false;
+  if (t >= g.endsAt) { finishFight(room); return true; }
+  if (t >= g.nextTickAt) {
+    simulateFightTick(room);
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    return true;
+  }
+  return false;
+}
+function fightIntent(room, p) {
+  const g = room.game;
+  if (p.type === 'human') {
+    const pad = g.pad[p.seat] || {};
+    const prev = g.padPrev[p.seat] || {};
+    return {
+      x: (pad.r ? 1 : 0) - (pad.l ? 1 : 0),
+      jump: !!pad.u && !prev.u,
+      atk: !!pad.a && !prev.a,
+      dash: !!pad.b && !prev.b,
+    };
+  }
+  return botBrainFight(room, p);
+}
+function simulateFightTick(room) {
+  const g = room.game;
+  g.tickCount += 1;
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat];
+    if (!b || !b.alive) return;
+    const seat = p.seat;
+    if (g.atkCd[seat] > 0) g.atkCd[seat] -= 1;
+    if (g.atkT[seat] > 0) g.atkT[seat] -= 1;
+    if (g.dashCd[seat] > 0) g.dashCd[seat] -= 1;
+    if ((g.invuln[seat] || 0) > 0) g.invuln[seat] -= 1;
+    const stunned = (g.hitT[seat] || 0) > 0;
+    if (stunned) g.hitT[seat] -= 1;
+    const it = fightIntent(room, p);
+    // Dash start (fresh press, off cooldown, not stunned).
+    if (!stunned && it.dash && g.dashCd[seat] <= 0 && (g.dashT[seat] || 0) <= 0) {
+      g.dashDir[seat] = it.x !== 0 ? it.x : (g.face[seat] || 1);
+      g.dashT[seat] = FIGHT_DASH_TICKS;
+      g.dashCd[seat] = FIGHT_DASH_CD;
+    }
+    if ((g.dashT[seat] || 0) > 0) {
+      g.dashT[seat] -= 1;
+      b.vx = g.dashDir[seat] * FIGHT_DASH_SPEED;
+      b.vy = -PLAT_GRAV; // pre-cancel gravity: the dash flies level
+      g.face[seat] = g.dashDir[seat];
+    } else if (stunned) {
+      b.vx *= b.ground ? 0.6 : 0.88; // knockback slide, no control
+    } else {
+      if (it.x !== 0) {
+        g.face[seat] = it.x;
+        if (Math.abs(b.vx) <= FIGHT_RUN || Math.sign(b.vx) !== it.x) b.vx = it.x * FIGHT_RUN;
+        else b.vx *= b.ground ? 0.86 : 0.97; // launched: bleed back toward run speed
+      } else {
+        b.vx *= b.ground ? 0.55 : 0.9;
+        if (Math.abs(b.vx) < 0.03) b.vx = 0;
+      }
+      if (it.jump && (g.jumps[seat] || 0) < 2) {
+        b.vy = (g.jumps[seat] || 0) === 0 ? -FIGHT_JUMP : -FIGHT_DJUMP;
+        g.jumps[seat] = (g.jumps[seat] || 0) + 1;
+        b.ground = false;
+      }
+    }
+    // Melee: an A press swings at once; the arc reaches FIGHT reach in
+    // the facing direction and a full body height up/down.
+    if (!stunned && it.atk && g.atkCd[seat] <= 0) {
+      g.atkT[seat] = 2;
+      g.atkCd[seat] = FIGHT_ATK_CD;
+      const face = g.face[seat] || 1;
+      room.players.forEach((q) => {
+        if (q.seat === seat) return;
+        const qb = g.blobs[q.seat];
+        if (!qb || !qb.alive || (g.invuln[q.seat] || 0) > 0) return;
+        const dx = qb.x - b.x, dy = qb.y - b.y;
+        if (Math.abs(dy) > 1.7 || Math.abs(dx) > 2.1 || (Math.abs(dx) > 0.3 && Math.sign(dx) !== face)) return;
+        g.dmg[q.seat] = (g.dmg[q.seat] || 0) + FIGHT_DMG;
+        const force = 0.6 + g.dmg[q.seat] * 0.05; // AFTER the damage lands
+        qb.vx = face * force;
+        qb.vy = -force * 0.55;
+        qb.ground = false;
+        g.hitT[q.seat] = FIGHT_HITSTUN;
+        g.dashT[q.seat] = 0;
+      });
+    }
+    platStep(b, FIGHT_PLATFORMS);
+    if (b.ground) g.jumps[seat] = 0;
+    // Ring-out past the blast bounds.
+    if (b.x < -13 || b.x > 13 || b.y > 12.5 || b.y < -15) {
+      b.lives -= 1;
+      if (b.lives > 0) {
+        b.x = 0; b.y = -1.5 - PLAT_HH - 0.6; b.vx = 0; b.vy = 0; b.ground = false;
+        g.dmg[seat] = 0; g.jumps[seat] = 0; g.hitT[seat] = 0; g.dashT[seat] = 0;
+        g.invuln[seat] = INVULN_TICKS; // 2s of cover on the way back in
+      } else {
+        b.alive = false;
+        g.elimOrder.push(seat);
+        g.elimTick[seat] = g.tickCount;
+      }
+    }
+  });
+  snapshotPad(room);
+  const aliveCount = room.players.filter((p) => g.blobs[p.seat] && g.blobs[p.seat].alive).length;
+  if (aliveCount <= 1) finishFight(room);
+}
+function botBrainFight(room, p) {
+  const g = room.game;
+  const me = g.blobs[p.seat];
+  const intent = { x: 0, jump: false, atk: false, dash: false };
+  if (!me || !me.alive) return intent;
+  // Recovery first — checked every tick, it is life-critical: airborne,
+  // low or out past the floor's edge, so steer home and spend jumps /
+  // the dash to get back over the stage.
+  if (!me.ground && (me.y > 1 || Math.abs(me.x) > 8.5)) {
+    intent.x = me.x > 0 ? -1 : 1;
+    if (me.vy > 0.4 && me.y > -1.5 && (g.jumps[p.seat] || 0) < 2) intent.jump = true;
+    else if (Math.abs(me.x) > 9.5 && (g.dashCd[p.seat] || 0) <= 0) intent.dash = true;
+    return intent;
+  }
+  // Combat steering, re-decided on the usual per-difficulty cadence.
+  const cached = g.botIntent[p.seat];
+  let dir = cached && typeof cached.x === 'number' ? cached.x : 0;
+  if (!cached || (g.tickCount + p.seat) % brainCadence(p) === 0) {
+    const near = nearestFoe(room, p);
+    dir = near.foe ? (Math.abs(near.foe.x - me.x) > 0.3 ? Math.sign(near.foe.x - me.x) : 0) : 0;
+    // Never chase a foe off the edge: near the rim, hold inward.
+    if (Math.abs(me.x) > 7.8 && dir === Math.sign(me.x)) dir = -Math.sign(me.x);
+    g.botIntent[p.seat] = { x: dir, y: 0 };
+  }
+  intent.x = dir;
+  const near = nearestFoe(room, p);
+  if (near.foe) {
+    const dx = near.foe.x - me.x, dy = near.foe.y - me.y;
+    if (me.ground && dy < -2 && Math.abs(dx) < 2.2) intent.jump = true; // hop up to their platform
+    if (Math.abs(dx) <= 2.0 && Math.abs(dy) <= 1.6) {
+      const prob = p.difficulty === 'kho' ? 0.9 : p.difficulty === 'vua' ? 0.6 : 0.35;
+      if (Math.random() < prob) intent.atk = true;
+    } else if (Math.abs(dx) > 6 && p.difficulty !== 'de' && Math.random() < 0.25) {
+      intent.dash = true;
+    }
+  }
+  return intent;
+}
+function finishFight(room) {
+  const g = room.game;
+  const aliveRanked = room.players.filter((p) => g.blobs[p.seat] && g.blobs[p.seat].alive)
+    .sort((a, b) => (g.blobs[b.seat].lives - g.blobs[a.seat].lives)
+      || ((g.dmg[a.seat] || 0) - (g.dmg[b.seat] || 0)) || (a.seat - b.seat));
+  const elimRanked = g.elimOrder.slice().reverse().map((seat) => playerAt(room, seat)).filter(Boolean);
+  const ranking = aliveRanked.concat(elimRanked);
+  const entries = ranking.map((p, i) => ({
+    seat: p.seat, points: PLACEMENT_POINTS[Math.min(i, 3)],
+    lives: g.blobs[p.seat].lives, dmg: g.dmg[p.seat] || 0, alive: g.blobs[p.seat].alive,
+  }));
+  entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
+  g.lastRound = { round: 1, entries };
+  endGame(room);
+}
+
+// --- Game 23: Đền Lửa & Nước (COOP temple platformer) -------------------
+// Elements by seat parity (odd = Lửa, even = Nước). Pools kill by
+// element: red is safe only for Lửa, blue only for Nước, green kills
+// both — tested against the character's feet box so a clean jump over
+// a pool never clips it. Gems are colour-locked the same way. The two
+// portcullis gates share one open state, driven by either pressure
+// button. "Home" is positional: a character is home while standing in
+// its own door zone, and the level completes the tick EVERY character
+// is home at once (someone who rushed home can step back out to hold
+// the balcony button for a partner who fell behind).
+function poolLethal(kind, el) {
+  if (kind === 'green') return true;
+  if (kind === 'red') return el === 'nuoc';
+  return el === 'lua'; // blue
+}
+function stepTemple(room, t) {
+  const g = room.game;
+  if (g.phase !== 'temple') return false;
+  if (t >= g.endsAt) { finishTemple(room, false); return true; }
+  if (t >= g.nextTickAt) {
+    simulateTempleTick(room);
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    return true;
+  }
+  return false;
+}
+function templeIntent(room, p) {
+  const g = room.game;
+  if (p.type === 'human') {
+    const pad = g.pad[p.seat] || {};
+    const prev = g.padPrev[p.seat] || {};
+    return {
+      x: (pad.r ? 1 : 0) - (pad.l ? 1 : 0),
+      jump: (!!pad.u && !prev.u) || (!!pad.a && !prev.a),
+    };
+  }
+  return botBrainTemple(room, p);
+}
+function simulateTempleTick(room) {
+  const g = room.game;
+  g.tickCount += 1;
+  // Gate state is read from where everyone stands BEFORE this tick's
+  // movement: a holder stepping off closes the slabs for the next tick.
+  g.gateOpen = room.players.some((p) => {
+    const c = g.chars[p.seat];
+    return c && TEMPLE_LEVEL.buttons.some((bt) => platOverlap(c, bt));
+  });
+  const solids = g.gateOpen ? TEMPLE_LEVEL.solids : TEMPLE_LEVEL.solids.concat(TEMPLE_LEVEL.gates);
+  let heartsGone = false;
+  room.players.forEach((p) => {
+    const c = g.chars[p.seat];
+    if (!c) return;
+    const it = templeIntent(room, p);
+    if (it.jump && c.ground) { c.vy = -TEMP_JUMP; c.ground = false; }
+    c.vx = it.x * TEMP_RUN;
+    platStep(c, solids);
+    // Pools: only the feet box counts, so jumping a pool is safe.
+    for (const pool of TEMPLE_LEVEL.pools) {
+      const inX = c.x + 0.25 > pool.x && c.x - 0.25 < pool.x + pool.w;
+      const inFeet = c.y + PLAT_HH > pool.y && c.y + PLAT_HH - 0.5 < pool.y + pool.h;
+      if (inX && inFeet && poolLethal(pool.kind, c.el)) {
+        g.hearts -= 1;
+        const st = TEMPLE_LEVEL.starts[c.el];
+        c.x = st.x; c.y = st.y; c.vx = 0; c.vy = 0;
+        if (p.type === 'bot') { g.wpIdx[p.seat] = 0; g.wpAt[p.seat] = 0; }
+        if (g.hearts <= 0) heartsGone = true;
+        break;
+      }
+    }
+    if (heartsGone) return;
+    (g.gems || []).forEach((gm) => {
+      if (!gm.taken && gm.el === c.el && Math.hypot(gm.x - c.x, gm.y - c.y) < 1.15) {
+        gm.taken = true;
+        g.gemCount[c.el] = (g.gemCount[c.el] || 0) + 1;
+      }
+    });
+    c.home = platOverlap(c, TEMPLE_LEVEL.doors[c.el]);
+  });
+  snapshotPad(room);
+  if (heartsGone) { finishTemple(room, false); return; }
+  if (room.players.every((p) => g.chars[p.seat] && g.chars[p.seat].home)) finishTemple(room, true);
+}
+function botBrainTemple(room, p) {
+  const g = room.game;
+  const c = g.chars[p.seat];
+  const intent = { x: 0, jump: false };
+  if (!c || c.home) return intent;
+  const route = TEMPLE_WP[c.el] || [];
+  const idx = g.wpIdx[p.seat] || 0;
+  if (idx >= route.length) return intent;
+  const wp = route[idx];
+  if (Math.abs(c.x - wp.x) < 0.4 && Math.abs(c.y - wp.y) < 0.75) {
+    if (wp.holdBtn) {
+      if (!g.wpAt[p.seat]) g.wpAt[p.seat] = g.tickCount;
+      const partnersIn = room.players.every((q) => q.seat === p.seat
+        || (g.chars[q.seat] && (g.chars[q.seat].home || g.chars[q.seat].y < 1.0)));
+      if (!partnersIn && g.tickCount - g.wpAt[p.seat] < 120) return intent; // keep holding
+    }
+    g.wpIdx[p.seat] = idx + 1;
+    g.wpAt[p.seat] = 0;
+    return intent;
+  }
+  const dx = wp.x - c.x;
+  intent.x = Math.abs(dx) > 0.3 ? Math.sign(dx) : 0;
+  if (c.ground) {
+    if (wp.y < c.y - 0.8 && Math.abs(dx) < 2.4) intent.jump = true; // climb toward the waypoint
+    if (!intent.jump && intent.x !== 0) {
+      const aheadX = c.x + intent.x * 0.95;
+      for (const pool of TEMPLE_LEVEL.pools) {
+        if (poolLethal(pool.kind, c.el)
+          && aheadX > pool.x - 0.2 && aheadX < pool.x + pool.w + 0.2
+          && Math.abs((c.y + PLAT_HH) - (pool.y + pool.h)) < 0.75) { intent.jump = true; break; }
+      }
+    }
+  }
+  return intent;
+}
+function finishTemple(room, completed) {
+  const g = room.game;
+  const total = (g.gemCount.lua || 0) + (g.gemCount.nuoc || 0);
+  let tier = 'none';
+  if (completed && total >= TEMP_GEMS_TOTAL) tier = 'vang';
+  else if (completed) tier = 'bac';
+  else if (total * 2 >= TEMP_GEMS_TOTAL) tier = 'dong';
+  finishCoop(room, total, tier, 'viên ngọc');
+}
+
 function blobsView(room) {
   const g = room.game;
   const out = {};
@@ -3126,6 +3600,43 @@ function gameView(room, role, seat, t) {
       v.mySteps = (g.seq || []).filter((s) => s.seat === seat)
         .map((s) => ({ pos: g.seq.indexOf(s) + 1, sym: s.sym, name: DECODE_SYMBOLS[s.sym].name }));
     }
+  } else if (g.id === 'nguoi-que') {
+    v.phaseDur = FIGHT_MS;
+    v.platforms = FIGHT_PLATFORMS;
+    v.blobs = {};
+    if (g.blobs) room.players.forEach((p) => {
+      const b = g.blobs[p.seat];
+      if (!b) return;
+      v.blobs[p.seat] = {
+        x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive,
+        dmg: g.dmg[p.seat] || 0, face: g.face[p.seat] || 1,
+        vx: Math.round((b.vx || 0) * 100) / 100, vy: Math.round((b.vy || 0) * 100) / 100, ground: !!b.ground,
+        atk: (g.atkT[p.seat] || 0) > 0, hit: (g.hitT[p.seat] || 0) > 0,
+        invuln: (g.invuln[p.seat] || 0) > 0, dash: (g.dashT[p.seat] || 0) > 0,
+      };
+    });
+    if (seat != null) v.myDmg = g.dmg[seat] || 0;
+  } else if (g.id === 'den-lua-nuoc') {
+    v.phaseDur = TEMP_MS;
+    v.solids = TEMPLE_LEVEL.solids;
+    v.pools = TEMPLE_LEVEL.pools;
+    v.gates = TEMPLE_LEVEL.gates;
+    v.buttons = TEMPLE_LEVEL.buttons;
+    v.doors = TEMPLE_LEVEL.doors;
+    v.gateOpen = !!g.gateOpen;
+    v.hearts = g.hearts;
+    v.gemCount = g.gemCount || { lua: 0, nuoc: 0 };
+    v.gemsTotal = TEMP_GEMS_TOTAL;
+    v.gems = (g.gems || []).map((gm, i) => ({ id: i, x: gm.x, y: gm.y, el: gm.el, taken: !!gm.taken }));
+    v.chars = {};
+    if (g.chars) room.players.forEach((p) => {
+      const c = g.chars[p.seat];
+      if (c) v.chars[p.seat] = { x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100, el: c.el, home: !!c.home, ground: !!c.ground };
+    });
+    if (seat != null) {
+      v.myEl = g.elOf[seat] || null;
+      v.myHome = !!(g.chars && g.chars[seat] && g.chars[seat].home);
+    }
   }
   return v;
 }
@@ -3235,7 +3746,8 @@ function playerAction(room, player, body) {
     if (g.id !== 'day-ra' && g.id !== 'ne-dan' && g.id !== 'keo-co' && g.id !== 'chia-cuop'
       && g.id !== 'cuop-sao' && g.id !== 'giu-vuong-mien' && g.id !== 'son-san'
       && g.id !== 'chung-mot-than' && g.id !== 'day-hop'
-      && g.id !== 'xe-tank' && g.id !== 'dat-bom' && g.id !== 'thu-thanh') return null;
+      && g.id !== 'xe-tank' && g.id !== 'dat-bom' && g.id !== 'thu-thanh'
+      && g.id !== 'nguoi-que' && g.id !== 'den-lua-nuoc') return null;
     const pd = body.pad || {};
     const np = { u: !!pd.u, d: !!pd.d, l: !!pd.l, r: !!pd.r, a: !!pd.a, b: !!pd.b };
     const prev = g.pad[seat] || {};
@@ -3645,6 +4157,31 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .g-ke-gia-mao { background-color: #12081C; background-image: radial-gradient(ellipse 70% 60% at 50% 30%, rgba(190,90,255,.22), transparent 65%), linear-gradient(rgba(200,150,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(200,150,255,.04) 1px, transparent 1px), linear-gradient(165deg, #1E0A38, #2A0E44 58%, #0C0516); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(12,4,24,.5); }
 .g-thu-thanh { background-color: #03141C; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(80,220,255,.26), transparent 62%), linear-gradient(rgba(140,230,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(140,230,255,.045) 1px, transparent 1px), linear-gradient(165deg, #06222E, #08303F 58%, #02101A); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(2,14,20,.5); }
 .g-giai-ma-chung { background-color: #0C0A1E; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(130,120,255,.28), transparent 62%), linear-gradient(rgba(160,150,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(160,150,255,.05) 1px, transparent 1px), linear-gradient(165deg, #191238, #120E30 58%, #08061A); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(6,4,20,.5); }
+.g-nguoi-que { background-color: #14060C; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(255,80,110,.28), transparent 62%), linear-gradient(rgba(255,140,160,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,140,160,.05) 1px, transparent 1px), linear-gradient(165deg, #2A0A16, #1E0812 58%, #0D0309); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(18,2,8,.5); }
+.g-den-lua-nuoc { background-color: #120A04; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(255,170,60,.2), transparent 62%), repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 3px, transparent 3px 26px), repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0 3px, transparent 3px 44px), linear-gradient(165deg, #241305, #1A0E04 58%, #0A0501); background-size: auto, auto, auto, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.66), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(12,6,1,.5); }
+.fplat { position: absolute; z-index: 1; pointer-events: none; border-radius: 7px; background: linear-gradient(160deg, #4A2438, #2A1220); border: 2px solid rgba(255,120,160,.55); box-shadow: 0 4px 10px rgba(0,0,0,.55), inset 0 2px 0 rgba(255,255,255,.14), 0 0 14px rgba(255,80,120,.22); }
+.fplat.oneway { background: linear-gradient(160deg, rgba(90,50,80,.85), rgba(46,22,44,.85)); border-color: rgba(200,160,255,.5); box-shadow: 0 3px 8px rgba(0,0,0,.45), 0 0 10px rgba(170,120,255,.2); }
+.admg { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 15px; line-height: 1; text-shadow: 0 2px 0 rgba(0,0,0,.5); min-height: 16px; }
+.tbrick { position: absolute; z-index: 1; pointer-events: none; border-radius: 4px; background: linear-gradient(150deg, #6B4A2F, #4A2F1B); border: 2px solid rgba(255,196,110,.4); box-shadow: inset 0 0 0 2px rgba(0,0,0,.28), inset 0 -6px 0 rgba(0,0,0,.22), 0 3px 7px rgba(0,0,0,.5); }
+.tpool { position: absolute; z-index: 1; pointer-events: none; border-radius: 8px 8px 4px 4px; animation: poolGlow 1.1s ease-in-out infinite alternate; }
+.tpool.red { background: radial-gradient(ellipse at 50% 0%, #FFB199, #FF5A3C 55%, #C22E12); box-shadow: 0 0 18px rgba(255,90,60,.8), inset 0 3px 6px rgba(255,255,255,.35); }
+.tpool.blue { background: radial-gradient(ellipse at 50% 0%, #BDEFFF, #3FA9F5 55%, #1663B8); box-shadow: 0 0 18px rgba(80,170,255,.8), inset 0 3px 6px rgba(255,255,255,.35); }
+.tpool.green { background: radial-gradient(ellipse at 50% 0%, #E4FFB0, #8CE03A 55%, #4E9A16); box-shadow: 0 0 18px rgba(150,230,70,.8), inset 0 3px 6px rgba(255,255,255,.35); }
+@keyframes poolGlow { from { filter: brightness(1); } to { filter: brightness(1.35); } }
+.tgem { position: absolute; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; z-index: 2; pointer-events: none; transform: rotate(45deg); animation: gemSpin 1.6s ease-in-out infinite alternate; }
+.tgem.lua { background: linear-gradient(140deg, #FFD7C2, #FF5A3C 60%, #B81F08); box-shadow: 0 0 12px rgba(255,90,60,.95); }
+.tgem.nuoc { background: linear-gradient(140deg, #D8F4FF, #3FA9F5 60%, #0F4E9E); box-shadow: 0 0 12px rgba(80,170,255,.95); }
+.tgem.taken { display: none; }
+@keyframes gemSpin { from { transform: rotate(45deg) scale(1); } to { transform: rotate(45deg) scale(1.22); } }
+.tgate { position: absolute; z-index: 2; pointer-events: none; border-radius: 4px; background: repeating-linear-gradient(90deg, #8A93A6 0 5px, #454E61 5px 10px); border: 2px solid rgba(220,230,255,.5); box-shadow: 0 4px 9px rgba(0,0,0,.55), inset 0 0 0 2px rgba(0,0,0,.3); transition: opacity .18s linear; }
+.tgate.open { opacity: 0; }
+.tbtn { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: linear-gradient(180deg, #FFE9A8, #E8A812); border: 2px solid rgba(255,240,190,.8); box-shadow: 0 0 12px rgba(255,200,60,.55); }
+.tdoor { position: absolute; z-index: 1; pointer-events: none; border-radius: 9px 9px 3px 3px; border: 3px solid; }
+.tdoor.lua { border-color: #FF7A50; background: radial-gradient(ellipse at 50% 100%, rgba(255,110,60,.5), rgba(80,16,4,.25) 70%); box-shadow: 0 0 20px rgba(255,100,55,.65), inset 0 0 16px rgba(255,100,55,.4); }
+.tdoor.nuoc { border-color: #5FC2FF; background: radial-gradient(ellipse at 50% 100%, rgba(90,180,255,.5), rgba(4,26,80,.25) 70%); box-shadow: 0 0 20px rgba(90,180,255,.65), inset 0 0 16px rgba(90,180,255,.4); }
+.achar { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 3; pointer-events: none; }
+.achar svg { display: block; margin: 0 auto; }
+.achar.home { filter: brightness(1.5); }
 .aframe { position: absolute; border: 3px solid rgba(120,220,255,.85); border-radius: 14px; box-shadow: 0 0 24px rgba(80,200,255,.4), inset 0 0 40px rgba(80,200,255,.14); pointer-events: none; }
 .ablock { position: absolute; z-index: 1; pointer-events: none; border-radius: 6px; background: linear-gradient(150deg, #3E5A4C, #22392E); border: 2px solid rgba(140,255,200,.5); box-shadow: 0 3px 8px rgba(0,0,0,.5), inset 0 0 0 2px rgba(0,0,0,.25); }
 .orbwrap { position: relative; display: inline-block; }
@@ -3873,6 +4410,43 @@ function orbSVG(color, size, ko) {
     + visor
     + '<ellipse cx="33" cy="23" rx="14" ry="7.5" fill="#ffffff" opacity="0.55" transform="rotate(-20 33 23)"/>'
     + '</svg>';
+}
+// Neon stick fighter for Người Que Đại Chiến: round head + line limbs,
+// the pose follows live state (idle / run / air / atk arm swing / hit),
+// and the punching arm points the fighter's facing way.
+function stickSVG(colorName, pose, face) {
+  var c = COLORS[colorName] || '#fff';
+  var f = face < 0 ? -1 : 1;
+  var arms, legs;
+  if (pose === 'run') { arms = [[13, 15], [35, 24]]; legs = [[13, 37], [34, 40]]; }
+  else if (pose === 'air') { arms = [[13, 12], [35, 12]]; legs = [[16, 39], [33, 36]]; }
+  else if (pose === 'atk') { arms = f > 0 ? [[42, 17], [16, 27]] : [[6, 17], [32, 27]]; legs = [[15, 39], [33, 40]]; }
+  else if (pose === 'hit') { arms = [[12, 10], [36, 10]]; legs = [[14, 40], [34, 40]]; }
+  else { arms = [[15, 26], [33, 26]]; legs = [[17, 41], [31, 41]]; }
+  var s = '<svg width="46" height="46" viewBox="0 0 48 48">';
+  s += '<circle cx="24" cy="9" r="6.5" fill="' + c + '" stroke="rgba(255,255,255,.85)" stroke-width="1.6"/>';
+  s += '<g stroke="' + c + '" stroke-width="4" stroke-linecap="round">';
+  s += '<line x1="24" y1="15" x2="24" y2="29"/>';
+  s += '<line x1="24" y1="19" x2="' + arms[0][0] + '" y2="' + arms[0][1] + '"/>';
+  s += '<line x1="24" y1="19" x2="' + arms[1][0] + '" y2="' + arms[1][1] + '"/>';
+  s += '<line x1="24" y1="29" x2="' + legs[0][0] + '" y2="' + legs[0][1] + '"/>';
+  s += '<line x1="24" y1="29" x2="' + legs[1][0] + '" y2="' + legs[1][1] + '"/>';
+  return s + '</g></svg>';
+}
+// Temple characters for Đền Lửa & Nước: a neon flame (Lửa) or droplet
+// (Nước), trimmed with the player's own seat colour.
+function charSVG(el, colorName) {
+  var trim = COLORS[colorName] || '#fff';
+  if (el === 'lua') {
+    return '<svg width="38" height="42" viewBox="0 0 40 44">'
+      + '<path d="M20 2 C24.5 10 30 14.5 30 24 a10 11 0 1 1 -20 0 C10 14.5 15.5 10 20 2 Z" fill="#FF5A3C" stroke="' + trim + '" stroke-width="2.6"/>'
+      + '<path d="M20 16 C22.5 20.5 25 22.8 25 27.5 a5 5.5 0 1 1 -10 0 C15 22.8 17.5 20.5 20 16 Z" fill="#FFC93D"/>'
+      + '<circle cx="16.5" cy="27" r="1.7" fill="#5B1503"/><circle cx="23.5" cy="27" r="1.7" fill="#5B1503"/></svg>';
+  }
+  return '<svg width="38" height="42" viewBox="0 0 40 44">'
+    + '<path d="M20 3 C25 12 30 18 30 26 a10 10.5 0 1 1 -20 0 C10 18 15 12 20 3 Z" fill="#3FA9F5" stroke="' + trim + '" stroke-width="2.6"/>'
+    + '<ellipse cx="15.5" cy="25" rx="2.6" ry="4" fill="rgba(255,255,255,.55)"/>'
+    + '<circle cx="16.5" cy="27" r="1.7" fill="#06283D"/><circle cx="23.5" cy="27" r="1.7" fill="#06283D"/></svg>';
 }
 // Chung Một Thân: the shared blob is a WHITE orb wearing the neon visor,
 // ringed by four quarter arcs — one per direction, stroked in the seat
@@ -4170,10 +4744,11 @@ var GCOLORS = {
   'cheo-thuyen': 'linear-gradient(160deg,#0C4A6E,#0284C7)',
   'xe-tank': 'linear-gradient(160deg,#14532D,#22C55E)', 'dat-bom': 'linear-gradient(160deg,#7C2D12,#F97316)',
   'ke-gia-mao': 'linear-gradient(160deg,#4C1D95,#A855F7)',
-  'thu-thanh': 'linear-gradient(160deg,#0E7490,#67E8F9)', 'giai-ma-chung': 'linear-gradient(160deg,#3730A3,#818CF8)'
+  'thu-thanh': 'linear-gradient(160deg,#0E7490,#67E8F9)', 'giai-ma-chung': 'linear-gradient(160deg,#3730A3,#818CF8)',
+  'nguoi-que': 'linear-gradient(160deg,#7F1D1D,#F43F5E)', 'den-lua-nuoc': 'linear-gradient(160deg,#451A03,#B45309)'
 };
-function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'giai-ma-chung'; }
-function isActionGame(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'chia-cuop' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh'; }
+function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'giai-ma-chung' || id === 'nguoi-que' || id === 'den-lua-nuoc'; }
+function isActionGame(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'chia-cuop' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'nguoi-que' || id === 'den-lua-nuoc'; }
 function topbarHTML(v, isHost) {
   var h = '<div class="topbar"><span class="baloo" style="font-size:24px">Nảy Party</span>';
   h += '<span class="chip cool">Phòng ' + esc(v.code) + '</span>';
@@ -4270,6 +4845,19 @@ function countdownHTML(g) {
   return '<div class="cdwrap"><div class="baloo" style="font-size:30px">Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · VÒNG QUYẾT ĐỊNH ×2' : '') + '</div>'
     + '<div class="cdnum" id="cdnum">3</div><div class="baloo" style="font-size:24px">Chuẩn bị…</div></div>';
 }
+// Shared client helpers for the two platformer games (wave 4): rect
+// geometry in the arena's % space, stick-fighter pose + damage colour.
+function rectStyle(r) {
+  return 'left:' + ((r.x + 12) / 24 * 100) + '%;top:' + ((r.y + 12) / 24 * 100) + '%;width:' + (r.w / 24 * 100) + '%;height:' + (r.h / 24 * 100) + '%';
+}
+function fightPose(b) {
+  if (!b.alive || b.hit) return 'hit';
+  if (b.atk) return 'atk';
+  if (!b.ground) return 'air';
+  if (Math.abs(b.vx || 0) > 0.1) return 'run';
+  return 'idle';
+}
+function dmgColor(d) { return d >= 100 ? '#FF5A3C' : d >= 50 ? '#FFC93D' : '#7BE0B8'; }
 function hostStage(v) {
   var g = v.game;
   if (g.phase === 'countdown') return countdownHTML(g);
@@ -4569,6 +5157,39 @@ function hostStage(v) {
       h += '<div class="baloo center" style="font-size:22px">Mỗi người chỉ thấy phần mật mã CỦA MÌNH trên điện thoại — gọi nhau mà bấm cho đúng thứ tự!</div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 75000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
+  } else if (g.id === 'nguoi-que') {
+    if (g.phase === 'fight') {
+      h += '<div class="afield" id="afield">';
+      (g.platforms || []).forEach(function (pf) { h += '<div class="fplat' + (pf.oneWay ? ' oneway' : '') + '" style="' + rectStyle(pf) + '"></div>'; });
+      for (var fI = 0; fI < v.players.length; fI++) {
+        var fp = v.players[fI]; var fb = g.blobs[fp.seat];
+        h += '<div class="ablob" id="ablob-' + fp.seat + '" style="left:' + ((fb.x + 12) / 24 * 100) + '%;top:' + ((fb.y + 12) / 24 * 100) + '%;color:' + COLORS[fp.color] + '">'
+          + '<div class="admg" id="dmg-' + fp.seat + '" style="color:' + dmgColor(fb.dmg || 0) + '">' + (fb.dmg || 0) + '%</div>'
+          + '<span id="fig-' + fp.seat + '">' + stickSVG(fp.color, fightPose(fb), fb.face) + '</span>'
+          + '<div class="alives" id="alives-' + fp.seat + '">' + '♥'.repeat(Math.max(0, fb.lives)) + '</div>'
+          + '<div class="aname">' + esc(fp.name) + '</div></div>';
+      }
+      h += '</div>';
+      h += '<p class="center">Đánh đối thủ tích % sát thương — % càng cao văng càng xa! Văng khỏi sàn là mất một mạng.</p>';
+    }
+  } else if (g.id === 'den-lua-nuoc') {
+    if (g.phase === 'temple') {
+      h += '<div class="scorebar"><span class="scorechip">🔥 Ngọc lửa: <b id="gemlua">' + (g.gemCount ? g.gemCount.lua : 0) + '</b>/5</span><span class="scorechip">💧 Ngọc nước: <b id="gemnuoc">' + (g.gemCount ? g.gemCount.nuoc : 0) + '</b>/5</span><span class="scorechip">Tim đội: <b id="temphearts">' + '❤'.repeat(Math.max(0, g.hearts || 0)) + '</b></span></div>';
+      h += '<div class="afield" id="afield">';
+      (g.solids || []).forEach(function (s) { h += '<div class="tbrick" style="' + rectStyle(s) + '"></div>'; });
+      (g.pools || []).forEach(function (pl) { h += '<div class="tpool ' + pl.kind + '" style="' + rectStyle(pl) + '"></div>'; });
+      (g.buttons || []).forEach(function (bt) { h += '<div class="tbtn" style="' + rectStyle(bt) + '"></div>'; });
+      if (g.doors) { h += '<div class="tdoor lua" style="' + rectStyle(g.doors.lua) + '"></div>'; h += '<div class="tdoor nuoc" style="' + rectStyle(g.doors.nuoc) + '"></div>'; }
+      (g.gates || []).forEach(function (gt, gi) { h += '<div class="tgate' + (g.gateOpen ? ' open' : '') + '" id="gate-' + gi + '" style="' + rectStyle(gt) + '"></div>'; });
+      (g.gems || []).forEach(function (gm) { h += '<div class="tgem ' + gm.el + (gm.taken ? ' taken' : '') + '" id="tgem-' + gm.id + '" style="left:' + ((gm.x + 12) / 24 * 100) + '%;top:' + ((gm.y + 12) / 24 * 100) + '%"></div>'; });
+      for (var tI = 0; tI < v.players.length; tI++) {
+        var tp = v.players[tI]; var tc = g.chars[tp.seat];
+        if (!tc) continue;
+        h += '<div class="achar' + (tc.home ? ' home' : '') + '" id="achar-' + tp.seat + '" style="left:' + ((tc.x + 12) / 24 * 100) + '%;top:' + ((tc.y + 12) / 24 * 100) + '%">' + charSVG(tc.el, tp.color) + '<div class="aname">' + esc(tp.name) + '</div></div>';
+      }
+      h += '</div>';
+      h += '<p class="center">Hồ đỏ chỉ Lửa qua được, hồ xanh chỉ Nước, hồ xanh lá hại cả hai! Đứng lên nút vàng để mở cổng cho đồng đội, rồi về đúng cửa của mình.</p>';
+    }
   }
   return h;
 }
@@ -4663,6 +5284,13 @@ function viewSig(v) {
     } else if (g.id === 'giai-ma-chung') {
       gp = pl ? [g.id, g.phase, g.level, g.hearts, g.done, g.mySteps, g.levelsDone, g.lastRound]
         : [g.id, g.phase, g.level, g.hearts, g.done, g.total, g.levelsDone, g.lastRound];
+    } else if (g.id === 'nguoi-que') {
+      var fk = '';
+      if (g.blobs) for (var fs in g.blobs) fk += fs + (g.blobs[fs].alive ? '1' : '0') + g.blobs[fs].lives;
+      gp = pl ? [g.id, g.phase, fk, g.myDmg, g.lastRound] : [g.id, g.phase, fk, g.lastRound];
+    } else if (g.id === 'den-lua-nuoc') {
+      gp = pl ? [g.id, g.phase, g.hearts, g.gemCount, g.myEl, g.myHome, g.lastRound]
+        : [g.id, g.phase, g.hearts, g.gemCount, g.gateOpen, g.lastRound];
     } else {
       if (pl) {
       // PLAYER signature for the tap/answer games: keep only what the
@@ -4973,6 +5601,47 @@ function patchPositions(v) {
     var chp2 = el('crystalhp2'); if (chp2 && g.crystal) chp2.textContent = g.crystal.hp;
     var kn2 = el('killn2'); if (kn2) kn2.textContent = g.kills || 0;
   }
+  if (g && g.id === 'nguoi-que' && g.blobs) {
+    for (var qSeat in g.blobs) {
+      var qb2 = g.blobs[qSeat];
+      var qn = el('ablob-' + qSeat);
+      if (qn) {
+        qn.style.left = ((qb2.x + 12) / 24 * 100) + '%';
+        qn.style.top = ((qb2.y + 12) / 24 * 100) + '%';
+        qn.style.opacity = qb2.alive ? (qb2.invuln ? '0.55' : '1') : '0.2';
+      }
+      var dm = el('dmg-' + qSeat);
+      if (dm) { dm.textContent = (qb2.dmg || 0) + '%'; dm.style.color = dmgColor(qb2.dmg || 0); }
+      var lvq = el('alives-' + qSeat);
+      if (lvq) lvq.textContent = '♥'.repeat(Math.max(0, qb2.lives));
+      var fg = el('fig-' + qSeat);
+      if (fg) {
+        var poseKey = fightPose(qb2) + '|' + (qb2.face || 1);
+        if (fg.dataset.pose !== poseKey) { fg.dataset.pose = poseKey; var plq = playerOf(v, +qSeat); fg.innerHTML = stickSVG(plq ? plq.color : 'blue', fightPose(qb2), qb2.face); }
+      }
+    }
+    var mlq = el('mylives'); if (mlq && g.blobs[S.seat]) mlq.textContent = '♥'.repeat(Math.max(0, g.blobs[S.seat].lives));
+    var mdq = el('mydmg'); if (mdq) mdq.textContent = (g.myDmg || 0) + '%';
+  }
+  if (g && g.id === 'den-lua-nuoc' && g.chars) {
+    for (var cSeat in g.chars) {
+      var cc2 = g.chars[cSeat];
+      var cn = el('achar-' + cSeat);
+      if (cn) {
+        cn.style.left = ((cc2.x + 12) / 24 * 100) + '%';
+        cn.style.top = ((cc2.y + 12) / 24 * 100) + '%';
+        cn.className = 'achar' + (cc2.home ? ' home' : '');
+      }
+    }
+    if (g.gems) syncDyn(g.gems, 'tgem-', 'tgem', function (n, it) { n.className = 'tgem ' + it.el + (it.taken ? ' taken' : ''); });
+    (g.gates || []).forEach(function (gt2, gi2) { var gn = el('gate-' + gi2); if (gn) gn.className = 'tgate' + (g.gateOpen ? ' open' : ''); });
+    var gl2 = el('gemlua'); if (gl2 && g.gemCount) gl2.textContent = g.gemCount.lua;
+    var gw2 = el('gemnuoc'); if (gw2 && g.gemCount) gw2.textContent = g.gemCount.nuoc;
+    var th2 = el('temphearts'); if (th2) th2.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+    var glp = el('gemluap'); if (glp && g.gemCount) glp.textContent = g.gemCount.lua;
+    var gwp = el('gemnuocp'); if (gwp && g.gemCount) gwp.textContent = g.gemCount.nuoc;
+    var thp = el('tempheartsp'); if (thp) thp.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+  }
   if (g && (g.id === 'cuop-sao' || g.id === 'giu-vuong-mien' || g.id === 'son-san') && g.blobs) {
     for (var nSeat in g.blobs) {
       var nb2 = g.blobs[nSeat];
@@ -5131,7 +5800,7 @@ function homeHTML() {
   h += '</div>';
   h += '<p><input type="text" id="joinName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
   h += '<p><button class="btn pink" data-cmd="join" style="font-size:22px">Vào phòng</button></p></div>';
-  h += '<p class="center muted small" style="margin-top:14px">21 game: Nhanh Tay · Đố Vui Tốc Độ · Đoán Số Chuẩn · Đua Bấm Nút · Nhớ Màu · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung — 16 game đấu + 5 game hợp tác!</p>';
+  h += '<p class="center muted small" style="margin-top:14px">23 game: Nhanh Tay · Đố Vui Tốc Độ · Đoán Số Chuẩn · Đua Bấm Nút · Nhớ Màu · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Người Que Đại Chiến · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước — 17 game đấu + 6 game hợp tác!</p>';
   return h;
 }
 function playerHTML(v) {
@@ -5454,6 +6123,36 @@ function playerGame(v) {
       h += '<p class="center small">Chỉ bấm khi tới lượt bước của bạn và đúng ký hiệu của bước đó — bấm sai cả đội mất 1 tim!</p>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 75000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
+  } else if (g.id === 'nguoi-que') {
+    var myF = g.blobs ? g.blobs[S.seat] : null;
+    if (g.phase === 'fight') {
+      if (myF && !myF.alive) {
+        h += '<div class="center"><div class="ko-big">K.O.!</div>' + orbSVG(me.color, 110, true) + '<div class="baloo" style="font-size:27px">Bạn đã bị loại!</div><p>Xem TV đợi kết quả nhé…</p></div>';
+      } else {
+        h += '<div class="center baloo" style="font-size:20px">Mạng: <span id="mylives" style="color:#FFD7DE">' + (myF ? '♥'.repeat(Math.max(0, myF.lives)) : '') + '</span> · Sát thương: <span id="mydmg">' + (g.myDmg || 0) + '%</span></div>';
+        h += '<div class="padwrap"><div class="dpad">'
+          + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
+          + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
+          + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
+          + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>LƯỚT</span></button><button class="abtn abtnA" data-pad="a">A<span>ĐÁNH</span></button></div></div>';
+        h += '<p class="center small">▲: nhảy (nhấn 2 lần = nhảy đôi) · A: đánh — đối thủ % càng cao càng văng xa · B: lướt · Bị đánh văng khỏi sàn thì về điểm hồi sinh trên bục cao.</p>';
+        h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 90000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      }
+    }
+  } else if (g.id === 'den-lua-nuoc') {
+    var myC = g.chars ? g.chars[S.seat] : null;
+    if (g.phase === 'temple') {
+      h += '<div class="center baloo" style="font-size:21px">Bạn là: ' + (g.myEl === 'lua' ? '🔥 LỬA' : '💧 NƯỚC') + '</div>';
+      h += '<div class="center baloo" style="font-size:19px">Tim đội: <span id="tempheartsp" style="color:#FFD7DE">' + '❤'.repeat(Math.max(0, g.hearts || 0)) + '</span> · 🔥 <span id="gemluap">' + (g.gemCount ? g.gemCount.lua : 0) + '</span>/5 · 💧 <span id="gemnuocp">' + (g.gemCount ? g.gemCount.nuoc : 0) + '</span>/5</div>';
+      if (g.myHome) h += '<div class="center baloo" style="font-size:24px">🏠 Bạn đã về nhà! Đợi đồng đội…</div>';
+      h += '<div class="padwrap"><div class="dpad">'
+        + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
+        + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
+        + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
+        + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>—</span></button><button class="abtn abtnA" data-pad="a">A<span>NHẢY</span></button></div></div>';
+      h += '<p class="center small">' + (g.myEl === 'lua' ? 'Bạn là LỬA: hồ đỏ an toàn, hồ xanh dương chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc đỏ.' : 'Bạn là NƯỚC: hồ xanh dương an toàn, hồ đỏ chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc xanh.') + ' Đứng lên nút vàng để mở cổng cho đồng đội.</p>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 150000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    }
   }
   return h + '</div>';
 }
@@ -5754,7 +6453,7 @@ if (!window.PointerEvent) {
   setInterval(tick, 150);
   setInterval(function () {
     var v = S.view;
-    if (v && v.game && ((v.game.id === 'nhanh-tay' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend'))) poll();
+    if (v && v.game && ((v.game.id === 'nhanh-tay' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend') || (v.game.id === 'nguoi-que' && v.game.phase === 'fight') || (v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple'))) poll();
   }, 220);
 })();
 </script>
