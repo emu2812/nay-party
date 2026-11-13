@@ -275,6 +275,10 @@ const PLAT_GRAV = 0.15, PLAT_MAXFALL = 1.3, PLAT_HW = 0.45, PLAT_HH = 0.9;
 const FIGHT_MS = 90000, FIGHT_LIVES = 3;
 const FIGHT_RUN = 0.34, FIGHT_JUMP = 1.2, FIGHT_DJUMP = 1.05;
 const FIGHT_ATK_CD = 6, FIGHT_DMG = 10, FIGHT_HITSTUN = 6;
+// Heavy swing (pad X): own cooldown, +16% and 1.5x the knockback
+// force of a normal hit at the same resulting damage; the attacker's
+// recovery (hvyT, the big-swing pose) runs 6 ticks.
+const FIGHT_HVY_CD = 10, FIGHT_HVY_DMG = 16, FIGHT_HVY_ATK_T = 6;
 const FIGHT_DASH_CD = 16, FIGHT_DASH_TICKS = 6, FIGHT_DASH_SPEED = 0.95;
 const FIGHT_PLATFORMS = [
   { x: -8.5, y: 6, w: 17, h: 2.5 },
@@ -770,7 +774,7 @@ function createGame(room, gameId) {
     hardCells: [], softCells: [], bombs: [], bombSeq: 0, blasts: [],
     slimes: [], slimeSeq: 0, crystal: null, kills: 0,
     level: 0, levelsDone: 0, stepIdx: 0, botPressAt: 0, decodeAt: 0,
-    vel: {}, dmg: {}, face: {}, jumps: {}, atkCd: {}, hitT: {}, atkT: {}, dashT: {}, dashDir: {},
+    vel: {}, dmg: {}, face: {}, jumps: {}, atkCd: {}, hitT: {}, atkT: {}, dashT: {}, dashDir: {}, hvyCd: {}, hvyT: {},
     chars: null, gems: null, gemCount: {}, gateOpen: false, elOf: {}, wpIdx: {}, wpAt: {},
   };
   room.players.forEach((p) => { game.points[p.seat] = 0; game.streaks[p.seat] = 0; });
@@ -1135,11 +1139,13 @@ function beginRound(room) {
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + FIGHT_MS;
     g.blobs = {}; g.elimOrder = []; g.elimTick = {}; g.botIntent = {}; preservePads(room); g.invuln = {};
     g.vel = {}; g.dmg = {}; g.face = {}; g.jumps = {}; g.atkCd = {}; g.hitT = {}; g.atkT = {}; g.dashT = {}; g.dashDir = {};
+    g.hvyCd = {}; g.hvyT = {};
     room.players.forEach((p, i) => {
       const sx = FIGHT_SPAWN_X[i % FIGHT_SPAWN_X.length];
       g.blobs[p.seat] = { x: sx, y: 6 - PLAT_HH, vx: 0, vy: 0, ground: true, lives: FIGHT_LIVES, alive: true };
       g.dmg[p.seat] = 0; g.face[p.seat] = sx < 0 ? 1 : -1; g.jumps[p.seat] = 0;
       g.atkCd[p.seat] = 0; g.hitT[p.seat] = 0; g.atkT[p.seat] = 0; g.dashT[p.seat] = 0; g.dashDir[p.seat] = 1;
+      g.hvyCd[p.seat] = 0; g.hvyT[p.seat] = 0;
       g.invuln[p.seat] = 0;
     });
   } else if (g.id === 'den-lua-nuoc') {
@@ -3152,12 +3158,38 @@ function fightIntent(room, p) {
     const prev = g.padPrev[p.seat] || {};
     return {
       x: (pad.r ? 1 : 0) - (pad.l ? 1 : 0),
-      jump: !!pad.u && !prev.u,
+      jump: (!!pad.u && !prev.u) || (!!pad.y && !prev.y),
       atk: !!pad.a && !prev.a,
+      hvy: !!pad.x && !prev.x,
       dash: !!pad.b && !prev.b,
     };
   }
   return botBrainFight(room, p);
+}
+// One melee swing from `seat`: the arc reaches FIGHT reach in the
+// facing direction and a full body height up/down, same test either
+// way. A heavy swing adds FIGHT_HVY_DMG instead of FIGHT_DMG and
+// multiplies the knockback force (computed AFTER the damage lands,
+// exactly like a normal hit) by 1.5.
+function fightSwing(room, seat, heavy) {
+  const g = room.game;
+  const b = g.blobs[seat];
+  const face = g.face[seat] || 1;
+  room.players.forEach((q) => {
+    if (q.seat === seat) return;
+    const qb = g.blobs[q.seat];
+    if (!qb || !qb.alive || (g.invuln[q.seat] || 0) > 0) return;
+    const dx = qb.x - b.x, dy = qb.y - b.y;
+    if (Math.abs(dy) > 1.7 || Math.abs(dx) > 2.1 || (Math.abs(dx) > 0.3 && Math.sign(dx) !== face)) return;
+    g.dmg[q.seat] = (g.dmg[q.seat] || 0) + (heavy ? FIGHT_HVY_DMG : FIGHT_DMG);
+    let force = 0.3 + g.dmg[q.seat] * 0.025; // AFTER the damage lands
+    if (heavy) force *= 1.5;
+    qb.vx = face * force;
+    qb.vy = -force * 0.55;
+    qb.ground = false;
+    g.hitT[q.seat] = FIGHT_HITSTUN;
+    g.dashT[q.seat] = 0;
+  });
 }
 function simulateFightTick(room) {
   const g = room.game;
@@ -3168,6 +3200,8 @@ function simulateFightTick(room) {
     const seat = p.seat;
     if (g.atkCd[seat] > 0) g.atkCd[seat] -= 1;
     if (g.atkT[seat] > 0) g.atkT[seat] -= 1;
+    if ((g.hvyCd[seat] || 0) > 0) g.hvyCd[seat] -= 1;
+    if ((g.hvyT[seat] || 0) > 0) g.hvyT[seat] -= 1;
     if (g.dashCd[seat] > 0) g.dashCd[seat] -= 1;
     if ((g.invuln[seat] || 0) > 0) g.invuln[seat] -= 1;
     const stunned = (g.hitT[seat] || 0) > 0;
@@ -3201,26 +3235,18 @@ function simulateFightTick(room) {
         b.ground = false;
       }
     }
-    // Melee: an A press swings at once; the arc reaches FIGHT reach in
-    // the facing direction and a full body height up/down.
-    if (!stunned && it.atk && g.atkCd[seat] <= 0) {
+    // Melee: a fresh A press swings at once. A fresh X press is the
+    // heavy swing — its own longer cooldown, +16% and 1.5x knockback,
+    // and a longer recovery pose. If both edges land on the same
+    // tick the heavy wins and the normal swing is skipped.
+    if (!stunned && it.hvy && (g.hvyCd[seat] || 0) <= 0) {
+      g.hvyT[seat] = FIGHT_HVY_ATK_T;
+      g.hvyCd[seat] = FIGHT_HVY_CD;
+      fightSwing(room, seat, true);
+    } else if (!stunned && it.atk && g.atkCd[seat] <= 0) {
       g.atkT[seat] = 4;
       g.atkCd[seat] = FIGHT_ATK_CD;
-      const face = g.face[seat] || 1;
-      room.players.forEach((q) => {
-        if (q.seat === seat) return;
-        const qb = g.blobs[q.seat];
-        if (!qb || !qb.alive || (g.invuln[q.seat] || 0) > 0) return;
-        const dx = qb.x - b.x, dy = qb.y - b.y;
-        if (Math.abs(dy) > 1.7 || Math.abs(dx) > 2.1 || (Math.abs(dx) > 0.3 && Math.sign(dx) !== face)) return;
-        g.dmg[q.seat] = (g.dmg[q.seat] || 0) + FIGHT_DMG;
-        const force = 0.3 + g.dmg[q.seat] * 0.025; // AFTER the damage lands
-        qb.vx = face * force;
-        qb.vy = -force * 0.55;
-        qb.ground = false;
-        g.hitT[q.seat] = FIGHT_HITSTUN;
-        g.dashT[q.seat] = 0;
-      });
+      fightSwing(room, seat, false);
     }
     platStep(b, FIGHT_PLATFORMS, PLAT_GRAV, PLAT_MAXFALL);
     if (b.ground) g.jumps[seat] = 0;
@@ -3229,7 +3255,7 @@ function simulateFightTick(room) {
       b.lives -= 1;
       if (b.lives > 0) {
         b.x = 0; b.y = -1.5 - PLAT_HH - 0.6; b.vx = 0; b.vy = 0; b.ground = false;
-        g.dmg[seat] = 0; g.jumps[seat] = 0; g.hitT[seat] = 0; g.dashT[seat] = 0;
+        g.dmg[seat] = 0; g.jumps[seat] = 0; g.hitT[seat] = 0; g.dashT[seat] = 0; g.hvyT[seat] = 0;
         g.invuln[seat] = INVULN_TICKS; // 2s of cover on the way back in
       } else {
         b.alive = false;
@@ -3245,7 +3271,7 @@ function simulateFightTick(room) {
 function botBrainFight(room, p) {
   const g = room.game;
   const me = g.blobs[p.seat];
-  const intent = { x: 0, jump: false, atk: false, dash: false };
+  const intent = { x: 0, jump: false, atk: false, hvy: false, dash: false };
   if (!me || !me.alive) return intent;
   // Recovery first — checked every tick, it is life-critical: airborne,
   // low or out past the floor's edge, so steer home and spend jumps /
@@ -3272,8 +3298,17 @@ function botBrainFight(room, p) {
     const dx = near.foe.x - me.x, dy = near.foe.y - me.y;
     if (me.ground && dy < -2 && Math.abs(dx) < 2.2) intent.jump = true; // hop up to their platform
     if (Math.abs(dx) <= 2.0 && Math.abs(dy) <= 1.6) {
-      const prob = p.difficulty === 'kho' ? 0.9 : p.difficulty === 'vua' ? 0.6 : 0.35;
-      if (Math.random() < prob) intent.atk = true;
+      // Finisher: against a badly hurt foe (>= 50%), Khó/Vừa bots
+      // sometimes spend the heavy swing instead of a normal one —
+      // only when its own cooldown is ready. Dễ bots never heavy.
+      const foeDmg = near.foeSeat != null ? (g.dmg[near.foeSeat] || 0) : 0;
+      const hvyProb = p.difficulty === 'kho' ? 0.35 : p.difficulty === 'vua' ? 0.15 : 0;
+      if (hvyProb > 0 && foeDmg >= 50 && (g.hvyCd[p.seat] || 0) <= 0 && Math.random() < hvyProb) {
+        intent.hvy = true;
+      } else {
+        const prob = p.difficulty === 'kho' ? 0.9 : p.difficulty === 'vua' ? 0.6 : 0.35;
+        if (Math.random() < prob) intent.atk = true;
+      }
     } else if (Math.abs(dx) > 6 && p.difficulty !== 'de' && Math.random() < 0.25) {
       intent.dash = true;
     }
@@ -3330,7 +3365,7 @@ function templeIntent(room, p) {
     const prev = g.padPrev[p.seat] || {};
     return {
       x: (pad.r ? 1 : 0) - (pad.l ? 1 : 0),
-      jump: (!!pad.u && !prev.u) || (!!pad.a && !prev.a),
+      jump: (!!pad.u && !prev.u) || (!!pad.a && !prev.a) || (!!pad.y && !prev.y),
     };
   }
   return botBrainTemple(room, p);
@@ -3692,7 +3727,7 @@ function gameView(room, role, seat, t) {
         x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive,
         dmg: g.dmg[p.seat] || 0, face: g.face[p.seat] || 1,
         vx: Math.round((b.vx || 0) * 100) / 100, vy: Math.round((b.vy || 0) * 100) / 100, ground: !!b.ground,
-        atk: (g.atkT[p.seat] || 0) > 0, hit: (g.hitT[p.seat] || 0) > 0,
+        atk: (g.atkT[p.seat] || 0) > 0, hvy: (g.hvyT[p.seat] || 0) > 0, hit: (g.hitT[p.seat] || 0) > 0,
         invuln: (g.invuln[p.seat] || 0) > 0, dash: (g.dashT[p.seat] || 0) > 0,
       };
     });
@@ -3901,7 +3936,7 @@ function playerAction(room, player, body) {
       && g.id !== 'xe-tank' && g.id !== 'dat-bom' && g.id !== 'thu-thanh'
       && g.id !== 'nguoi-que' && g.id !== 'den-lua-nuoc') return null;
     const pd = body.pad || {};
-    const np = { u: !!pd.u, d: !!pd.d, l: !!pd.l, r: !!pd.r, a: !!pd.a, b: !!pd.b };
+    const np = { u: !!pd.u, d: !!pd.d, l: !!pd.l, r: !!pd.r, a: !!pd.a, b: !!pd.b, x: !!pd.x, y: !!pd.y };
     const prev = g.pad[seat] || {};
     // Kéo Co: a press is the rising edge of B, counted the moment it lands.
     if (g.id === 'keo-co' && g.phase === 'pull' && np.b && !prev.b) {
@@ -4485,6 +4520,23 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
   box-shadow: 0 5px 0 rgba(0,0,0,.25); touch-action: none; user-select: none; -webkit-user-select: none; }
 .dbtn:active { background: #FFD98E; }
 .abtns { display: flex; gap: 12px; align-items: center; }
+.disc { position: relative; width: 190px; height: 190px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 50% 38%, #2A3852, #131A29 72%);
+  border: 1px solid rgba(140,180,255,.4); box-shadow: 0 6px 0 rgba(0,0,0,.45), 0 0 16px rgba(90,150,255,.22), inset 0 0 22px rgba(0,0,0,.5);
+  touch-action: none; user-select: none; -webkit-user-select: none; }
+.disc svg { display: block; width: 100%; height: 100%; pointer-events: none; }
+.disc .seg { fill: rgba(140,180,255,.10); }
+.disc .segarr { fill: #8FB4E8; }
+.disc .hub { fill: #1B2740; stroke: rgba(140,180,255,.45); stroke-width: 1.2; }
+.disc[data-u="1"] .seg-u, .disc[data-d="1"] .seg-d, .disc[data-l="1"] .seg-l, .disc[data-r="1"] .seg-r { fill: rgba(120,190,255,.55); }
+.disc[data-u="1"] .arr-u, .disc[data-d="1"] .arr-d, .disc[data-l="1"] .arr-l, .disc[data-r="1"] .arr-r { fill: #FFFFFF; }
+.abtns.dia { display: grid; grid-template-columns: repeat(3, 58px); grid-template-rows: repeat(3, 58px); gap: 2px; }
+.abtns.dia .abtn { width: 58px; height: 58px; font-size: 19px; }
+.abtns.dia .abtn span { font-size: 8.5px; }
+.xbtn { background: #7A4FD0; }
+.ybtn { background: #D9A514; }
+.stage .xbtn { background: linear-gradient(180deg, #A678FF, #6A32C8); box-shadow: 0 6px 0 rgba(0,0,0,.5), 0 0 20px rgba(150,100,255,.5); }
+.stage .ybtn { background: linear-gradient(180deg, #FFC93D, #D9930D); box-shadow: 0 6px 0 rgba(0,0,0,.5), 0 0 20px rgba(255,190,60,.5); }
 .abtn { width: 78px; height: 78px; border-radius: 50%; border: none; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 25px;
   color: #fff; box-shadow: 0 6px 0 rgba(0,0,0,.25); touch-action: none; user-select: none; -webkit-user-select: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
@@ -4606,6 +4658,7 @@ function stickSVG(colorName, pose, face) {
   if (pose === 'run') { arms = [[13, 15], [35, 24]]; legs = [[13, 37], [34, 40]]; }
   else if (pose === 'air') { arms = [[13, 12], [35, 12]]; legs = [[16, 39], [33, 36]]; }
   else if (pose === 'atk') { arms = f > 0 ? [[42, 17], [16, 27]] : [[6, 17], [32, 27]]; legs = [[15, 39], [33, 40]]; }
+  else if (pose === 'atkh') { arms = f > 0 ? [[47, 14], [10, 30]] : [[1, 14], [38, 30]]; legs = [[13, 40], [35, 41]]; }
   else if (pose === 'hit') { arms = [[12, 10], [36, 10]]; legs = [[14, 40], [34, 40]]; }
   else { arms = [[15, 26], [33, 26]]; legs = [[17, 41], [31, 41]]; }
   var s = '<svg width="46" height="46" viewBox="0 0 48 48">';
@@ -4616,7 +4669,11 @@ function stickSVG(colorName, pose, face) {
   s += '<line x1="24" y1="19" x2="' + arms[1][0] + '" y2="' + arms[1][1] + '"/>';
   s += '<line x1="24" y1="29" x2="' + legs[0][0] + '" y2="' + legs[0][1] + '"/>';
   s += '<line x1="24" y1="29" x2="' + legs[1][0] + '" y2="' + legs[1][1] + '"/>';
-  return s + '</g></svg>';
+  s += '</g>';
+  // Heavy swing: the punching arm is redrawn twice as thick so the
+  // big wind-up reads at TV distance.
+  if (pose === 'atkh') s += '<line x1="24" y1="19" x2="' + arms[0][0] + '" y2="' + arms[0][1] + '" stroke="' + c + '" stroke-width="7.5" stroke-linecap="round" opacity="0.85"/>';
+  return s + '</svg>';
 }
 // Temple characters for Đền Lửa & Nước: a neon flame (Lửa) or droplet
 // (Nước), trimmed with the player's own seat colour.
@@ -5068,6 +5125,7 @@ function rectStyle(r) {
 }
 function fightPose(b) {
   if (!b.alive || b.hit) return 'hit';
+  if (b.hvy) return 'atkh';
   if (b.atk) return 'atk';
   if (!b.ground) return 'air';
   if (Math.abs(b.vx || 0) > 0.1) return 'run';
@@ -6221,11 +6279,7 @@ function playerGame(v) {
         h += '<div class="center"><div class="ko-big">K.O.!</div>' + orbSVG(me.color, 110, true) + '<div class="baloo" style="font-size:27px">Bạn đã bị loại!</div><p>Xem TV đợi kết quả nhé…</p></div>';
       } else {
         h += '<div class="center baloo" style="font-size:20px">Mạng của bạn: <span id="mylives" style="color:#FFD7DE">' + (myB ? '❤'.repeat(myB.lives) : '') + '</span></div>';
-        h += '<div class="padwrap"><div class="dpad">'
-          + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-          + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-          + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
-          + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>Lướt</span></button><button class="abtn abtnA" data-pad="a">A<span>ĐẨY</span></button></div></div>';
+        h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'ĐẨY', 'Lướt') + '</div>';
         h += '<p class="center small">' + (g.id === 'ne-dan' ? 'Giữ D-pad để né đạn · B: lướt nhanh' : 'Giữ D-pad để di chuyển · A: đẩy đối thủ · B: lướt nhanh') + '</p>';
       }
     }
@@ -6233,30 +6287,18 @@ function playerGame(v) {
     if (g.phase === 'steal' || g.phase === 'crown' || g.phase === 'splat') {
       if (g.id === 'cuop-sao') {
         h += '<div class="center baloo" style="font-size:22px">Sao của bạn: ★ <span id="mybank">' + (g.mine || 0) + '</span></div>';
-        h += '<div class="padwrap"><div class="dpad">'
-          + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-          + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-          + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
-          + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>Lướt</span></button><button class="abtn abtnA" data-pad="a">A<span>ĐẨY</span></button></div></div>';
+        h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'ĐẨY', 'Lướt') + '</div>';
         h += '<p class="center small">Bay qua sao là nhặt · A: xô mạnh, đối thủ rơi 1 sao · Sao lớn = 3 sao</p>';
       } else if (g.id === 'giu-vuong-mien') {
         var holderP = g.crown && g.crown.holder ? playerOf(v, g.crown.holder) : null;
         if (g.myCrown) h += '<div class="center baloo" style="font-size:23px;color:#FFC93D">👑 BẠN ĐANG GIỮ VƯƠNG MIỆN!</div>';
         else h += '<div class="center baloo" style="font-size:20px">' + (holderP ? 'Vương miện: ' + esc(holderP.name) + ' đang giữ' : 'Vương miện đang ở giữa sàn!') + '</div>';
         h += '<div class="center baloo" style="font-size:19px">Điểm giữ của bạn: <span id="myhold">' + (g.mine || 0) + '</span></div>';
-        h += '<div class="padwrap"><div class="dpad">'
-          + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-          + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-          + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
-          + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>Lướt</span></button><button class="abtn abtnA" data-pad="a">A<span>ĐẨY</span></button></div></div>';
+        h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'ĐẨY', 'Lướt') + '</div>';
         h += '<p class="center small">Chạm vào vương miện là đội lên đầu · Giữ càng lâu càng nhiều điểm · A: xô người giữ cho rơi</p>';
       } else {
         h += '<div class="center baloo" style="font-size:22px">Ô của bạn: <span id="mycells">' + (g.mine || 0) + '</span>/144</div>';
-        h += '<div class="padwrap"><div class="dpad">'
-          + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-          + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-          + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
-          + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>Lướt</span></button><button class="abtn abtnA" data-pad="a">A<span>SƠN</span></button></div></div>';
+        h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'SƠN', 'Lướt') + '</div>';
         h += '<p class="center small">Chạy qua ô nào sơn ô đó · A: sơn bùng 3×3 (hồi 2 giây) · B: lướt nhanh</p>';
       }
     }
@@ -6282,10 +6324,7 @@ function playerGame(v) {
       var kpct2 = Math.max(3, Math.min(97, 50 + (g.knot / 84) * 46));
       h += '<div class="rope"><div class="mid"></div><div class="knot" style="left:' + kpct2 + '%"></div></div>';
       h += '<div class="center baloo" style="font-size:21px">Bạn đã kéo: <span id="mypull">' + (g.presses ? (g.presses[S.seat] || 0) : 0) + '</span> lần</div>';
-      h += '<div class="padwrap"><div class="dpad">'
-        + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-        + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-        + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
+      h += '<div class="padwrap">' + discHTML()
         + '<div class="abtns"><button class="abtn" data-pad="b" style="background:#E84F4F;width:92px;height:92px;font-size:30px">B<span>KÉO!</span></button></div></div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 20000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
@@ -6331,22 +6370,14 @@ function playerGame(v) {
       var md = g.myDirs || [];
       for (var dI4 = 0; dI4 < md.length; dI4++) h += '<span class="dirarrow">' + arrowOf[md[dI4]] + '</span>';
       h += '</div>';
-      h += '<div class="padwrap"><div class="dpad">'
-        + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-        + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-        + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
-        + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>Lướt</span></button><button class="abtn abtnA" data-pad="a">A<span>Đẩy</span></button></div></div>';
+      h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'Đẩy', 'Lướt') + '</div>';
       h += '<p class="center small">Cả đội lái CHUNG một quả bóng — chỉ hướng của bạn mới chạy theo tay bạn. Phối hợp đưa bóng chạm sao ⭐, né đạn!</p>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - 60000) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
   } else if (g.id === 'day-hop') {
     if (g.phase === 'box') {
       h += '<div class="center baloo" style="font-size:22px">📦 Đội đã giao: <span id="delivp">' + (g.deliveries || 0) + '</span> hộp</div>';
-      h += '<div class="padwrap"><div class="dpad">'
-        + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-        + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-        + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
-        + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>Lướt</span></button><button class="abtn abtnA" data-pad="a">A<span>Đẩy</span></button></div></div>';
+      h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'Đẩy', 'Lướt') + '</div>';
       h += '<p class="center small">Cùng một đồng đội áp sát hộp và đẩy cùng một hướng — một người đẩy hộp không đi đâu cả!</p>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 75000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
@@ -6366,11 +6397,7 @@ function playerGame(v) {
       } else {
         if (g.id === 'thu-thanh') h += '<div class="center baloo" style="font-size:20px">💎 Pha lê: <span id="crystalhp2">' + (g.crystal ? g.crystal.hp : 10) + '</span>/10 · Đã hạ: <span id="killn2">' + (g.kills || 0) + '</span> slime</div>';
         else h += '<div class="center baloo" style="font-size:20px">Mạng của bạn: <span id="mylives" style="color:#FFD7DE">' + (myB2 ? '❤'.repeat(myB2.lives) : '') + '</span></div>';
-        h += '<div class="padwrap"><div class="dpad">'
-          + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-          + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-          + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
-          + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>Lướt</span></button><button class="abtn abtnA" data-pad="a">A<span>' + (g.id === 'dat-bom' ? 'ĐẶT BOM' : 'BẮN') + '</span></button></div></div>';
+        h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, (g.id === 'dat-bom' ? 'ĐẶT BOM' : 'BẮN'), 'Lướt') + '</div>';
         h += '<p class="center small">' + (g.id === 'xe-tank' ? 'Nòng súng hướng theo hướng di chuyển cuối · A: bắn (hồi 1 giây) · Núp sau thùng chắn' : g.id === 'dat-bom' ? 'A: đặt bom (mỗi người 1 quả một lúc) · Bom nổ sau 2 giây theo hình chữ thập — đặt xong chạy ngay!' : 'Bắn slime trước khi chúng chạm vào pha lê · Nòng súng hướng theo hướng di chuyển cuối') + '</p>';
       }
     }
@@ -6435,12 +6462,8 @@ function playerGame(v) {
         h += '<div class="center"><div class="ko-big">K.O.!</div>' + orbSVG(me.color, 110, true) + '<div class="baloo" style="font-size:27px">Bạn đã bị loại!</div><p>Xem TV đợi kết quả nhé…</p></div>';
       } else {
         h += '<div class="center baloo" style="font-size:20px">Mạng: <span id="mylives" style="color:#FFD7DE">' + (myF ? '♥'.repeat(Math.max(0, myF.lives)) : '') + '</span> · Sát thương: <span id="mydmg">' + (g.myDmg || 0) + '%</span></div>';
-        h += '<div class="padwrap"><div class="dpad">'
-          + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-          + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-          + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
-          + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>LƯỚT</span></button><button class="abtn abtnA" data-pad="a">A<span>ĐÁNH</span></button></div></div>';
-        h += '<p class="center small">▲: nhảy (nhấn 2 lần = nhảy đôi) · A: đánh — đối thủ % càng cao càng văng xa · B: lướt · Bị đánh văng khỏi sàn thì về điểm hồi sinh trên bục cao.</p>';
+        h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'ĐÁNH', 'LƯỚT') + '</div>';
+        h += '<p class="center small">▲ hoặc Y: nhảy (nhấn 2 lần = nhảy đôi) · A: đánh — đối thủ % càng cao càng văng xa · X: ĐÁNH MẠNH (+16%, văng xa gấp rưỡi, hồi chiêu lâu hơn) · B: lướt · Bị đánh văng khỏi sàn thì về điểm hồi sinh trên bục cao.</p>';
         h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 90000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
       }
     }
@@ -6450,12 +6473,8 @@ function playerGame(v) {
       h += '<div class="center baloo" style="font-size:21px">Bạn là: ' + (g.myEl === 'lua' ? '🔥 LỬA' : '💧 NƯỚC') + '</div>';
       h += '<div class="center baloo" style="font-size:19px">Tim đội: <span id="tempheartsp" style="color:#FFD7DE">' + '❤'.repeat(Math.max(0, g.hearts || 0)) + '</span> · 🔥 <span id="gemluap">' + (g.gemCount ? g.gemCount.lua : 0) + '</span>/5 · 💧 <span id="gemnuocp">' + (g.gemCount ? g.gemCount.nuoc : 0) + '</span>/5</div>';
       if (g.myHome) h += '<div class="center baloo" style="font-size:24px">🏠 Bạn đã về nhà! Đợi đồng đội…</div>';
-      h += '<div class="padwrap"><div class="dpad">'
-        + '<span></span><button class="dbtn" data-pad="u">▲</button><span></span>'
-        + '<button class="dbtn" data-pad="l">◀</button><span></span><button class="dbtn" data-pad="r">▶</button>'
-        + '<span></span><button class="dbtn" data-pad="d">▼</button><span></span></div>'
-        + '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>—</span></button><button class="abtn abtnA" data-pad="a">A<span>NHẢY</span></button></div></div>';
-      h += '<p class="center small">' + (g.myEl === 'lua' ? 'Bạn là LỬA: hồ đỏ an toàn, hồ xanh dương chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc đỏ.' : 'Bạn là NƯỚC: hồ xanh dương an toàn, hồ đỏ chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc xanh.') + ' Đứng lên nút vàng để mở cổng cho đồng đội.</p>';
+      h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'NHẢY', '—') + '</div>';
+      h += '<p class="center small">' + (g.myEl === 'lua' ? 'Bạn là LỬA: hồ đỏ an toàn, hồ xanh dương chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc đỏ.' : 'Bạn là NƯỚC: hồ xanh dương an toàn, hồ đỏ chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc xanh.') + ' Đứng lên nút vàng để mở cổng cho đồng đội. A hoặc Y: nhảy.</p>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 150000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
   }
@@ -6655,10 +6674,104 @@ document.addEventListener('input', function (ev) {
     if (next) next.focus();
   }
 });
-S.padState = { u: false, d: false, l: false, r: false, a: false, b: false };
+// Per-game action-button sets for the phone gamepad (mirrors the
+// Android controller's table): games not listed here get exactly the
+// classic A/B pair; listed games add X/Y (or swap B out) with their
+// own labels. nguoi-que uses a diamond layout (Y top, X left, A
+// right, B bottom, like a console pad); den-lua-nuoc a plain row.
+var PAD_SPEC = {
+  'nguoi-que': { layout: 'diamond', btns: { a: 'ĐÁNH', b: 'LƯỚT', x: 'ĐÁNH MẠNH', y: 'NHẢY' } },
+  'den-lua-nuoc': { layout: 'row', order: ['y', 'a'], btns: { a: 'NHẢY', y: 'NHẢY' } }
+};
+function abtnsHTML(gid, aLabel, bLabel) {
+  var spec = PAD_SPEC[gid];
+  if (!spec) return '<div class="abtns"><button class="abtn bbtn" data-pad="b">B<span>' + bLabel + '</span></button><button class="abtn abtnA" data-pad="a">A<span>' + aLabel + '</span></button></div>';
+  if (spec.layout === 'diamond') {
+    return '<div class="abtns dia">'
+      + '<span></span><button class="abtn ybtn" data-pad="y">Y<span>' + spec.btns.y + '</span></button><span></span>'
+      + '<button class="abtn xbtn" data-pad="x">X<span>' + spec.btns.x + '</span></button><span></span><button class="abtn abtnA" data-pad="a">A<span>' + spec.btns.a + '</span></button>'
+      + '<span></span><button class="abtn bbtn" data-pad="b">B<span>' + spec.btns.b + '</span></button><span></span></div>';
+  }
+  var h = '<div class="abtns">';
+  for (var i = 0; i < spec.order.length; i++) {
+    var k = spec.order[i];
+    h += '<button class="abtn ' + (k === 'a' ? 'abtnA' : k === 'x' ? 'xbtn' : k === 'y' ? 'ybtn' : 'bbtn') + '" data-pad="' + k + '">' + k.toUpperCase() + '<span>' + spec.btns[k] + '</span></button>';
+  }
+  return h + '</div>';
+}
+// The circular direction disc that replaces the 3x3 D-pad grid: one
+// round target; the thumb's offset from centre picks the directions
+// (axis thresholds, so sliding diagonally gives a real diagonal) and
+// the active segments light up through data-u/d/l/r attributes.
+function discHTML() {
+  return '<div class="disc" data-disc="1" data-u="0" data-d="0" data-l="0" data-r="0"><svg viewBox="0 0 100 100">'
+    + '<path class="seg seg-u" d="M50 50 L16.8 16.8 A47 47 0 0 1 83.2 16.8 Z"/>'
+    + '<path class="seg seg-r" d="M50 50 L83.2 16.8 A47 47 0 0 1 83.2 83.2 Z"/>'
+    + '<path class="seg seg-d" d="M50 50 L83.2 83.2 A47 47 0 0 1 16.8 83.2 Z"/>'
+    + '<path class="seg seg-l" d="M50 50 L16.8 83.2 A47 47 0 0 1 16.8 16.8 Z"/>'
+    + '<polygon class="segarr arr-u" points="50,13 42.5,25 57.5,25"/>'
+    + '<polygon class="segarr arr-r" points="87,50 75,42.5 75,57.5"/>'
+    + '<polygon class="segarr arr-d" points="50,87 42.5,75 57.5,75"/>'
+    + '<polygon class="segarr arr-l" points="13,50 25,42.5 25,57.5"/>'
+    + '<circle class="hub" cx="50" cy="50" r="14"/>'
+    + '</svg></div>';
+}
+function findDiscNode(node) {
+  while (node && node !== document.body) { if (node.getAttribute && node.getAttribute('data-disc')) return node; node = node.parentNode; }
+  return null;
+}
+S.discPointers = {};
+function discBits(node, cx, cy) {
+  var r = node.getBoundingClientRect();
+  var R = r.width / 2; if (!R) return '';
+  var dx = cx - (r.left + R), dy = cy - (r.top + R);
+  if (Math.sqrt(dx * dx + dy * dy) <= R * 0.18) return '';
+  var th = R * 0.25, bits = '';
+  if (dx > th) bits += 'r'; else if (dx < -th) bits += 'l';
+  if (dy > th) bits += 'd'; else if (dy < -th) bits += 'u';
+  return bits;
+}
+// A disc pointer drives up to two pad bits at once; each bit rides
+// the ordinary padSet machinery under its own synthetic pointer id
+// ("<pid>:<bit>"), so the multi-touch bookkeeping (padPointers holds
+// exactly one bit per id) and the stuck-release recovery keep working
+// unchanged, and other fingers on A/B/X/Y stay fully independent.
+function discApply(pid, bits) {
+  var rec = S.discPointers[pid]; if (!rec) return;
+  if (rec.bits === bits) return;
+  var old = rec.bits; rec.bits = bits;
+  var dirs = ['u', 'd', 'l', 'r'];
+  for (var i = 0; i < dirs.length; i++) {
+    var b = dirs[i], was = old.indexOf(b) >= 0, is = bits.indexOf(b) >= 0;
+    if (is && !was) padSet(b, true, pid + ':' + b);
+    else if (was && !is) padSet(b, false, pid + ':' + b);
+  }
+}
+function discDown(pid, node, cx, cy) {
+  S.discPointers[pid] = { node: node, bits: '' };
+  discApply(pid, discBits(node, cx, cy));
+  paintDiscs();
+}
+function discUp(pid) {
+  if (!S.discPointers[pid]) return;
+  discApply(pid, '');
+  delete S.discPointers[pid];
+  paintDiscs();
+}
+function paintDiscs() {
+  var ds = document.querySelectorAll('.disc');
+  for (var i = 0; i < ds.length; i++) {
+    ds[i].setAttribute('data-u', S.padState.u ? '1' : '0');
+    ds[i].setAttribute('data-d', S.padState.d ? '1' : '0');
+    ds[i].setAttribute('data-l', S.padState.l ? '1' : '0');
+    ds[i].setAttribute('data-r', S.padState.r ? '1' : '0');
+  }
+}
+S.padState = { u: false, d: false, l: false, r: false, a: false, b: false, x: false, y: false };
 S.padPointers = {};
 function sendPad() {
   if (!S.code || S.role !== 'player') return;
+  paintDiscs();
   // The live channel carries pad snapshots with no HTTP round trip per
   // press; the HTTP send (tiny-ack path) remains the exact fallback
   // whenever the socket is down or a send throws.
@@ -6698,6 +6811,12 @@ function padPressFx(bit) {
   }
 }
 document.addEventListener('pointerdown', function (ev) {
+  var discNode = findDiscNode(ev.target);
+  if (discNode) {
+    ev.preventDefault();
+    discDown(ev.pointerId, discNode, ev.clientX, ev.clientY);
+    return;
+  }
   var padNode = findPadNode(ev.target);
   if (padNode) {
     ev.preventDefault();
@@ -6714,7 +6833,12 @@ document.addEventListener('pointerdown', function (ev) {
     runCmd(node);
   }
 });
+document.addEventListener('pointermove', function (ev) {
+  var rec = S.discPointers[ev.pointerId];
+  if (rec) discApply(ev.pointerId, discBits(rec.node, ev.clientX, ev.clientY));
+});
 function padRelease(ev) {
+  discUp(ev.pointerId);
   var bit = S.padPointers[ev.pointerId];
   if (bit) padSet(bit, false, ev.pointerId);
   clearPadFx();
@@ -6723,9 +6847,11 @@ document.addEventListener('pointerup', padRelease);
 document.addEventListener('pointercancel', padRelease);
 window.addEventListener('blur', function () {
   S.padPointers = {};
+  S.discPointers = {};
   var changed = false;
   for (var k in S.padState) if (S.padState[k]) { S.padState[k] = false; changed = true; }
   if (changed) sendPad();
+  paintDiscs();
 });
 // Fallbacks for engines without Pointer Events (older browsers and
 // in-app webviews such as Zalo/Facebook): without these, the gamepad
@@ -6737,6 +6863,12 @@ if (!window.PointerEvent) {
   document.addEventListener('touchstart', function (ev) {
     for (var i = 0; i < ev.changedTouches.length; i++) {
       var t = ev.changedTouches[i];
+      var discNode = findDiscNode(t.target);
+      if (discNode) {
+        ev.preventDefault();
+        discDown('t' + t.identifier, discNode, t.clientX, t.clientY);
+        continue;
+      }
       var padNode = findPadNode(t.target);
       if (padNode) {
         ev.preventDefault();
@@ -6754,9 +6886,17 @@ if (!window.PointerEvent) {
       }
     }
   }, { passive: false });
+  document.addEventListener('touchmove', function (ev) {
+    for (var i = 0; i < ev.changedTouches.length; i++) {
+      var t = ev.changedTouches[i];
+      var rec = S.discPointers['t' + t.identifier];
+      if (rec) { ev.preventDefault(); discApply('t' + t.identifier, discBits(rec.node, t.clientX, t.clientY)); }
+    }
+  }, { passive: false });
   function touchEnd(ev) {
     for (var i = 0; i < ev.changedTouches.length; i++) {
       var pid = 't' + ev.changedTouches[i].identifier;
+      discUp(pid);
       var bit = S.padPointers[pid];
       if (bit) padSet(bit, false, pid);
     }
@@ -6765,6 +6905,12 @@ if (!window.PointerEvent) {
   document.addEventListener('touchend', touchEnd);
   document.addEventListener('touchcancel', touchEnd);
   document.addEventListener('mousedown', function (ev) {
+    var discNode = findDiscNode(ev.target);
+    if (discNode) {
+      ev.preventDefault();
+      discDown('mouse', discNode, ev.clientX, ev.clientY);
+      return;
+    }
     var padNode = findPadNode(ev.target);
     if (padNode) {
       pressFx(padNode);
@@ -6779,7 +6925,12 @@ if (!window.PointerEvent) {
       runCmd(node);
     }
   });
+  document.addEventListener('mousemove', function (ev) {
+    var rec = S.discPointers.mouse;
+    if (rec) discApply('mouse', discBits(rec.node, ev.clientX, ev.clientY));
+  });
   document.addEventListener('mouseup', function () {
+    discUp('mouse');
     if (S.padPointers.mouse) padSet(S.padPointers.mouse, false, 'mouse');
     clearPadFx();
   });

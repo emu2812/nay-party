@@ -2645,6 +2645,142 @@ async function main() {
     'playlist skip: progress reports the game that actually started (pos 3/3)');
   }
 
+  // =====================================================================
+  // Audit Q: X/Y gamepad bits end-to-end — the pad protocol accepts
+  // and preserves x/y, the web phone ships the circular disc pad and
+  // per-game button sets, the stick fighter gains a heavy attack on
+  // X (own 10-tick cooldown, +16%, 1.5x knockback) and Y jumps in
+  // both platformers. Drives mirror Audit O's choreography.
+  console.log('Audit Q: X/Y pads — disc, per-game buttons, heavy attack, Y-jump');
+  assert(home.text.indexOf('function discHTML(') >= 0 && home.text.indexOf('data-disc') >= 0
+    && home.text.indexOf('class="dpad"') === -1,
+    'page ships the circular disc pad; the 3x3 dpad grid markup is gone');
+  assert(home.text.indexOf('PAD_SPEC') >= 0 && home.text.indexOf('ĐÁNH MẠNH') >= 0
+    && home.text.indexOf('x: false, y: false') >= 0,
+    'page ships the per-game pad spec (fighter X = ĐÁNH MẠNH) and x/y bits in padState');
+  assert(home.text.indexOf('function discBits(') >= 0 && home.text.indexOf('function discApply(') >= 0
+    && home.text.indexOf('0.18') >= 0 && home.text.indexOf('0.25') >= 0,
+    'disc direction math ships (0.18R dead zone, 0.25R axis thresholds, synthetic per-bit pointer ids)');
+  async function padTicksQ(drv, tok, pad, n) {
+    let v = null;
+    for (let i = 0; i < n; i++) { await drv.pAct(tok, { action: 'pad', pad }); tick(125); await drv.state(); tick(125); v = await drv.state(); }
+    return v;
+  }
+  async function legQ(drv, tok, pad, until, label, max) {
+    for (let i = 0; i < (max || 500); i++) {
+      const v = await drv.state();
+      if (until(v)) { await drv.pAct(tok, { action: 'pad', pad: {} }); return v; }
+      await drv.pAct(tok, { action: 'pad', pad });
+      tick(250);
+    }
+    throw new Error('legQ timeout: ' + label);
+  }
+
+  // --- X/Y accepted + preserved through the countdown --------------
+  // X+Y grabbed during the 3-2-1 (never re-sent): on tick 1 of the
+  // fight the preserved Y edge jumps (250ms in: y 3.15, the Audit O
+  // single-jump numbers) and the preserved X edge fires the heavy
+  // swing (a whiff at spawn range — hvy flag up, no damage).
+  const qDrv = await newDrv();
+  const q1 = await qDrv.join('QueXMot');
+  const q2 = await qDrv.join('QueXHai');
+  await qDrv.act({ action: 'startGame', game: 'nguoi-que' });
+  const qAck = await qDrv.pAct(q1.playerToken, { action: 'pad', pad: { x: true, y: true } });
+  assert(qAck && qAck.ok === true && !qAck.game, 'pad carrying x/y is accepted (tiny ack, no rejection)');
+  let qv = await pumpD(qDrv, 250, (s) => s.game && s.game.phase === 'fight', 'xy fight begins');
+  tick(125); qv = await qDrv.state(); tick(125); qv = await qDrv.state(); // exactly 2 fight ticks
+  assert(qv.game.blobs[1].y === 3.15 && qv.game.blobs[1].ground === false,
+    'xy: the Y held since the countdown jumps on tick 1 (y 3.15 after 250ms), got y ' + qv.game.blobs[1].y);
+  assert(qv.game.blobs[1].hvy === true && qv.game.blobs[2].dmg === 0,
+    'xy: the X held since the countdown fires the heavy swing on tick 1 (hvy flag up, whiff at spawn range)');
+  await qDrv.pAct(q1.playerToken, { action: 'pad', pad: {} });
+  // Y double jump (seat 2, untouched at spawn): press, release, press.
+  await padTicksQ(qDrv, q2.playerToken, { y: true }, 1);
+  await padTicksQ(qDrv, q2.playerToken, {}, 1);
+  await padTicksQ(qDrv, q2.playerToken, { y: true }, 1);
+  await qDrv.pAct(q2.playerToken, { action: 'pad', pad: {} });
+  let qMinY = 99;
+  for (let i = 0; i < 24; i++) {
+    const sv = await qDrv.state();
+    if (sv.game.blobs[2].y < qMinY) qMinY = sv.game.blobs[2].y;
+    if (i > 6 && sv.game.blobs[2].ground) break;
+    tick(250);
+  }
+  assert(qMinY <= -1.0, 'xy: Y also double-jumps (apex y ' + qMinY + ', single jump only reaches 0.9)');
+
+  // --- Heavy attack numbers: +16% and 1.5x knockback ---------------
+  // Baseline first: a normal A hit at 0% in a fresh room.
+  const nDrv = await newDrv();
+  const n1 = await nDrv.join('ThuongMot');
+  await nDrv.join('ThuongHai');
+  await nDrv.act({ action: 'startGame', game: 'nguoi-que' });
+  await pumpD(nDrv, 250, (s) => s.game && s.game.phase === 'fight', 'normal-hit fight begins');
+  let nv = await legQ(nDrv, n1.playerToken, { r: true },
+    (s) => (s.game.blobs[2].x - s.game.blobs[1].x) <= 1.85, 'normal: H1 closes in');
+  const nXb = nv.game.blobs[2].x;
+  nv = await padTicksQ(nDrv, n1.playerToken, { a: true }, 1);
+  await nDrv.pAct(n1.playerToken, { action: 'pad', pad: {} });
+  const dispN = Math.abs(nv.game.blobs[2].x - nXb);
+  assert(nv.game.blobs[2].dmg === 10 && dispN > 0.5,
+    'heavy-baseline: a normal hit at 0% adds 10% and moves the victim ' + dispN.toFixed(2) + 'u');
+  // Heavy in its own room: same setup, X instead of A.
+  const hDrv = await newDrv();
+  const h1 = await hDrv.join('NangMot');
+  await hDrv.join('NangHai');
+  await hDrv.act({ action: 'startGame', game: 'nguoi-que' });
+  await pumpD(hDrv, 250, (s) => s.game && s.game.phase === 'fight', 'heavy fight begins');
+  let hv = await legQ(hDrv, h1.playerToken, { r: true },
+    (s) => (s.game.blobs[2].x - s.game.blobs[1].x) <= 1.85, 'heavy: H1 closes in');
+  const hXb = hv.game.blobs[2].x;
+  hv = await padTicksQ(hDrv, h1.playerToken, { x: true }, 1);
+  await hDrv.pAct(h1.playerToken, { action: 'pad', pad: {} });
+  const dispH = Math.abs(hv.game.blobs[2].x - hXb);
+  assert(hv.game.blobs[2].dmg === 16 && hv.game.blobs[1].hvy === true,
+    'heavy: an X hit adds exactly 16% damage and raises the hvy (big-swing) flag');
+  assert(dispH > dispN + 0.4,
+    'heavy: knockback beats a normal hit at equal (0%) damage — heavy moved ' + dispH.toFixed(2) + 'u vs normal ' + dispN.toFixed(2) + 'u (force 1.05 vs 0.55)');
+  // Cooldown gate: a fresh X edge 8 ticks after the swing must NOT
+  // fire (cooldown is 10) — the hvy flag stays down and damage is
+  // unchanged. After the cooldown, a fresh X lands the second heavy.
+  hv = await padTicksQ(hDrv, h1.playerToken, {}, 2); // 4 more ticks: hvyT (6) runs out, hvyCd at ~5
+  hv = await padTicksQ(hDrv, h1.playerToken, { x: true }, 1); // gated press at ~8 ticks after the swing
+  await hDrv.pAct(h1.playerToken, { action: 'pad', pad: {} });
+  assert(hv.game.blobs[1].hvy === false && hv.game.blobs[2].dmg === 16,
+    'heavy: a fresh X edge inside the 10-tick cooldown does not swing (gate holds)');
+  hv = await padTicksQ(hDrv, h1.playerToken, {}, 3); // 6 more ticks: cooldown over
+  hv = await legQ(hDrv, h1.playerToken, { r: true },
+    (s) => (s.game.blobs[2].x - s.game.blobs[1].x) <= 1.85, 'heavy: H1 closes in again');
+  hv = await padTicksQ(hDrv, h1.playerToken, { x: true }, 1);
+  await hDrv.pAct(h1.playerToken, { action: 'pad', pad: {} });
+  assert(hv.game.blobs[2].dmg === 32 && hv.game.blobs[1].hvy === true,
+    'heavy: after the cooldown a fresh X lands the second heavy (+16% again, 32% total)');
+
+  // --- Y jumps in the temple too ------------------------------------
+  const yDrv = await newDrv();
+  const y1 = await yDrv.join('DenYMot');
+  await yDrv.join('DenYHai');
+  await yDrv.act({ action: 'startGame', game: 'den-lua-nuoc' });
+  let yv = await pumpD(yDrv, 250, (s) => s.game && s.game.phase === 'temple', 'y-temple begins');
+  yv = await padTicksQ(yDrv, y1.playerToken, { y: true }, 1);
+  await yDrv.pAct(y1.playerToken, { action: 'pad', pad: {} });
+  assert(yv.game.chars[1].ground === false && yv.game.chars[1].y >= 7.3 && yv.game.chars[1].y <= 7.6,
+    'xy: Y jumps in the temple (250ms in: airborne at y ' + yv.game.chars[1].y + ', jump rise 1.65 from 9.1)');
+
+  // --- Bot heavies do not break match completion --------------------
+  const bDrv = await newDrv();
+  await bDrv.join('XemBot');
+  await bDrv.act({ action: 'addBot', seat: 2 });
+  await bDrv.act({ action: 'addBot', seat: 3 });
+  await bDrv.act({ action: 'addBot', seat: 4 });
+  await bDrv.act({ action: 'cycleBot', seat: 2 }); // Vừa -> Khó
+  await bDrv.act({ action: 'cycleBot', seat: 3 });
+  await bDrv.act({ action: 'cycleBot', seat: 4 });
+  await bDrv.act({ action: 'startGame', game: 'nguoi-que' });
+  const bFin = await pumpD(bDrv, 250, (s) => s.phase === 'results', 'bot fight completes', 4000);
+  const bPts = Object.values(bFin.lastGame.points).sort((x, y) => x - y);
+  assert(JSON.stringify(bPts) === JSON.stringify([50, 100, 200, 300]),
+    'heavy-bots: a 3xKhó-bot fight (heavies in the mix) completes with the standard placement points, got ' + JSON.stringify(bPts));
+
   // --- Storage routing: with ROOMS_DO bound, everything above must have
   console.log('Storage: Durable Object routing + expiry');
   assert(env.ROOMS.putCount === 0 && env.ROOMS.getCount === 0,
