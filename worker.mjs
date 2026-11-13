@@ -4749,9 +4749,9 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .gamecard:active { transform: translateY(4px); }
 .gamecard h3 { margin: 0 0 4px; font-size: 24px; }
 .gamecard p { margin: 0; font-weight: 700; opacity: .92; }
-.stage { border-radius: 32px; padding: 26px; color: #fff; min-height: 400px; box-shadow: inset 0 -10px 0 rgba(0,0,0,.12), 0 18px 34px rgba(120,72,20,.2); position: relative; overflow: hidden; }
+.stage { border-radius: 32px; padding: 12px 10px; color: #fff; min-height: 400px; box-shadow: inset 0 -10px 0 rgba(0,0,0,.12), 0 18px 34px rgba(120,72,20,.2); position: relative; overflow: hidden; }
 .pstage { touch-action: none; overscroll-behavior: none; }
-.stage h2 { margin: 0 0 8px; font-size: 34px; text-shadow: 0 3px 0 rgba(0,0,0,.15); }
+.stage h2 { margin: 0 0 4px; font-size: 24px; text-shadow: 0 3px 0 rgba(0,0,0,.15); }
 .g-do-vui { background: linear-gradient(160deg, #6BCBFF, #4F7BE8); }
 .g-ma-soi { background: linear-gradient(160deg, #1E1B4B, #6D28A8); }
 .g-ca-ngua { background: linear-gradient(160deg, #78350F, #D97706); }
@@ -4759,7 +4759,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .wolfcard { background: rgba(255,255,255,.92); color: #4A3226; border-radius: 18px; padding: 10px 6px; text-align: center; font-weight: 700; }
 .wolfcard.dead { opacity: .62; filter: grayscale(.8); }
 .wolfcard .rolechip { display: inline-block; margin-top: 4px; padding: 2px 10px; border-radius: 999px; background: #312E81; color: #fff; font-size: 13px; }
-.ngboard { position: relative; width: min(92vw, 560px); padding-top: min(92vw, 560px); margin: 10px auto; background: #FDF6E3; border-radius: 18px; box-shadow: inset 0 0 0 3px rgba(0,0,0,.15); }
+.ngboard { position: relative; width: min(100%, max(240px, calc(100vh - 280px))); width: min(100%, max(240px, calc(100dvh - 280px))); padding-top: min(100%, max(240px, calc(100vh - 280px))); padding-top: min(100%, max(240px, calc(100dvh - 280px))); margin: 6px auto; background: #FDF6E3; border-radius: 18px; box-shadow: inset 0 0 0 3px rgba(0,0,0,.15); }
 .ngcell { position: absolute; box-sizing: border-box; border: 1px solid rgba(0,0,0,.18); border-radius: 4px; background: #fff; }
 .ngcell.safe { background: #FFE9A8; }
 .ngcell.quad { border: none; border-radius: 14px; }
@@ -4782,7 +4782,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .tbar { height: 12px; background: rgba(0,0,0,.22); border-radius: 999px; overflow: hidden; margin: 10px 0; }
 .tbar i { display: block; height: 100%; background: #fff; border-radius: 999px; }
 .scorebar { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-.scorechip { display: flex; align-items: center; gap: 7px; background: #fff; border-radius: 999px; padding: 4px 14px 4px 5px;
+.scorechip { display: flex; align-items: center; gap: 7px; background: #fff; color: #4A3226; border-radius: 999px; padding: 4px 14px 4px 5px;
   font-weight: 700; box-shadow: 0 4px 10px rgba(140,90,30,.15); font-size: 16px; }
 .gapline { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 19px; color: #8A5A33; }
 .pads { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 430px; margin: 16px auto; }
@@ -4812,7 +4812,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .pod .col { border-radius: 18px 18px 0 0; color: #fff; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 30px;
   display: flex; align-items: flex-start; justify-content: center; padding-top: 8px; box-shadow: inset 0 -8px 0 rgba(0,0,0,.15); }
 .rows { margin-top: 12px; }
-.rrow { display: flex; align-items: center; gap: 10px; background: #FFFDF8; border-radius: 16px; padding: 9px 14px; margin: 7px 0; font-weight: 700; }
+.rrow { display: flex; align-items: center; gap: 10px; background: #FFFDF8; color: #4A3226; border-radius: 16px; padding: 9px 14px; margin: 7px 0; font-weight: 700; }
 .rrow .pts { margin-left: auto; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 19px; }
 .cdwrap { text-align: center; padding: 30px 0; }
 .cdnum { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 150px; line-height: 1; color: #fff; text-shadow: 0 8px 0 rgba(0,0,0,.18); animation: pop .45s ease; }
@@ -4899,7 +4899,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .rope .knot { position: absolute; top: 50%; width: 34px; height: 34px; border-radius: 50%; background: #FFC93D;
   border: 4px solid #fff; transform: translate(-50%, -50%); box-shadow: 0 0 18px rgba(255,201,61,.85), 0 6px 12px rgba(0,0,0,.3); transition: left .3s; }
 .chatrow { display: flex; gap: 8px; align-items: center; background: rgba(255,255,255,.22); border-radius: 14px; padding: 7px 12px; margin: 6px 0; font-weight: 700; text-align: left; }
-.afield { position: relative; width: min(86vw, 540px); aspect-ratio: 1; margin: 12px auto; border-radius: 18px;
+.afield { position: relative; width: min(100%, max(260px, calc(100vh - 200px))); width: min(100%, max(260px, calc(100dvh - 200px))); aspect-ratio: 1; margin: 6px auto; border-radius: 18px;
   background:
     radial-gradient(ellipse at 50% 40%, rgba(255,255,255,.08), rgba(0,0,0,.34) 82%),
     repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 45px),
@@ -5053,6 +5053,50 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 .topbar .sp { flex: 1; }
 .small { font-size: 14px; } .muted { color: #9C744C; font-weight: 700; }
 @media (max-width: 720px) { .seats { grid-template-columns: repeat(2, 1fr); } .logo .word { font-size: 42px; } .codebox { width: 46px; height: 58px; font-size: 32px; } .cdnum { font-size: 110px; } .bigcircle { width: 200px; height: 200px; font-size: 27px; } }
+/* --- Fullscreen stage pass -------------------------------------------------
+   While a game is on (a .stage is a direct child of #app, host OR phone),
+   the page wrapper goes near-full-bleed and the in-game chrome collapses
+   to one compact chip row, so the play field owns the screen. The square
+   fields (.afield / .ngboard) are sized by the dvh-based formulas on their
+   own rules above; everything here is presentation only — positions in
+   the field stay %-based, so the rAF interpolator is unaffected. In
+   browsers without :has() these rules simply never match and the classic
+   layout remains. */
+#app:has(> .stage) { max-width: none; padding: 8px 6px 12px; }
+#app:has(> .stage) .topbar { margin-bottom: 4px; }
+#app:has(> .stage) .topbar .btn.small { padding: 5px 12px; font-size: 13px; }
+#app:has(> .stage) .scorebar { margin: 4px 0; gap: 6px; }
+#app:has(> .stage) .scorechip { font-size: 13px; padding: 2px 10px 2px 4px; }
+#app:has(> .stage) .scorechip svg { width: 20px; height: 20px; }
+#app:has(> .stage) > .gapline { display: none; }
+.stage p.center { font-size: 13.5px; margin: 6px 0 0; line-height: 1.35; }
+.stage .chatrow { padding: 5px 10px; margin: 4px 0; font-size: 14px; }
+.stage .tbar { margin: 6px 0; }
+.stage .diceface { width: 48px; height: 48px; font-size: 29px; border-radius: 12px; }
+/* Text/card stages (quiz, werewolf village, rope, rowing…) widen to a
+   generous cap instead of stretching edge-to-edge on a TV; field stages
+   are excluded — they take the whole bleed. */
+.stage:not(:has(.afield)):not(:has(.ngboard)) { max-width: 1180px; margin-left: auto; margin-right: auto; }
+@media (min-width: 721px) {
+  /* On TV-sized host screens the brand + room chip leave the play HUD:
+     only the functional buttons (sound / fullscreen / leave) stay. */
+  #app:has(> .stage) .topbar .baloo, #app:has(> .stage) .topbar .chip { display: none; }
+}
+@media (min-width: 900px) {
+  /* The host's "Đổi game ✕" escape floats on the score row instead of
+     eating its own line above the stage. */
+  #app:has(> .stage) { position: relative; }
+  #app:has(> .stage) > p:has(> [data-cmd="quitGame"]) { position: absolute; top: 44px; right: 8px; margin: 0 !important; z-index: 7; }
+  #app:has(> .stage) > .scorebar { padding-right: 138px; }
+}
+/* Big-screen lobby / chooser / podium: use the width a TV offers.
+   Phone widths are untouched (these rules start at 1500px). */
+@media (min-width: 1500px) {
+  .wrap { max-width: 1520px; }
+  .games { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .seats { grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); }
+  .pod { width: 185px; }
+}
 </style>
 </head>
 <body>
