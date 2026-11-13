@@ -15,7 +15,7 @@
 // The KV namespace bound as ROOMS remains only as a fallback for
 // environments where ROOMS_DO is not bound. The server is authoritative:
 // all timing uses server timestamps and game phases advance lazily whenever
-// a request touches the room (clients poll ~1s, faster during Nhanh Tay).
+// a request touches the room (clients poll ~1s, faster during reaction games).
 // All game content (name, mascots, question banks) is self-authored.
 // ============================================================================
 
@@ -55,24 +55,6 @@ export const QUIZ_BANK = [
   { q: 'Âm thanh không truyền được qua môi trường nào?', options: ['Nước', 'Không khí', 'Chân không', 'Kim loại'], answer: 2 },
 ];
 
-export const EST_BANK = [
-  { q: 'Sông Mê Kông dài khoảng bao nhiêu ki-lô-mét?', unit: 'km', answer: 4350 },
-  { q: 'Đỉnh Fansipan cao khoảng bao nhiêu mét?', unit: 'm', answer: 3143 },
-  { q: 'Dân số Việt Nam khoảng bao nhiêu triệu người?', unit: 'triệu người', answer: 101 },
-  { q: 'Một con voi châu Á trưởng thành nặng khoảng bao nhiêu ki-lô-gam?', unit: 'kg', answer: 4000 },
-  { q: 'Ánh sáng đi được bao nhiêu ki-lô-mét trong một giây?', unit: 'km', answer: 300000 },
-  { q: 'Chu vi Trái Đất khoảng bao nhiêu ki-lô-mét?', unit: 'km', answer: 40000 },
-  { q: 'Tháp Eiffel ở Paris cao khoảng bao nhiêu mét?', unit: 'm', answer: 330 },
-  { q: 'Cơ thể người trưởng thành có bao nhiêu chiếc xương?', unit: 'xương', answer: 206 },
-  { q: 'Trái tim người đập khoảng bao nhiêu lần trong một ngày?', unit: 'lần', answer: 100000 },
-  { q: 'Sông Hồng dài khoảng bao nhiêu ki-lô-mét?', unit: 'km', answer: 1149 },
-  { q: 'Diện tích Việt Nam khoảng bao nhiêu ki-lô-mét vuông?', unit: 'km²', answer: 331690 },
-  { q: 'Một con cá voi xanh trưởng thành dài khoảng bao nhiêu mét?', unit: 'm', answer: 30 },
-  { q: 'Người trưởng thành có bao nhiêu chiếc răng (đủ bộ)?', unit: 'răng', answer: 32 },
-  { q: 'Bề mặt Mặt Trời nóng khoảng bao nhiêu độ C?', unit: '°C', answer: 5500 },
-  { q: 'Trái Đất cách Mặt Trời khoảng bao nhiêu triệu ki-lô-mét?', unit: 'triệu km', answer: 150 },
-];
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -97,54 +79,64 @@ export const IMPOSTOR_BANK = [
   { cat: 'Văn hóa', real: 'Tết Nguyên Đán là ngày đầu của tháng mấy âm lịch?', fake: 'Tết Trung Thu là rằm tháng mấy âm lịch?', options: ['Tháng 1', 'Tháng 5', 'Tháng 8', 'Tháng 12'] },
 ];
 
-export const SEAT_COLORS = ['blue', 'pink', 'green', 'purple'];
-export const PLACEMENT_POINTS = [300, 200, 100, 50];
+// Platform seat cap: rooms hold up to MAX_SEATS players (humans +
+// bots). Each game declares its own [min, max] inside GAMES; the
+// chooser locks a card whose range excludes the current seat count.
+export const MAX_SEATS = 12;
+export const SEAT_COLORS = ['blue', 'pink', 'green', 'purple', 'orange', 'red', 'cyan', 'yellow', 'lime', 'brown', 'silver', 'magenta'];
+// Placement points by finishing rank. Ranks 1-4 are the historical
+// 300/200/100/50; ranks 5-12 extend the tail so big-room matches pay
+// everyone something. EVERY placement award goes through
+// placementAt() so >4-player matches score identically everywhere.
+export const PLACEMENT_POINTS = [300, 200, 100, 50, 40, 30, 20, 10, 10, 10, 10, 10];
+export function placementAt(rankIdx) {
+  return PLACEMENT_POINTS[Math.min(rankIdx, PLACEMENT_POINTS.length - 1)];
+}
 export const DIFFS = ['de', 'vua', 'kho'];
 export const DIFF_LABELS = { de: 'Dễ', vua: 'Vừa', kho: 'Khó' };
 
+// Per-game seat range [min, max]: crowd / turn-based games scale to
+// the full 12-seat room; realtime arenas cap at 8 so the field stays
+// readable; Đặt Bom caps at 6 (its spawn cells), Đẩy Hộp / Đền at 6
+// (level geometry), Cờ Cá Ngựa is a 4-colour board by design.
 export const GAMES = {
-  'nhanh-tay': { name: 'Nhanh Tay', desc: 'Đợi màu xanh, bấm nhanh nhất!', rounds: 5, cat: 'versus' },
-  'do-vui': { name: 'Đố Vui Tốc Độ', desc: 'Trả lời đúng và nhanh nhất', rounds: 8, cat: 'versus' },
-  'doan-so': { name: 'Đoán Số Chuẩn', desc: 'Ước lượng gần đúng nhất', rounds: 5, cat: 'versus' },
-  'dua-bam': { name: 'Đua Bấm Nút', desc: '10 giây bấm thật nhiều', rounds: 3, cat: 'versus' },
-  'nho-mau': { name: 'Nhớ Màu', desc: 'Nhớ và bấm lại dãy màu', rounds: 5, cat: 'versus' },
-  'day-ra': { name: 'Đẩy Ra Khỏi Sàn', desc: 'Gamepad: đẩy hết đối thủ khỏi sàn tròn!', rounds: 1, cat: 'versus' },
-  'ne-dan': { name: 'Né Đạn', desc: 'Gamepad: né đạn pháo, sống sót đến cuối!', rounds: 1, cat: 'versus' },
-  'keo-co': { name: 'Kéo Co', desc: 'Hai đội bấm nút B, kéo nút thắt về phía mình!', rounds: 1, cat: 'versus' },
+  'do-vui': { name: 'Đố Vui Tốc Độ', desc: 'Trả lời đúng và nhanh nhất', rounds: 8, cat: 'versus', min: 2, max: 12 },
+  'day-ra': { name: 'Đẩy Ra Khỏi Sàn', desc: 'Gamepad: đẩy hết đối thủ khỏi sàn tròn!', rounds: 1, cat: 'versus', min: 2, max: 8 },
+  'ne-dan': { name: 'Né Đạn', desc: 'Gamepad: né đạn pháo, sống sót đến cuối!', rounds: 1, cat: 'versus', min: 2, max: 8 },
+  'keo-co': { name: 'Kéo Co', desc: 'Hai đội bấm nút B, kéo nút thắt về phía mình!', rounds: 1, cat: 'versus', min: 2, max: 12 },
   // Rounds for Chia Hay Cướp are dynamic: one round per seated player
   // (pairs rotate, see beginRound), so `rounds` here is only nominal.
-  'chia-cuop': { name: 'Chia Hay Cướp', desc: 'Thương lượng 60 giây rồi chọn bí mật: Chia hay Cướp?', rounds: 4, cat: 'versus' },
-  'cuop-sao': { name: 'Cướp Sao', desc: 'Gamepad: nhặt sao, xô đối thủ cho rơi sao!', rounds: 1, cat: 'versus' },
-  'giu-vuong-mien': { name: 'Giữ Vương Miện', desc: 'Gamepad: giành vương miện và giữ càng lâu càng tốt!', rounds: 1, cat: 'versus' },
-  'son-san': { name: 'Sơn Sàn', desc: 'Gamepad: chạy sơn sàn, chiếm thật nhiều ô!', rounds: 1, cat: 'versus' },
-  'cao-boi': { name: 'Cao Bồi', desc: 'Đợi hiệu lệnh BẮN — rút súng nhanh nhất!', rounds: 5, cat: 'versus' },
-  'xe-tank': { name: 'Xe Tăng Đấu Trường', desc: 'Gamepad: lái xe tăng, bắn hạ đối thủ, núp sau vật chắn!', rounds: 1, cat: 'versus' },
-  'dat-bom': { name: 'Đặt Bom', desc: 'Gamepad: đặt bom phá tường gỗ, né vụ nổ chữ thập!', rounds: 1, cat: 'versus' },
-  'ke-gia-mao': { name: 'Kẻ Giả Mạo', desc: 'Một người nhận câu hỏi giả — bàn luận và tố cáo cho đúng!', rounds: 3, cat: 'versus' },
-  'chung-mot-than': { name: 'Chung Một Thân', desc: 'Hợp tác: cả đội lái chung một quả bóng, mỗi người giữ một hướng!', rounds: 1, cat: 'coop' },
-  'day-hop': { name: 'Đẩy Hộp Về Đích', desc: 'Hợp tác: cùng đẩy hộp qua mê cung về ô đích!', rounds: 1, cat: 'coop' },
-  'cheo-thuyen': { name: 'Chèo Thuyền', desc: 'Hợp tác: chèo thuyền theo nhịp, cả đội cùng trúng nhịp mới đi xa!', rounds: 1, cat: 'coop' },
-  'thu-thanh': { name: 'Thủ Thành', desc: 'Hợp tác: bắn hạ đàn slime, giữ pha lê nguyên vẹn đến cuối!', rounds: 1, cat: 'coop' },
-  'giai-ma-chung': { name: 'Giải Mã Chung', desc: 'Hợp tác: mỗi người giữ một phần mật mã — phối hợp bấm đúng thứ tự!', rounds: 1, cat: 'coop' },
-  'nguoi-que': { name: 'Người Que Đại Chiến', desc: 'Gamepad: người que đấu võ — đánh đối thủ văng khỏi sàn!', rounds: 1, cat: 'versus' },
-  'den-lua-nuoc': { name: 'Đền Lửa & Nước', desc: 'Hợp tác: Lửa và Nước cùng vượt đền — nhặt ngọc, giữ cổng cho nhau, về đúng cửa!', rounds: 1, cat: 'coop' },
+  'chia-cuop': { name: 'Chia Hay Cướp', desc: 'Thương lượng 60 giây rồi chọn bí mật: Chia hay Cướp?', rounds: 4, cat: 'versus', min: 2, max: 12 },
+  'cuop-sao': { name: 'Cướp Sao', desc: 'Gamepad: nhặt sao, xô đối thủ cho rơi sao!', rounds: 1, cat: 'versus', min: 2, max: 8 },
+  'giu-vuong-mien': { name: 'Giữ Vương Miện', desc: 'Gamepad: giành vương miện và giữ càng lâu càng tốt!', rounds: 1, cat: 'versus', min: 2, max: 8 },
+  'son-san': { name: 'Sơn Sàn', desc: 'Gamepad: chạy sơn sàn, chiếm thật nhiều ô!', rounds: 1, cat: 'versus', min: 2, max: 8 },
+  'cao-boi': { name: 'Cao Bồi', desc: 'Đợi hiệu lệnh BẮN — rút súng nhanh nhất!', rounds: 5, cat: 'versus', min: 2, max: 8 },
+  'xe-tank': { name: 'Xe Tăng Đấu Trường', desc: 'Gamepad: lái xe tăng, bắn hạ đối thủ, núp sau vật chắn!', rounds: 1, cat: 'versus', min: 2, max: 8 },
+  'dat-bom': { name: 'Đặt Bom', desc: 'Gamepad: đặt bom phá tường gỗ, né vụ nổ chữ thập!', rounds: 1, cat: 'versus', min: 2, max: 6 },
+  'ke-gia-mao': { name: 'Kẻ Giả Mạo', desc: 'Một người nhận câu hỏi giả — bàn luận và tố cáo cho đúng!', rounds: 3, cat: 'versus', min: 3, max: 12 },
+  'ma-soi': { name: 'Ma Sói', desc: 'Suy luận xã hội: sói trà trộn trong làng — bảo vệ dân, tìm và treo cổ sói trước khi quá muộn!', rounds: 1, cat: 'versus', min: 4, max: 12 },
+  'ca-ngua': { name: 'Cờ Cá Ngựa', desc: 'Thảy xúc xắc, xuất chuồng, đá ngựa đối thủ — đưa cả 4 ngựa về chuồng trước!', rounds: 1, cat: 'versus', min: 2, max: 4 },
+  'chung-mot-than': { name: 'Chung Một Thân', desc: 'Hợp tác: cả đội lái chung một quả bóng, mỗi người giữ một hướng!', rounds: 1, cat: 'coop', min: 2, max: 8 },
+  'day-hop': { name: 'Đẩy Hộp Về Đích', desc: 'Hợp tác: cùng đẩy hộp qua mê cung về ô đích!', rounds: 1, cat: 'coop', min: 2, max: 6 },
+  'cheo-thuyen': { name: 'Chèo Thuyền', desc: 'Hợp tác: chèo thuyền theo nhịp, cả đội cùng trúng nhịp mới đi xa!', rounds: 1, cat: 'coop', min: 2, max: 12 },
+  'thu-thanh': { name: 'Thủ Thành', desc: 'Hợp tác: bắn hạ đàn slime, giữ pha lê nguyên vẹn đến cuối!', rounds: 1, cat: 'coop', min: 2, max: 8 },
+  'giai-ma-chung': { name: 'Giải Mã Chung', desc: 'Hợp tác: mỗi người giữ một phần mật mã — phối hợp bấm đúng thứ tự!', rounds: 1, cat: 'coop', min: 2, max: 12 },
+  'nguoi-que': { name: 'Người Que Đại Chiến', desc: 'Gamepad: người que đấu võ — đánh đối thủ văng khỏi sàn!', rounds: 1, cat: 'versus', min: 2, max: 8 },
+  'den-lua-nuoc': { name: 'Đền Lửa & Nước', desc: 'Hợp tác: Lửa và Nước cùng vượt đền — nhặt ngọc, giữ cổng cho nhau, về đúng cửa!', rounds: 1, cat: 'coop', min: 2, max: 6 },
 };
 
 // Bot behaviour per difficulty. Bots are simulated server-side from plans
 // that are generated when each round/question starts.
 const BOT = {
-  de:  { quizCorrect: 0.45, quizDelay: [6000, 13000], reactEarly: 0.15, reactMs: [550, 1200], guessFactor: [0.35, 2.40], guessDelay: [7000, 15000], taps: [25, 45],  memory: 0.35 },
-  vua: { quizCorrect: 0.65, quizDelay: [4000, 9000],  reactEarly: 0.08, reactMs: [320, 700],  guessFactor: [0.65, 1.55], guessDelay: [5000, 11000], taps: [45, 70],  memory: 0.60 },
-  kho: { quizCorrect: 0.88, quizDelay: [1800, 4800],  reactEarly: 0.03, reactMs: [170, 370],  guessFactor: [0.88, 1.14], guessDelay: [3000, 7000],  taps: [70, 100], memory: 0.85 },
+  de:  { quizCorrect: 0.45, quizDelay: [6000, 13000], reactMs: [550, 1200] },
+  vua: { quizCorrect: 0.65, quizDelay: [4000, 9000],  reactMs: [320, 700] },
+  kho: { quizCorrect: 0.88, quizDelay: [1800, 4800],  reactMs: [170, 370] },
 };
 
 const ROOM_TTL_SECONDS = 6 * 3600;
 const QUIZ_MS = 15000, QUIZ_REVEAL_MS = 4000;
-const GUESS_MS = 20000, GUESS_REVEAL_MS = 5000;
-const REACT_GO_MS = 3000, ROUND_PAUSE_MS = 3500;
+const ROUND_PAUSE_MS = 3500;
 const PLAYLIST_GAP_MS = 8000; // results intermission before a playlist auto-starts its next game
-const RACE_COUNTDOWN_MS = 3000, RACE_MS = 10000, RACE_PAUSE_MS = 3000;
-const MEMORY_INPUT_MS = 12000, MEMORY_PAUSE_MS = 3000;
 // Tick engine retuned 500ms -> 250ms for smoother motion. Every
 // tick-denominated constant was doubled (and per-tick steps/speeds
 // halved) so wall-clock behaviour is unchanged: MOVE_STEP 0.5/tick =
@@ -195,7 +187,9 @@ const CROWN_MS = 45000, HOLDER_SPEED = 0.9, CROWN_LOCK_TICKS = 8;
 const SPLAT_MS = 40000, SPLAT_N = 12, SPLAT_MIN = -9.6, SPLAT_CELL = 1.6, PAINT_CD_TICKS = 16;
 // Cao Bồi: after a random hidden delay the BẮN! window opens for
 // DUEL_WINDOW_MS; round points by server receipt order, foul = -100.
-const DUEL_WINDOW_MS = 1500, DUEL_POINTS = [200, 100, 50, 0], DUEL_FOUL = -100;
+// Tail extended past 4 shooters (25/10/0/…) so 5-8-player duels still
+// pay the midfield; the first four values are the historical table.
+const DUEL_WINDOW_MS = 1500, DUEL_POINTS = [200, 100, 50, 25, 10, 0, 0, 0], DUEL_FOUL = -100;
 // Hợp tác (co-op): no per-player placement. Each co-op game ends with a
 // TEAM result: a tier (Vàng/Bạc/Đồng/none) and every player banks the
 // same pointsEach (300/200/100/50). See finishCoop().
@@ -243,6 +237,77 @@ const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 11, BOM_ROWS = 9, BOM_FUSE_TICKS
 // question; catching pays every other player, escaping pays the
 // impostor (doubled in the final round).
 const IMP_ANSWER_MS = 30000, IMP_DISCUSS_MS = 45000, IMP_VOTE_MS = 20000, IMP_REVEAL_MS = 9000;
+// Ma Sói: hidden-role deduction. One night = wolves hunt + guard /
+// seer / witch act in the same window (the witch sees the wolves'
+// victim only once every living wolf has locked a vote), then dawn
+// announces the dead (roles are public from death on), the village
+// discusses and votes an execution. Side points: winning wolves 300
+// each, winning villagers 200 each, losers 50 each (dead members of
+// the winning side score the same — the side wins or loses together).
+// NIGHT_CAP bounds a game whose guard keeps saving perfectly: at the
+// cap the larger living side wins (a tie goes to the wolves, matching
+// the parity rule).
+const WOLF_NIGHT_MS = 45000, WOLF_DAWN_MS = 10000, WOLF_DISCUSS_MS = 60000,
+  WOLF_VOTE_MS = 30000, WOLF_EXEC_MS = 10000, WOLF_END_MS = 12000, WOLF_NIGHT_CAP = 15;
+const WOLF_ROLES = {
+  soi: { name: 'Sói', icon: '🐺' },
+  'tien-tri': { name: 'Tiên Tri', icon: '🔮' },
+  'bao-ve': { name: 'Bảo Vệ', icon: '🛡️' },
+  'phu-thuy': { name: 'Phù Thủy', icon: '🧙' },
+  dan: { name: 'Dân Làng', icon: '🧑‍🌾' },
+};
+// Bot lines for the Ma Sói day discussion: deliberately generic — a
+// bot must never reference roles, night events or anything it could
+// only know secretly (same rule as IMP_CHAT_LINES).
+const WOLF_CHAT_LINES = [
+  'Đêm qua ghê quá… mọi người cẩn thận nhé.',
+  'Tôi là dân thường thôi, thề luôn!',
+  'Ai nãy giờ im lặng bất thường ấy nhỉ?',
+  'Bình tĩnh, đừng treo nhầm người tốt.',
+  'Tôi nghi người ít nói nhất hôm nay.',
+  'Cứ theo linh cảm của cả làng thôi.',
+  'Ai cũng có vẻ đáng nghi hết trơn…',
+  'Hôm nay phải tìm cho ra sói!',
+];
+// Cờ Cá Ngựa (Vietnamese Ludo): a horse's progress p means 0 = stable,
+// 1..51 on the shared 52-cell loop at (startOffset + p - 1) mod 52,
+// 52..57 in the seat's home stretch, 58 = finished (exact roll needed
+// to land on 58; overshoot is simply not a legal move for that horse).
+// Safe loop cells (no kicking): the 4 start cells + each seat's
+// home-entry cell (the last loop cell before its home stretch).
+// Own horses stack freely on a cell; an opponent landing on a
+// non-safe cell kicks the WHOLE opposing stack back to its stable.
+// No blockade rule: passing over any horse is always allowed.
+// Three sixes in a row forfeit the third roll's move (classic rule).
+const NGUA_TURN_MS = 30000, NGUA_BOT_MS = 900, NGUA_BEAT_MS = 1500, NGUA_WIN_MS = 4000;
+const NGUA_OFFSETS = [0, 13, 26, 39];
+const NGUA_SAFE = new Set([0, 13, 26, 39, 50, 11, 24, 37]);
+// The 52-cell loop on a 15x15 board as [col, row] pairs, starting at
+// seat board 0's start cell (1,6) and running (1,6)->(5,6)->up the
+// top-left arm->across the top->down the right->across the bottom->
+// up the left back to (0,6). Start cells sit at indices 0/13/26/39,
+// home-entry cells at 50/11/24/37, exactly NGUA_OFFSETS/NGUA_SAFE.
+export const NGUA_LOOP = [
+  [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [6, 5], [6, 4], [6, 3], [6, 2], [6, 1], [6, 0], [7, 0],
+  [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [9, 6], [10, 6], [11, 6], [12, 6], [13, 6], [14, 6],
+  [14, 7], [14, 8], [13, 8], [12, 8], [11, 8], [10, 8], [9, 8], [8, 9], [8, 10], [8, 11], [8, 12],
+  [8, 13], [8, 14], [7, 14], [6, 14], [6, 13], [6, 12], [6, 11], [6, 10], [6, 9], [5, 8], [4, 8],
+  [3, 8], [2, 8], [1, 8], [0, 8], [0, 7], [0, 6],
+];
+// Home stretches (progress 52..57) per board index, running toward
+// the centre cell (7,7); stables (progress 0) per board index.
+export const NGUA_STRETCH = [
+  [[1, 7], [2, 7], [3, 7], [4, 7], [5, 7], [6, 7]],
+  [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5], [7, 6]],
+  [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7], [8, 7]],
+  [[7, 13], [7, 12], [7, 11], [7, 10], [7, 9], [7, 8]],
+];
+export const NGUA_STABLE = [
+  [[1, 1], [4, 1], [1, 4], [4, 4]],
+  [[10, 1], [13, 1], [10, 4], [13, 4]],
+  [[10, 10], [13, 10], [10, 13], [13, 13]],
+  [[1, 10], [4, 10], [1, 13], [4, 13]],
+];
 // Thủ Thành: the crystal's remaining HP decides the tier on survival.
 const DEF_MS = 60000, DEF_CRYSTAL_HP = 10;
 const DEF_TIERS = [[7, 'vang'], [4, 'bac'], [1, 'dong']];
@@ -286,7 +351,10 @@ const FIGHT_PLATFORMS = [
   { x: 3.5, y: 2, w: 4.5, h: 0.7, oneWay: true },
   { x: -2.5, y: -1.5, w: 5, h: 0.7, oneWay: true },
 ];
-const FIGHT_SPAWN_X = [-6, -2, 2, 6];
+// First four are the original 4-player spawns; players 5-8 fill the
+// gaps so an 8-fighter match never stacks two fighters on one spot
+// (sorted: -8,-6,-4,-2,2,4,6,8 — a clean 2-unit spacing on the stage).
+const FIGHT_SPAWN_X = [-6, -2, 2, 6, -8, -4, 4, 8];
 // Đền Lửa & Nước: co-op temple. Seats alternate elements by seat order
 // (odd seat = Lửa 'lua', even = Nước 'nuoc'). One handcrafted enclosed
 // level: three floors, element pools, colour-locked gems, and one
@@ -776,10 +844,10 @@ function createGame(room, gameId) {
     level: 0, levelsDone: 0, stepIdx: 0, botPressAt: 0, decodeAt: 0,
     vel: {}, dmg: {}, face: {}, jumps: {}, atkCd: {}, hitT: {}, atkT: {}, dashT: {}, dashDir: {}, hvyCd: {}, hvyT: {},
     chars: null, gems: null, gemCount: {}, gateOpen: false, elOf: {}, wpIdx: {}, wpAt: {},
+    wolf: null, ng: null,
   };
   room.players.forEach((p) => { game.points[p.seat] = 0; game.streaks[p.seat] = 0; });
   if (gameId === 'do-vui') game.order = shuffle(QUIZ_BANK.map((_, i) => i)).slice(0, meta.rounds);
-  if (gameId === 'doan-so') game.order = shuffle(EST_BANK.map((_, i) => i)).slice(0, meta.rounds);
   // Chia Hay Cướp rotates pairs across the table: one round per player.
   if (gameId === 'chia-cuop') game.totalRounds = Math.max(2, room.players.length);
   room.game = game;
@@ -898,16 +966,7 @@ function beginRound(room) {
   const g = room.game; const t = now();
   g.inputs = {}; g.botPlan = {}; g.reveal = null;
   const bots = room.players.filter((p) => p.type === 'bot');
-  if (g.id === 'nhanh-tay') {
-    g.phase = 'wait';
-    g.greenAt = t + Math.round(rand(1800, 5500));
-    g.endsAt = g.greenAt + REACT_GO_MS;
-    bots.forEach((p) => {
-      const B = BOT[p.difficulty];
-      if (Math.random() < B.reactEarly) g.botPlan[p.seat] = { earlyAt: g.greenAt - Math.round(rand(200, 900)) };
-      else g.botPlan[p.seat] = { tapAt: g.greenAt + botDelay(p.difficulty, B.reactMs) };
-    });
-  } else if (g.id === 'do-vui') {
+  if (g.id === 'do-vui') {
     const src = QUIZ_BANK[g.order[g.round - 1]];
     const opts = shuffle(src.options.map((text, i) => ({ text, correct: i === src.answer })));
     g.current = { q: src.q, options: opts.map((o) => o.text), correct: opts.findIndex((o) => o.correct) };
@@ -918,28 +977,6 @@ function beginRound(room) {
       if (Math.random() < B.quizCorrect) choice = g.current.correct;
       else { const wrong = [0, 1, 2, 3].filter((i) => i !== g.current.correct); choice = pick(wrong); }
       g.botPlan[p.seat] = { choice, at: t + botDelay(p.difficulty, B.quizDelay) };
-    });
-  } else if (g.id === 'doan-so') {
-    const src = EST_BANK[g.order[g.round - 1]];
-    g.current = { q: src.q, unit: src.unit, answer: src.answer };
-    g.phase = 'guess'; g.qStart = t; g.endsAt = t + GUESS_MS;
-    bots.forEach((p) => {
-      const B = BOT[p.difficulty];
-      let factor = rand(B.guessFactor[0], B.guessFactor[1]);
-      if (Math.abs(factor - 1) < 0.04) factor += 0.06; // a bot never lands exactly on the answer
-      g.botPlan[p.seat] = { value: Math.max(1, Math.round(src.answer * factor)), at: t + botDelay(p.difficulty, B.guessDelay) };
-    });
-  } else if (g.id === 'dua-bam') {
-    g.phase = 'race'; g.raceStart = t; g.endsAt = t + RACE_MS;
-    room.players.forEach((p) => { if (p.type === 'human') g.inputs[p.seat] = { count: 0 }; });
-    bots.forEach((p) => { g.botPlan[p.seat] = { totalTaps: randInt(BOT[p.difficulty].taps[0], BOT[p.difficulty].taps[1]) }; });
-  } else if (g.id === 'nho-mau') {
-    const len = g.round + 2;
-    g.seq = Array.from({ length: len }, () => randInt(0, 3));
-    g.phase = 'show'; g.endsAt = t + 900 + len * 750;
-    bots.forEach((p) => {
-      const prob = Math.max(0.1, BOT[p.difficulty].memory - 0.05 * (len - 3));
-      g.botPlan[p.seat] = { success: Math.random() < prob, finishIn: Math.round(rand(2000, 5000)) };
     });
   } else if (g.id === 'day-ra') {
     g.phase = 'arena';
@@ -1089,10 +1126,10 @@ function beginRound(room) {
     g.phase = 'bomber';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + BOM_MS;
     g.blobs = {}; g.elimOrder = []; g.elimTick = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
-    // Spawns are the four corner cells, dealt in seat order.
-    const corners = [[0, 0], [BOM_COLS - 1, BOM_ROWS - 1], [BOM_COLS - 1, 0], [0, BOM_ROWS - 1]];
+    // Spawns are BOM_SPAWNS (corners, then edge midpoints), dealt in
+    // seat order — with max 6 players nobody ever shares a cell.
     room.players.forEach((p, i) => {
-      const c = corners[i % corners.length];
+      const c = BOM_SPAWNS[i % BOM_SPAWNS.length];
       g.blobs[p.seat] = { x: bomCellX(c[0]), y: bomCellY(c[1]), lives: BOM_LIVES, alive: true };
       g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0; g.invuln[p.seat] = 0;
     });
@@ -1163,6 +1200,41 @@ function beginRound(room) {
       g.chars[p.seat] = { x: st.x, y: st.y, vx: 0, vy: 0, ground: true, el, home: false };
       g.wpIdx[p.seat] = 0; g.wpAt[p.seat] = 0;
     });
+  } else if (g.id === 'ma-soi') {
+    // Roles are dealt secretly HERE and live only in g.wolf; views
+    // hand each phone its own role and nothing else (see gameView).
+    const seats = room.players.map((p) => p.seat);
+    const n = seats.length;
+    const nWolves = n <= 5 ? 1 : n <= 8 ? 2 : 3;
+    const deal = shuffle(seats.slice());
+    const roles = {}; const alive = {};
+    deal.forEach((seat, i) => {
+      roles[seat] = i < nWolves ? 'soi'
+        : i === nWolves ? 'tien-tri'
+        : i === nWolves + 1 ? 'bao-ve'
+        : (n >= 6 && i === nWolves + 2) ? 'phu-thuy' : 'dan';
+      alive[seat] = true;
+    });
+    g.wolf = {
+      roles, alive,
+      wolfVotes: {}, guardPick: null, guardLast: null, seerPick: null, seerNotes: {},
+      witch: { save: false, poison: null, done: false }, saveLeft: 1, poisonLeft: 1,
+      deaths: [], dawnDeaths: [], exec: null, voteTally: null, winner: null,
+    };
+    g.votes = {}; g.chatLog = [];
+    g.phase = 'night'; g.endsAt = t + WOLF_NIGHT_MS;
+    wolfPlanNight(room, t);
+  } else if (g.id === 'ca-ngua') {
+    const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
+    g.ng = {
+      boards: {}, horses: {}, turn: seats[0], dice: null, legal: [], chain: 0,
+      actAt: t + NGUA_BOT_MS, autoAt: 0, winner: null, last: null, log: [],
+    };
+    room.players.forEach((p) => {
+      g.ng.boards[p.seat] = seats.indexOf(p.seat);
+      g.ng.horses[p.seat] = [0, 0, 0, 0];
+    });
+    g.phase = 'roll'; g.endsAt = t + NGUA_TURN_MS;
   }
 }
 
@@ -1198,11 +1270,7 @@ function step(room) {
     if (t >= g.endsAt) { beginRound(room); return true; }
     return false;
   }
-  if (g.id === 'nhanh-tay') return stepReact(room, t);
   if (g.id === 'do-vui') return stepQuiz(room, t);
-  if (g.id === 'doan-so') return stepGuess(room, t);
-  if (g.id === 'dua-bam') return stepRace(room, t);
-  if (g.id === 'nho-mau') return stepMemory(room, t);
   if (g.id === 'day-ra') return stepArena(room, t);
   if (g.id === 'ne-dan') return stepDodge(room, t);
   if (g.id === 'keo-co') return stepTug(room, t);
@@ -1221,6 +1289,8 @@ function step(room) {
   if (g.id === 'giai-ma-chung') return stepDecode(room, t);
   if (g.id === 'nguoi-que') return stepFight(room, t);
   if (g.id === 'den-lua-nuoc') return stepTemple(room, t);
+  if (g.id === 'ma-soi') return stepWolf(room, t);
+  if (g.id === 'ca-ngua') return stepNgua(room, t);
   return false;
 }
 function humansAllIn(room, has) {
@@ -1234,48 +1304,6 @@ function finishTimedRound(room, nextPhase, endsAt) {
   rollBubble(room);
   room.game.phase = nextPhase;
   room.game.endsAt = endsAt;
-}
-
-// --- Game 1: Nhanh Tay (reaction) -----------------------------------------
-function stepReact(room, t) {
-  const g = room.game;
-  if (g.phase === 'wait') {
-    if (t >= g.greenAt) { g.phase = 'go'; return true; }
-    return false;
-  }
-  if (g.phase === 'go') {
-    const settled = humansAllIn(room, (s) => !!g.inputs[s]) && botsDue(room, (pl) => (pl.earlyAt || pl.tapAt || 0));
-    if (t >= g.endsAt || settled) { resolveReact(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'roundEnd') {
-    if (t >= g.endsAt) { nextRoundOrEnd(room); return true; }
-  }
-  return false;
-}
-function resolveReact(room, t) {
-  const g = room.game;
-  const entries = room.players.map((p) => {
-    const e = { seat: p.seat, status: 'none', reactionMs: null, gapMs: null, points: 0 };
-    if (p.type === 'human') {
-      const inp = g.inputs[p.seat];
-      if (inp && inp.early) e.status = 'early';
-      else if (inp && inp.tapAt) { e.status = 'tapped'; e.reactionMs = inp.tapAt - g.greenAt; }
-    } else {
-      const plan = g.botPlan[p.seat] || {};
-      if (plan.earlyAt) e.status = 'early';
-      else if (plan.tapAt && plan.tapAt <= g.endsAt) { e.status = 'tapped'; e.reactionMs = plan.tapAt - g.greenAt; }
-    }
-    return e;
-  });
-  const tapped = entries.filter((e) => e.status === 'tapped').sort((a, b) => a.reactionMs - b.reactionMs || a.seat - b.seat);
-  const best = tapped.length ? tapped[0].reactionMs : 0;
-  tapped.forEach((e, i) => { e.points = roundPoints(g, PLACEMENT_POINTS[Math.min(i, 3)]); e.gapMs = e.reactionMs - best; });
-  entries.forEach((e) => { if (e.status === 'early') e.points = roundPoints(g, -100); });
-  entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
-  const order = tapped.concat(entries.filter((e) => e.status === 'early'), entries.filter((e) => e.status === 'none'));
-  g.lastRound = { round: g.round, entries: order };
-  finishTimedRound(room, 'roundEnd', t + ROUND_PAUSE_MS);
 }
 
 // --- Game 2: Đố Vui Tốc Độ (quiz, streak bonus) ----------------------------
@@ -1314,111 +1342,6 @@ function resolveQuiz(room, t) {
   g.reveal = { correct: g.current.correct, choices, points: pts, streaks: Object.assign({}, g.streaks) };
   g.lastRound = { round: g.round, points: pts };
   finishTimedRound(room, 'reveal', t + QUIZ_REVEAL_MS);
-}
-
-// --- Game 3: Đoán Số Chuẩn (estimation, dramatic worst→best reveal) --------
-function stepGuess(room, t) {
-  const g = room.game;
-  if (g.phase === 'guess') {
-    const settled = humansAllIn(room, (s) => !!g.inputs[s]) && botsDue(room, (pl) => pl.at || 0);
-    if (t >= g.endsAt || settled) { resolveGuess(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'reveal') {
-    if (t >= g.endsAt) { nextRoundOrEnd(room); return true; }
-  }
-  return false;
-}
-function resolveGuess(room, t) {
-  const g = room.game;
-  const answer = g.current.answer;
-  const entries = room.players.map((p) => {
-    let value = null;
-    if (p.type === 'human') { const inp = g.inputs[p.seat]; if (inp && typeof inp.value === 'number') value = inp.value; }
-    else { const plan = g.botPlan[p.seat]; if (plan) value = plan.value; }
-    return { seat: p.seat, value, diff: value === null ? null : Math.abs(value - answer), points: 0 };
-  });
-  const ranked = entries.filter((e) => e.value !== null)
-    .sort((a, b) => (a.diff - b.diff) || (a.seat - b.seat));
-  ranked.forEach((e, i) => { e.points = roundPoints(g, PLACEMENT_POINTS[Math.min(i, 3)]); });
-  entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
-  // Drama order: no-guess first (worst), then largest deviation → smallest.
-  const drama = entries.filter((e) => e.value === null)
-    .concat(entries.filter((e) => e.value !== null).sort((a, b) => (b.diff - a.diff) || (a.seat - b.seat)));
-  drama.forEach((e, i) => { e.revealAt = t + 800 + i * 1200; });
-  g.reveal = { answer, entries: drama };
-  g.lastRound = { round: g.round, points: Object.fromEntries(entries.map((e) => [e.seat, e.points])) };
-  finishTimedRound(room, 'reveal', t + 1600 + drama.length * 1200);
-}
-
-// --- Game 4: Đua Bấm Nút (tap race) ----------------------------------------
-function stepRace(room, t) {
-  const g = room.game;
-  if (g.phase === 'race') {
-    if (t >= g.endsAt) { resolveRace(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'pause') {
-    if (t >= g.endsAt) { nextRoundOrEnd(room); return true; }
-  }
-  return false;
-}
-function raceCount(room, p, t) {
-  const g = room.game;
-  if (p.type === 'human') { const inp = g.inputs[p.seat]; return inp ? inp.count : 0; }
-  const plan = g.botPlan[p.seat];
-  if (!plan) return 0;
-  if (g.phase !== 'race') return plan.totalTaps;
-  const frac = Math.min(1, Math.max(0, (t - g.raceStart) / RACE_MS));
-  return Math.floor(plan.totalTaps * frac);
-}
-function resolveRace(room, t) {
-  const g = room.game;
-  const entries = room.players.map((p) => ({ seat: p.seat, taps: raceCount(room, p, t), points: 0 }));
-  const ranked = entries.slice().sort((a, b) => (b.taps - a.taps) || (a.seat - b.seat));
-  ranked.forEach((e, i) => { e.points = roundPoints(g, PLACEMENT_POINTS[Math.min(i, 3)]); });
-  entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
-  g.lastRound = { round: g.round, entries: ranked };
-  finishTimedRound(room, 'pause', t + RACE_PAUSE_MS);
-}
-
-// --- Game 5: Nhớ Màu (memory sequence) --------------------------------------
-function stepMemory(room, t) {
-  const g = room.game;
-  if (g.phase === 'show') {
-    if (t >= g.endsAt) {
-      g.phase = 'input'; g.inputStart = t; g.endsAt = t + MEMORY_INPUT_MS;
-      room.players.forEach((p) => { if (p.type === 'human') g.inputs[p.seat] = { taps: [], status: 'playing' }; });
-      room.players.filter((p) => p.type === 'bot').forEach((p) => {
-        const plan = g.botPlan[p.seat]; if (plan) plan.finishAt = t + plan.finishIn;
-      });
-      return true;
-    }
-    return false;
-  }
-  if (g.phase === 'input') {
-    const humansDone = humansAllIn(room, (s) => { const inp = g.inputs[s]; return inp && inp.status !== 'playing'; });
-    if (t >= g.endsAt || humansDone) { resolveMemory(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'pause') {
-    if (t >= g.endsAt) { nextRoundOrEnd(room); return true; }
-  }
-  return false;
-}
-function resolveMemory(room, t) {
-  const g = room.game;
-  const len = g.seq.length;
-  const pts = {};
-  room.players.forEach((p) => {
-    let ok = false;
-    if (p.type === 'human') { const inp = g.inputs[p.seat]; ok = !!inp && inp.status === 'done'; }
-    else { const plan = g.botPlan[p.seat]; ok = !!plan && plan.success; }
-    pts[p.seat] = ok ? roundPoints(g, 100 + 40 * len) : 0;
-    g.points[p.seat] = (g.points[p.seat] || 0) + pts[p.seat];
-  });
-  g.lastRound = { round: g.round, points: pts, len };
-  finishTimedRound(room, 'pause', t + MEMORY_PAUSE_MS);
 }
 
 // --- Game 6: Đẩy Ra Khỏi Sàn (tick arena, gamepad held-state) ---------------
@@ -1550,7 +1473,7 @@ function finishArena(room) {
       || (a.seat - b.seat));
   const elimRanked = g.elimOrder.slice().reverse().map((seat) => playerAt(room, seat)).filter(Boolean);
   const ranking = aliveRanked.concat(elimRanked);
-  const entries = ranking.map((p, i) => ({ seat: p.seat, points: PLACEMENT_POINTS[Math.min(i, 3)], lives: g.blobs[p.seat].lives, alive: g.blobs[p.seat].alive }));
+  const entries = ranking.map((p, i) => ({ seat: p.seat, points: placementAt(i), lives: g.blobs[p.seat].lives, alive: g.blobs[p.seat].alive }));
   entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
   g.lastRound = { round: 1, entries };
   endGame(room);
@@ -1668,7 +1591,7 @@ function finishDodge(room) {
     .map((seat) => playerAt(room, seat)).filter(Boolean);
   const ranking = aliveRanked.concat(elimRanked);
   const entries = ranking.map((p, i) => ({
-    seat: p.seat, points: PLACEMENT_POINTS[Math.min(i, 3)],
+    seat: p.seat, points: placementAt(i),
     lives: g.blobs[p.seat].lives, alive: g.blobs[p.seat].alive, elimTick: g.elimTick[p.seat] || null,
   }));
   entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
@@ -1886,7 +1809,7 @@ function finishByValue(room, values, valueKey) {
   const ranking = room.players.slice()
     .sort((a, b) => ((values[b.seat] || 0) - (values[a.seat] || 0)) || (a.seat - b.seat));
   const entries = ranking.map((p, i) => {
-    const e = { seat: p.seat, points: PLACEMENT_POINTS[Math.min(i, 3)] };
+    const e = { seat: p.seat, points: placementAt(i) };
     e[valueKey] = values[p.seat] || 0;
     return e;
   });
@@ -2203,7 +2126,7 @@ function simulateSplatTick(room) {
 }
 
 // --- Game 13: Cao Bồi (duel draw, rounds) ----------------------------------
-// Not tick-based: like Nhanh Tay it reuses the countdown -> wait -> go
+// Not tick-based: it reuses the countdown -> wait -> go
 // phase machinery and server receipt order (the tap's server timestamp
 // IS the draw time, so network racing cannot be faked by the client).
 // Round points go to the fastest draws in receipt order (200/100/50/0);
@@ -2241,7 +2164,7 @@ function resolveDuel(room, t) {
   });
   const fired = entries.filter((e) => e.status === 'fired')
     .sort((a, b) => (a.reactionMs - b.reactionMs) || (a.seat - b.seat));
-  fired.forEach((e, i) => { e.order = i + 1; e.points = roundPoints(g, DUEL_POINTS[Math.min(i, 3)]); });
+  fired.forEach((e, i) => { e.order = i + 1; e.points = roundPoints(g, DUEL_POINTS[Math.min(i, DUEL_POINTS.length - 1)]); });
   entries.forEach((e) => { if (e.status === 'foul') e.points = roundPoints(g, DUEL_FOUL); });
   entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
   const order = fired.concat(entries.filter((e) => e.status === 'foul'), entries.filter((e) => e.status === 'none'));
@@ -2722,9 +2645,16 @@ function bomCellY(r) { return -8 + r * 2; }
 function bomColOf(x) { return Math.max(0, Math.min(BOM_COLS - 1, Math.floor((x + 11) / 2))); }
 function bomRowOf(y) { return Math.max(0, Math.min(BOM_ROWS - 1, Math.floor((y + 9) / 2))); }
 function bomIsHard(c, r) { return c % 2 === 1 && r % 2 === 1; }
+// Spawn cells for up to 6 bombers: the four corners, then the top-
+// and bottom-edge midpoints. Nobody ever stacks on a shared cell.
+const BOM_SPAWNS = [[0, 0], [BOM_COLS - 1, BOM_ROWS - 1], [BOM_COLS - 1, 0], [0, BOM_ROWS - 1], [5, 0], [5, BOM_ROWS - 1]];
 function bomIsSafe(c, r) {
-  return (c <= 1 && r <= 1) || (c >= BOM_COLS - 2 && r >= BOM_ROWS - 2)
-    || (c >= BOM_COLS - 2 && r <= 1) || (c <= 1 && r >= BOM_ROWS - 2);
+  // Corner pockets: the 2x2 around each corner spawn (as always).
+  if ((c <= 1 && r <= 1) || (c >= BOM_COLS - 2 && r >= BOM_ROWS - 2)
+    || (c >= BOM_COLS - 2 && r <= 1) || (c <= 1 && r >= BOM_ROWS - 2)) return true;
+  // Edge-mid pockets: the spawn cell plus the cell directly inward,
+  // so a mid-edge bomber always has one guaranteed open step.
+  return (c === 5 && (r === 0 || r === 1)) || (c === 5 && (r === BOM_ROWS - 1 || r === BOM_ROWS - 2));
 }
 function bomCellRect(c, r) { return { x: bomCellX(c) - 1, y: bomCellY(r) - 1, w: 2, h: 2 }; }
 function blastCells(room, bomb) {
@@ -2952,6 +2882,456 @@ function resolveImpostor(room, t) {
   g.reveal = { impostor: g.imp.seat, pair: g.imp.pair, caught, votes: Object.assign({}, g.votes), answers, points: pts };
   g.lastRound = { round: g.round, entries: room.players.map((p) => ({ seat: p.seat, points: pts[p.seat] })) };
   finishTimedRound(room, 'reveal', t + IMP_REVEAL_MS);
+}
+
+// --- Game: Ma Sói (hidden-role social deduction) ---------------------------
+// Flow per round: night (wolves pick a victim by vote — plurality,
+// ties broken by the lowest-seat wolf's choice; guard protects one
+// player, never the same target two nights running; seer inspects
+// one player and learns wolf/not-wolf into their PRIVATE notes; the
+// witch, once every living wolf has locked a vote, privately sees
+// the victim and may spend her one save and/or her one poison) ->
+// dawn (the dead are announced, roles public from death on) -> day
+// discussion (public chat) -> vote (plurality executed, tie = nobody)
+// -> execute reveal. Win checks run after every death resolution:
+// wolves win at parity, the village wins when the last wolf dies.
+// Points go to the WINNING SIDE as a block: wolves 300 each, village
+// 200 each, losers 50 each — dying early never costs your side's pay.
+function wolfWinner(room) {
+  const g = room.game; const w = g.wolf;
+  const alive = room.players.filter((p) => w.alive[p.seat]);
+  const wolves = alive.filter((p) => w.roles[p.seat] === 'soi').length;
+  if (wolves === 0) return 'dan';
+  if (wolves >= alive.length - wolves) return 'soi';
+  if (g.round >= WOLF_NIGHT_CAP) return wolves * 2 >= alive.length ? 'soi' : 'dan';
+  return null;
+}
+function wolfWolvesIn(room) {
+  const w = room.game.wolf;
+  return room.players.every((p) => !w.alive[p.seat] || w.roles[p.seat] !== 'soi' || w.wolfVotes[p.seat] != null);
+}
+function wolfVictim(room) {
+  const w = room.game.wolf;
+  const counts = {}; const firstVoter = {};
+  Object.keys(w.wolfVotes).forEach((s) => {
+    const tgt = w.wolfVotes[s];
+    counts[tgt] = (counts[tgt] || 0) + 1;
+    if (firstVoter[tgt] == null || +s < firstVoter[tgt]) firstVoter[tgt] = +s;
+  });
+  let best = null;
+  Object.keys(counts).forEach((tgt) => {
+    if (best == null || counts[tgt] > counts[best]
+      || (counts[tgt] === counts[best] && firstVoter[tgt] < firstVoter[best])) best = +tgt;
+  });
+  return best;
+}
+function wolfSeerApply(room, seat, target) {
+  const w = room.game.wolf;
+  w.seerPick = target;
+  if (!w.seerNotes[seat]) w.seerNotes[seat] = {};
+  w.seerNotes[seat][target] = w.roles[target] === 'soi';
+}
+function wolfAllIn(room) {
+  const g = room.game; const w = g.wolf;
+  return room.players.every((p) => {
+    if (!w.alive[p.seat]) return true;
+    const role = w.roles[p.seat];
+    if (role === 'soi') return w.wolfVotes[p.seat] != null;
+    if (role === 'bao-ve') return w.guardPick != null;
+    if (role === 'tien-tri') return w.seerPick != null;
+    if (role === 'phu-thuy') {
+      const needed = (w.saveLeft > 0 || w.poisonLeft > 0);
+      return !needed || w.witch.done;
+    }
+    return true;
+  });
+}
+function wolfPlanNight(room, t) {
+  const g = room.game; const w = g.wolf;
+  g.botPlan = {};
+  const nonWolves = room.players.filter((p) => w.alive[p.seat] && w.roles[p.seat] !== 'soi').map((p) => p.seat);
+  const packTarget = nonWolves.length ? pick(nonWolves) : null;
+  room.players.forEach((p) => {
+    if (p.type !== 'bot' || !w.alive[p.seat]) return;
+    const role = w.roles[p.seat];
+    const at = t + Math.round(rand(2500, 20000));
+    if (role === 'soi') {
+      // Pack play: Khó wolves always hunt the shared victim, Vừa
+      // wolves join it half the time, Dễ wolves wander off alone.
+      const share = p.difficulty === 'kho' || (p.difficulty === 'vua' && Math.random() < 0.5);
+      g.botPlan[p.seat] = { at, target: share && packTarget != null ? packTarget : (nonWolves.length ? pick(nonWolves) : null) };
+    } else if (role === 'bao-ve') {
+      let cands = room.players.filter((q) => w.alive[q.seat] && q.seat !== w.guardLast).map((q) => q.seat);
+      if (!cands.length && w.guardLast != null && w.alive[w.guardLast]) cands = [w.guardLast];
+      g.botPlan[p.seat] = { at, target: cands.length ? pick(cands) : null };
+    } else if (role === 'tien-tri') {
+      const notes = w.seerNotes[p.seat] || {};
+      const cands = room.players.filter((q) => w.alive[q.seat] && q.seat !== p.seat && !(q.seat in notes)).map((q) => q.seat);
+      g.botPlan[p.seat] = { at, target: cands.length ? pick(cands) : null };
+    } else if (role === 'phu-thuy') {
+      g.botPlan[p.seat] = { at }; // decided live in stepWolf — she needs the victim first
+    }
+  });
+}
+function wolfBotVote(room, p) {
+  const g = room.game; const w = g.wolf;
+  const role = w.roles[p.seat];
+  const others = room.players.filter((q) => w.alive[q.seat] && q.seat !== p.seat).map((q) => q.seat);
+  if (!others.length) return null;
+  if (role === 'tien-tri') {
+    // The seer pushes a wolf they have SEEN — but only through the
+    // ballot box, never by claiming in chat (lines stay generic).
+    const notes = w.seerNotes[p.seat] || {};
+    const known = others.find((s) => notes[s] === true);
+    if (known != null) return known;
+    const uncleared = others.filter((s) => notes[s] !== false);
+    return pick(uncleared.length ? uncleared : others);
+  }
+  if (role === 'soi') {
+    const nonWolves = others.filter((s) => w.roles[s] !== 'soi');
+    if (p.difficulty === 'kho' && nonWolves.length) return pick(nonWolves);
+    if (p.difficulty === 'vua' && nonWolves.length && Math.random() < 0.8) return pick(nonWolves);
+    return pick(others);
+  }
+  return pick(others);
+}
+function stepWolf(room, t) {
+  const g = room.game; const w = g.wolf;
+  if (g.phase === 'night') {
+    room.players.forEach((p) => {
+      if (p.type !== 'bot' || !w.alive[p.seat]) return;
+      const plan = g.botPlan[p.seat];
+      if (!plan || plan.at > t || plan.done) return;
+      const role = w.roles[p.seat];
+      if (role === 'soi' && w.wolfVotes[p.seat] == null && plan.target != null) {
+        w.wolfVotes[p.seat] = plan.target; plan.done = true;
+      } else if (role === 'bao-ve' && w.guardPick == null && plan.target != null) {
+        w.guardPick = plan.target; plan.done = true;
+      } else if (role === 'tien-tri' && w.seerPick == null && plan.target != null) {
+        wolfSeerApply(room, p.seat, plan.target); plan.done = true;
+      } else if (role === 'phu-thuy' && !w.witch.done) {
+        if (!wolfWolvesIn(room)) return; // the witch wakes after the pack
+        const victim = wolfVictim(room);
+        const saveP = p.difficulty === 'kho' ? 0.8 : p.difficulty === 'vua' ? 0.55 : 0.3;
+        if (victim != null && w.saveLeft > 0 && Math.random() < saveP) w.witch.save = true;
+        const poisonP = p.difficulty === 'kho' ? 0.25 : p.difficulty === 'vua' ? 0.12 : 0.05;
+        if (w.poisonLeft > 0 && Math.random() < poisonP) {
+          const cands = room.players.filter((q) => w.alive[q.seat] && q.seat !== p.seat && q.seat !== victim).map((q) => q.seat);
+          if (cands.length) w.witch.poison = pick(cands);
+        }
+        w.witch.done = true; plan.done = true;
+      }
+    });
+    if (t >= g.endsAt || wolfAllIn(room)) { resolveWolfNight(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'dawn') {
+    if (t >= g.endsAt) { wolfEnterDiscuss(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'discuss') {
+    room.players.forEach((p) => {
+      if (p.type !== 'bot' || !w.alive[p.seat]) return;
+      const plan = g.botPlan[p.seat];
+      if (plan && !plan.chatted && plan.chatAt && plan.chatAt <= t) {
+        plan.chatted = true;
+        g.chatLog.push({ seat: p.seat, text: plan.chatLine, at: t });
+        if (g.chatLog.length > 40) g.chatLog = g.chatLog.slice(-40);
+      }
+    });
+    if (t >= g.endsAt) { wolfEnterVote(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'vote') {
+    room.players.forEach((p) => {
+      if (p.type !== 'bot' || !w.alive[p.seat]) return;
+      const plan = g.botPlan[p.seat];
+      if (plan && plan.voteAt && plan.voteAt <= t && g.votes[p.seat] == null && plan.vote != null) {
+        g.votes[p.seat] = plan.vote;
+      }
+    });
+    const allIn = room.players.every((p) => !w.alive[p.seat] || g.votes[p.seat] != null);
+    if (t >= g.endsAt || allIn) { resolveWolfVote(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'execute') {
+    if (t >= g.endsAt) { wolfNextNight(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'wolfEnd') {
+    if (t >= g.endsAt) { endGame(room); return true; }
+  }
+  return false;
+}
+function resolveWolfNight(room, t) {
+  const g = room.game; const w = g.wolf;
+  const victim = wolfVictim(room);
+  // Resolution order: the guard's protection and the witch's save
+  // both cancel the wolf kill; the witch's poison always kills
+  // (it slips past the guard and past a save spent on the victim).
+  const saved = victim != null && (w.guardPick === victim || (w.witch.done && w.witch.save));
+  const deaths = [];
+  if (victim != null && !saved) deaths.push({ seat: victim, cause: 'soi' });
+  if (w.witch.done && w.witch.poison != null && w.alive[w.witch.poison]
+    && !deaths.some((d) => d.seat === w.witch.poison)) {
+    deaths.push({ seat: w.witch.poison, cause: 'doc' });
+  }
+  if (w.witch.done) {
+    if (w.witch.save && victim != null) w.saveLeft = 0;
+    if (w.witch.poison != null) w.poisonLeft = 0;
+  }
+  w.guardLast = w.guardPick;
+  w.dawnDeaths = [];
+  deaths.forEach((d) => {
+    w.alive[d.seat] = false;
+    const rec = { seat: d.seat, role: w.roles[d.seat], cause: d.cause, night: g.round };
+    w.deaths.push(rec); w.dawnDeaths.push(rec);
+  });
+  const winner = wolfWinner(room);
+  if (winner) { finishWolf(room, winner, t); return; }
+  g.phase = 'dawn'; g.endsAt = t + WOLF_DAWN_MS;
+}
+function wolfEnterDiscuss(room, t) {
+  const g = room.game;
+  g.chatLog = [];
+  g.phase = 'discuss'; g.endsAt = t + WOLF_DISCUSS_MS;
+  g.botPlan = {};
+  room.players.forEach((p) => {
+    if (p.type !== 'bot' || !room.game.wolf.alive[p.seat]) return;
+    if (Math.random() < 0.75) {
+      g.botPlan[p.seat] = { chatAt: t + Math.round(rand(4000, 40000)), chatLine: pick(WOLF_CHAT_LINES), chatted: false };
+    }
+  });
+}
+function wolfEnterVote(room, t) {
+  const g = room.game;
+  g.votes = {};
+  g.phase = 'vote'; g.endsAt = t + WOLF_VOTE_MS;
+  g.botPlan = {};
+  room.players.forEach((p) => {
+    if (p.type !== 'bot' || !room.game.wolf.alive[p.seat]) return;
+    g.botPlan[p.seat] = { voteAt: t + Math.round(rand(3000, 20000)), vote: wolfBotVote(room, p) };
+  });
+}
+function resolveWolfVote(room, t) {
+  const g = room.game; const w = g.wolf;
+  const counts = {};
+  Object.keys(g.votes).forEach((s) => {
+    if (w.alive[+s] && w.alive[g.votes[s]]) counts[g.votes[s]] = (counts[g.votes[s]] || 0) + 1;
+  });
+  let top = null, topN = 0, tie = false;
+  Object.keys(counts).forEach((s) => {
+    const c = counts[s];
+    if (c > topN) { topN = c; top = +s; tie = false; }
+    else if (c === topN) tie = true;
+  });
+  w.voteTally = counts;
+  if (top != null && !tie && topN > 0) {
+    w.alive[top] = false;
+    w.deaths.push({ seat: top, role: w.roles[top], cause: 'treo', night: g.round });
+    w.exec = { seat: top, role: w.roles[top] };
+  } else {
+    w.exec = { seat: null, role: null };
+  }
+  const winner = wolfWinner(room);
+  if (winner) { finishWolf(room, winner, t); return; }
+  g.phase = 'execute'; g.endsAt = t + WOLF_EXEC_MS;
+}
+function wolfNextNight(room, t) {
+  const g = room.game; const w = g.wolf;
+  g.round += 1;
+  w.wolfVotes = {}; w.guardPick = null; w.seerPick = null;
+  w.witch = { save: false, poison: null, done: false };
+  w.dawnDeaths = []; w.exec = null; w.voteTally = null;
+  g.votes = {}; g.inputs = {};
+  g.phase = 'night'; g.endsAt = t + WOLF_NIGHT_MS;
+  wolfPlanNight(room, t);
+}
+function finishWolf(room, winner, t) {
+  const g = room.game; const w = g.wolf;
+  w.winner = winner;
+  const entries = room.players.map((p) => {
+    const isWolf = w.roles[p.seat] === 'soi';
+    const won = (winner === 'soi') === isWolf;
+    const pts = won ? (isWolf ? 300 : 200) : 50;
+    g.points[p.seat] = pts;
+    return { seat: p.seat, points: pts, role: w.roles[p.seat] };
+  });
+  g.lastRound = { round: g.round, entries };
+  finishTimedRound(room, 'wolfEnd', t + WOLF_END_MS);
+}
+
+// --- Game: Cờ Cá Ngựa (Vietnamese Ludo) -------------------------------------
+function nguaLegal(room, seat, dice) {
+  const horses = room.game.ng.horses[seat];
+  const out = [];
+  horses.forEach((p, h) => {
+    if (p === 0) { if (dice === 6) out.push(h); }
+    else if (p + dice <= 58) out.push(h);
+  });
+  return out;
+}
+function nguaProgress(room, seat) {
+  const horses = room.game.ng.horses[seat];
+  return horses.filter((p) => p === 58).length * 100 + horses.reduce((a, b) => a + b, 0);
+}
+function nguaCellOf(room, seat, p) {
+  if (p < 1 || p > 51) return null;
+  return (NGUA_OFFSETS[room.game.ng.boards[seat]] + p - 1) % 52;
+}
+function nguaLog(room, text) {
+  const ng = room.game.ng;
+  ng.log.push(text);
+  if (ng.log.length > 6) ng.log = ng.log.slice(-6);
+}
+function nguaRoll(room, t) {
+  const g = room.game; const ng = g.ng;
+  const seat = ng.turn;
+  const dice = randInt(1, 6);
+  ng.dice = dice;
+  if (dice === 6) ng.chain += 1; else ng.chain = 0;
+  // Three consecutive sixes: the third roll is forfeited outright.
+  ng.legal = ng.chain >= 3 ? [] : nguaLegal(room, seat, dice);
+  if (ng.chain >= 3) nguaLog(room, playerAt(room, seat).name + ' thảy 6 ba lần liên tiếp — mất lượt!');
+  g.phase = 'pick';
+  ng.autoAt = t + (playerAt(room, seat).type === 'bot' ? NGUA_BOT_MS : NGUA_BEAT_MS);
+  g.endsAt = t + NGUA_TURN_MS;
+  return dice;
+}
+function nguaMove(room, seat, h, t) {
+  const g = room.game; const ng = g.ng;
+  const me = playerAt(room, seat);
+  const dice = ng.dice;
+  const from = ng.horses[seat][h];
+  const to = from === 0 ? 1 : from + dice;
+  ng.horses[seat][h] = to;
+  const kicked = [];
+  const cell = nguaCellOf(room, seat, to);
+  if (cell != null && !NGUA_SAFE.has(cell)) {
+    room.players.forEach((q) => {
+      if (q.seat === seat) return;
+      ng.horses[q.seat].forEach((qp, qh) => {
+        if (nguaCellOf(room, q.seat, qp) === cell) {
+          ng.horses[q.seat][qh] = 0;
+          if (kicked.indexOf(q.seat) < 0) kicked.push(q.seat);
+        }
+      });
+    });
+  }
+  ng.last = { seat, dice, horse: h, from, to, kicked, at: t };
+  let text = me.name + ' thảy ' + dice + ': ngựa ' + (h + 1);
+  if (from === 0) text += ' xuất chuồng';
+  else if (to === 58) text += ' VỀ CHUỒNG ĐÍCH!';
+  else text += ' đi tới ô ' + to;
+  kicked.forEach((ks) => { text += ' · ĐÁ NGỰA của ' + playerAt(room, ks).name + '!'; });
+  nguaLog(room, text);
+  if (ng.horses[seat].every((p) => p === 58)) { finishNgua(room, seat, t); return; }
+  if (dice === 6) {
+    // A six earns another roll (chain < 3 is guaranteed: a third
+    // consecutive six never reaches the move step at all).
+    g.phase = 'roll'; ng.dice = null; ng.legal = [];
+    ng.actAt = t + NGUA_BOT_MS; g.endsAt = t + NGUA_TURN_MS;
+  } else {
+    nguaEndTurn(room, t);
+  }
+}
+function nguaEndTurn(room, t) {
+  const g = room.game; const ng = g.ng;
+  const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
+  ng.turn = seats[(seats.indexOf(ng.turn) + 1) % seats.length];
+  ng.chain = 0; ng.dice = null; ng.legal = [];
+  g.phase = 'roll'; ng.actAt = t + NGUA_BOT_MS; g.endsAt = t + NGUA_TURN_MS;
+}
+function nguaBotPick(room, seat) {
+  const g = room.game; const ng = g.ng;
+  const p = playerAt(room, seat);
+  const legal = ng.legal.slice();
+  if (!legal.length) return null;
+  const blunder = p.difficulty === 'de' ? 0.35 : p.difficulty === 'vua' ? 0.15 : 0.05;
+  if (Math.random() < blunder) return pick(legal);
+  const dice = ng.dice;
+  let best = legal[0], bestScore = -1;
+  legal.forEach((h) => {
+    const from = ng.horses[seat][h];
+    const to = from === 0 ? 1 : from + dice;
+    let score;
+    if (to === 58) score = 100;                       // bring a horse home
+    else if (from === 0) score = 80;                  // leave the stable
+    else {
+      const cell = nguaCellOf(room, seat, to);
+      let kicks = false;
+      if (cell != null && !NGUA_SAFE.has(cell)) {
+        room.players.forEach((q) => {
+          if (q.seat === seat) return;
+          if (ng.horses[q.seat].some((qp) => nguaCellOf(room, q.seat, qp) === cell)) kicks = true;
+        });
+      }
+      score = kicks ? 90 : 10 + to;                   // kick, else advance the leader
+    }
+    if (score > bestScore) { bestScore = score; best = h; }
+  });
+  return best;
+}
+function nguaHint(room, seat, h) {
+  const g = room.game; const ng = g.ng;
+  const from = ng.horses[seat][h];
+  const dice = ng.dice;
+  const to = from === 0 ? 1 : from + dice;
+  if (from === 0) return 'Xuất chuồng';
+  if (to === 58) return 'Về chuồng đích!';
+  if (to >= 52) return 'Vào đường về chuồng (' + (to - 51) + '/6)';
+  const cell = nguaCellOf(room, seat, to);
+  if (cell != null && !NGUA_SAFE.has(cell)) {
+    let kickName = null;
+    room.players.forEach((q) => {
+      if (q.seat === seat) return;
+      if (ng.horses[q.seat].some((qp) => nguaCellOf(room, q.seat, qp) === cell)) kickName = q.name;
+    });
+    if (kickName) return 'ĐÁ NGỰA của ' + kickName + '!';
+    return 'Đi ' + dice + ' ô';
+  }
+  return 'Về ô an toàn';
+}
+function stepNgua(room, t) {
+  const g = room.game; const ng = g.ng;
+  if (g.phase === 'ngWin') {
+    if (t >= g.endsAt) { endGame(room); return true; }
+    return false;
+  }
+  if (g.phase === 'roll') {
+    const cur = playerAt(room, ng.turn);
+    if (cur && cur.type === 'bot' && t >= ng.actAt) { nguaRoll(room, t); return true; }
+    if (t >= g.endsAt) { nguaRoll(room, t); return true; } // idle human: the server rolls for them
+    return false;
+  }
+  if (g.phase === 'pick') {
+    if (!ng.legal.length) {
+      if (t >= ng.autoAt) { nguaEndTurn(room, t); return true; }
+      return false;
+    }
+    const cur = playerAt(room, ng.turn);
+    if (cur && cur.type === 'bot' && t >= ng.autoAt) {
+      const h = nguaBotPick(room, ng.turn);
+      if (h != null) nguaMove(room, ng.turn, h, t);
+      return true;
+    }
+    if (t >= g.endsAt) { nguaMove(room, ng.turn, pick(ng.legal), t); return true; } // timeout: a random legal move
+    return false;
+  }
+  return false;
+}
+function finishNgua(room, winnerSeat, t) {
+  const g = room.game; const ng = g.ng;
+  ng.winner = winnerSeat;
+  const ranking = room.players.slice().sort((a, b) => {
+    if (a.seat === winnerSeat) return -1;
+    if (b.seat === winnerSeat) return 1;
+    return (nguaProgress(room, b.seat) - nguaProgress(room, a.seat)) || (a.seat - b.seat);
+  });
+  const entries = ranking.map((p, i) => ({ seat: p.seat, points: placementAt(i), progress: nguaProgress(room, p.seat) }));
+  entries.forEach((e) => { g.points[e.seat] = e.points; });
+  g.lastRound = { round: 1, entries };
+  finishTimedRound(room, 'ngWin', t + NGUA_WIN_MS);
 }
 
 // --- Game 20: Thủ Thành (COOP tick arena defence) --------------------------
@@ -3323,7 +3703,7 @@ function finishFight(room) {
   const elimRanked = g.elimOrder.slice().reverse().map((seat) => playerAt(room, seat)).filter(Boolean);
   const ranking = aliveRanked.concat(elimRanked);
   const entries = ranking.map((p, i) => ({
-    seat: p.seat, points: PLACEMENT_POINTS[Math.min(i, 3)],
+    seat: p.seat, points: placementAt(i),
     lives: g.blobs[p.seat].lives, dmg: g.dmg[p.seat] || 0, alive: g.blobs[p.seat].alive,
   }));
   entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
@@ -3488,20 +3868,7 @@ function gameView(room, role, seat, t) {
     id: g.id, name: GAMES[g.id].name, round: g.round, totalRounds: g.totalRounds,
     phase: g.phase, endsAt: g.endsAt, finalRound: isFinalRound(g), points: g.points, lastRound: g.lastRound,
   };
-  if (g.id === 'nhanh-tay') {
-    const status = {};
-    room.players.forEach((p) => {
-      if (p.type === 'human') { const inp = g.inputs[p.seat]; status[p.seat] = inp ? (inp.early ? 'early' : 'tapped') : 'waiting'; }
-      else {
-        const plan = g.botPlan[p.seat] || {};
-        if (plan.earlyAt && plan.earlyAt <= t) status[p.seat] = 'early';
-        else if (plan.tapAt && plan.tapAt <= t && g.phase === 'go') status[p.seat] = 'tapped';
-        else status[p.seat] = 'waiting';
-      }
-    });
-    v.status = status;
-    if (seat) { const inp = g.inputs[seat]; v.mine = inp ? (inp.early ? 'early' : 'tapped') : 'waiting'; }
-  } else if (g.id === 'do-vui') {
+  if (g.id === 'do-vui') {
     if (g.phase === 'question' || g.phase === 'reveal') {
       v.question = g.current.q; v.options = g.current.options;
       const answered = {};
@@ -3513,21 +3880,6 @@ function gameView(room, role, seat, t) {
     }
     if (g.phase === 'reveal') v.reveal = g.reveal;
     if (seat) { const inp = g.inputs[seat]; v.mine = inp ? inp.choice : null; v.myStreak = g.streaks[seat] || 0; }
-  } else if (g.id === 'doan-so') {
-    if (g.phase === 'guess' || g.phase === 'reveal') { v.question = g.current.q; v.unit = g.current.unit; }
-    const guessed = {};
-    room.players.forEach((p) => {
-      if (p.type === 'human') guessed[p.seat] = !!g.inputs[p.seat];
-      else { const plan = g.botPlan[p.seat]; guessed[p.seat] = !!plan && plan.at <= t; }
-    });
-    v.guessed = guessed;
-    if (g.phase === 'reveal') v.reveal = g.reveal;
-    if (seat) { const inp = g.inputs[seat]; v.mine = inp ? inp.value : null; }
-  } else if (g.id === 'dua-bam') {
-    const counts = {};
-    room.players.forEach((p) => { counts[p.seat] = raceCount(room, p, t); });
-    v.counts = counts;
-    if (seat) v.mine = counts[seat] || 0;
   } else if (g.id === 'day-ra') {
     v.arenaR = g.arenaR;
     v.blobs = {};
@@ -3637,21 +3989,6 @@ function gameView(room, role, seat, t) {
     v.hits = g.hits;
     v.splash = g.splash;
     if (seat) { v.mine = g.hits[seat] || 0; v.mySplash = g.splash[seat] || 0; }
-  } else if (g.id === 'nho-mau') {
-    v.len = g.seq ? g.seq.length : 0;
-    const statuses = {};
-    room.players.forEach((p) => {
-      if (g.phase === 'show') statuses[p.seat] = 'watching';
-      else if (p.type === 'human') { const inp = g.inputs[p.seat]; statuses[p.seat] = inp ? inp.status : 'playing'; }
-      else {
-        const plan = g.botPlan[p.seat];
-        if (g.phase === 'input' && plan && plan.finishAt && t >= plan.finishAt) statuses[p.seat] = plan.success ? 'done' : 'failed';
-        else statuses[p.seat] = 'playing';
-      }
-    });
-    v.statuses = statuses;
-    if (role === 'host' && g.phase === 'show') v.seq = g.seq;
-    if (seat) { const inp = g.inputs[seat]; v.mine = inp ? { taps: inp.taps.length, status: inp.status } : { taps: 0, status: 'playing' }; }
   } else if (g.id === 'xe-tank') {
     v.arenaR = ARENA_R0;
     v.blobs = blobsView(room);
@@ -3693,6 +4030,79 @@ function gameView(room, role, seat, t) {
       v.options = pair.options;
       v.mine = g.inputs[seat] ? g.inputs[seat].choice : null;
       v.myVote = g.votes[seat] != null ? g.votes[seat] : null;
+    }
+  } else if (g.id === 'ma-soi') {
+    // SECRECY (hard rule, asserted in tests by string search): before
+    // the wolfEnd phase NO view — host or player — may carry another
+    // player's role or any night choice. Public facts only: who is
+    // alive, the death record (roles are public FROM DEATH ON), the
+    // day's chat, vote-cast flags, and after the vote the tally + the
+    // execution. A phone additionally sees ONLY its own private kit:
+    // its role; a wolf sees the pack list + pack votes-in count; the
+    // guard its own pick; the seer its own notes; the witch (once the
+    // pack has locked) the victim + her own potion state. Death cuts
+    // a phone back to its role card + public facts.
+    const w = g.wolf;
+    v.phaseDur = g.phase === 'night' ? WOLF_NIGHT_MS : g.phase === 'dawn' ? WOLF_DAWN_MS
+      : g.phase === 'discuss' ? WOLF_DISCUSS_MS : g.phase === 'vote' ? WOLF_VOTE_MS
+      : g.phase === 'execute' ? WOLF_EXEC_MS : WOLF_END_MS;
+    v.night = g.round;
+    v.aliveMap = {};
+    room.players.forEach((p) => { v.aliveMap[p.seat] = w ? !!w.alive[p.seat] : true; });
+    v.deadList = w ? w.deaths.map((d) => ({ seat: d.seat, role: d.role, cause: d.cause, night: d.night })) : [];
+    v.dawnDeaths = w ? w.dawnDeaths.map((d) => ({ seat: d.seat, role: d.role })) : [];
+    v.wolfCount = w ? room.players.filter((p) => w.roles[p.seat] === 'soi').length : 0;
+    if (g.phase === 'discuss' || g.phase === 'vote' || g.phase === 'execute' || g.phase === 'wolfEnd') v.chatLog = g.chatLog || [];
+    if (g.phase === 'vote') {
+      v.voted = {};
+      room.players.forEach((p) => { v.voted[p.seat] = g.votes[p.seat] != null; });
+    }
+    if (g.phase === 'execute' || g.phase === 'wolfEnd') { v.exec = w.exec; v.voteTally = w.voteTally || {}; }
+    if (g.phase === 'wolfEnd') { v.winner = w.winner; v.roles = Object.assign({}, w.roles); }
+    if (seat) {
+      v.myRole = w.roles[seat];
+      v.myAlive = !!w.alive[seat];
+      if (w.alive[seat]) {
+        if (w.roles[seat] === 'soi') {
+          v.wolfTeam = room.players.filter((p) => w.roles[p.seat] === 'soi').map((p) => p.seat);
+          v.myWolfVote = w.wolfVotes[seat] != null ? w.wolfVotes[seat] : null;
+          v.wolfVotesIn = Object.keys(w.wolfVotes).length;
+        } else if (w.roles[seat] === 'bao-ve') {
+          v.myGuardPick = w.guardPick;
+          v.myGuardLast = w.guardLast;
+        } else if (w.roles[seat] === 'tien-tri') {
+          v.mySeerPick = w.seerPick;
+          const notes = w.seerNotes[seat] || {};
+          v.mySeerNotes = Object.keys(notes).map((s) => ({ seat: +s, wolf: !!notes[s] }));
+        } else if (w.roles[seat] === 'phu-thuy') {
+          v.mySaveLeft = w.saveLeft;
+          v.myPoisonLeft = w.poisonLeft;
+          v.myWitchSave = w.witch.save;
+          v.myWitchPoison = w.witch.poison;
+          v.myWitchDone = w.witch.done;
+          v.wolvesIn = wolfWolvesIn(room);
+          v.myVictim = v.wolvesIn ? wolfVictim(room) : null;
+        }
+      }
+    }
+  } else if (g.id === 'ca-ngua') {
+    const ng = g.ng;
+    v.phaseDur = NGUA_TURN_MS;
+    v.board = { loop: NGUA_LOOP, stretch: NGUA_STRETCH, stable: NGUA_STABLE, safe: Array.from(NGUA_SAFE) };
+    v.horses = ng ? ng.horses : {};
+    v.boards = ng ? ng.boards : {};
+    v.turn = ng ? ng.turn : null;
+    v.dice = ng ? ng.dice : null;
+    v.winner = ng ? ng.winner : null;
+    v.last = ng ? ng.last : null;
+    v.log = ng ? ng.log : [];
+    v.progress = {};
+    if (ng) room.players.forEach((p) => { v.progress[p.seat] = nguaProgress(room, p.seat); });
+    if (seat) {
+      v.myTurn = !!ng && ng.turn === seat;
+      v.myLegal = (ng && g.phase === 'pick' && ng.turn === seat)
+        ? ng.legal.map((h) => ({ horse: h, hint: nguaHint(room, seat, h), from: ng.horses[seat][h] }))
+        : [];
     }
   } else if (g.id === 'thu-thanh') {
     v.arenaR = ARENA_R0;
@@ -3772,7 +4182,7 @@ function buildView(room, role, seat) {
   return {
     ok: true, serverNow: t, code: room.code, phase: room.phase, players, standings: st, gap,
     bubble: room.bubble && room.bubble.until > t ? { seat: room.bubble.seat, text: room.bubble.text } : null,
-    games: Object.keys(GAMES).map((id) => ({ id, name: GAMES[id].name, desc: GAMES[id].desc, rounds: GAMES[id].rounds, cat: GAMES[id].cat, min: minSeats(id) })),
+    games: Object.keys(GAMES).map((id) => ({ id, name: GAMES[id].name, desc: GAMES[id].desc, rounds: GAMES[id].rounds, cat: GAMES[id].cat, min: minSeats(id), max: maxSeats(id) })),
     playlist: playlistView(room, t),
     game: room.game ? gameView(room, role, seat, t) : null,
     lastGame: room.lastGame,
@@ -3788,14 +4198,16 @@ function startCheck(room) {
   if (room.players.length < 2) return 'Cần ít nhất 2 người chơi (thêm Máy hoặc rủ thêm bạn).';
   return null;
 }
-// Seat gate per game: Kẻ Giả Mạo needs a real vote, so 3 seats minimum;
-// everything else plays with the usual 2.
-function minSeats(id) { return id === 'ke-gia-mao' ? 3 : 2; }
+// Seat gate per game: every game declares [min, max] in GAMES (Kẻ Giả
+// Mạo needs a real vote so 3 minimum; Ma Sói needs a village so 4;
+// arenas cap at 8; Cờ Cá Ngựa is a 4-colour board…).
+function minSeats(id) { return GAMES[id] ? GAMES[id].min : 2; }
+function maxSeats(id) { return GAMES[id] ? GAMES[id].max : MAX_SEATS; }
 // Could this game start right now in this room? Used by playlist
 // queueing (filter) and by the intermission auto-start (skip).
 function gamePlayable(room, id) {
   if (!GAMES[id]) return false;
-  if (room.players.length < minSeats(id)) return false;
+  if (room.players.length < minSeats(id) || room.players.length > maxSeats(id)) return false;
   return !startCheck(room);
 }
 function clearPlaylist(room) { room.playlist = null; room.playlistNextAt = null; }
@@ -3825,7 +4237,7 @@ function hostAction(room, body) {
   if (a === 'addBot') {
     if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Chỉ thêm Máy được khi đang ở sảnh chờ.';
     const seat = body.seat;
-    if (!Number.isInteger(seat) || seat < 2 || seat > 4) return 'Chỉ thêm Máy vào ô P2, P3, P4.';
+    if (!Number.isInteger(seat) || seat < 2 || seat > MAX_SEATS) return 'Chỉ thêm Máy vào các ô P2 đến P' + MAX_SEATS + '.';
     if (playerAt(room, seat)) return 'Ô này đã có người.';
     room.players.push({ seat, type: 'bot', name: 'Máy', difficulty: 'vua', score: 0 });
     room.players.sort((x, y) => x.seat - y.seat);
@@ -3854,7 +4266,9 @@ function hostAction(room, body) {
     if (!GAMES[body.game]) return 'Không có game này.';
     const err = startCheck(room);
     if (err) return err;
-    if (body.game === 'ke-gia-mao' && room.players.length < 3) return 'Kẻ Giả Mạo cần ít nhất 3 người chơi mới chơi được (thêm Máy hoặc rủ thêm bạn).';
+    const nSeats = room.players.length;
+    if (nSeats < minSeats(body.game)) return GAMES[body.game].name + ' cần ít nhất ' + minSeats(body.game) + ' người chơi mới chơi được (thêm Máy hoặc rủ thêm bạn).';
+    if (nSeats > maxSeats(body.game)) return GAMES[body.game].name + ' chỉ chơi được tối đa ' + maxSeats(body.game) + ' người chơi — phòng đang có ' + nSeats + ' người, xoá bớt Máy hoặc chọn game khác nhé.';
     clearPlaylist(room); // manual navigation cancels any playlist
     createGame(room, body.game);
     return null;
@@ -3897,6 +4311,11 @@ function hostAction(room, body) {
   }
   if (a === 'replay') {
     if ((room.phase !== 'results' && room.phase !== 'podium') || !room.lastGame) return 'Chưa có game nào để chơi lại.';
+    // Seats may have changed since the game was played (spectators
+    // join at results): the rematch must still fit the game's range.
+    if (room.players.length < minSeats(room.lastGame.id) || room.players.length > maxSeats(room.lastGame.id)) {
+      return 'Số người trong phòng đã thay đổi — ' + GAMES[room.lastGame.id].name + ' cần ' + minSeats(room.lastGame.id) + '–' + maxSeats(room.lastGame.id) + ' người chơi.';
+    }
     clearPlaylist(room); // manual navigation cancels any playlist
     createGame(room, room.lastGame.id);
     return null;
@@ -3960,6 +4379,17 @@ function playerAction(room, player, body) {
     return null;
   }
   if (a === 'chat') {
+    if (g.id === 'ma-soi') {
+      // Day discussion is public — but the dead only watch: a ghost
+      // who could still talk could leak night knowledge.
+      if (g.phase !== 'discuss') return 'Chỉ trò chuyện được trong lúc bàn luận ban ngày.';
+      if (!g.wolf.alive[seat]) return 'Bạn đã chết — chỉ theo dõi thôi nhé.';
+      const text = String(body.text || '').trim().slice(0, 60);
+      if (!text) return 'Hãy nhập lời nhắn.';
+      g.chatLog.push({ seat, text, at: t });
+      if (g.chatLog.length > 40) g.chatLog = g.chatLog.slice(-40);
+      return null;
+    }
     if (g.id === 'ke-gia-mao') {
       // Public discussion: EVERY player may chat (unlike Chia Hay
       // Cướp's pair-only negotiation). Stored as a scrolling log.
@@ -3978,22 +4408,10 @@ function playerAction(room, player, body) {
     return null;
   }
   if (a === 'tap') {
-    if (g.id === 'nhanh-tay') {
-      if (g.inputs[seat]) return null;
-      if (g.phase === 'wait') g.inputs[seat] = { early: true, tapAt: t };
-      else if (g.phase === 'go') g.inputs[seat] = { tapAt: t };
-      return null;
-    }
     if (g.id === 'cao-boi') {
       if (g.inputs[seat]) return null;
       if (g.phase === 'wait') g.inputs[seat] = { foul: true, at: t };
       else if (g.phase === 'go') g.inputs[seat] = { tapAt: t };
-      return null;
-    }
-    if (g.id === 'dua-bam') {
-      if (g.phase !== 'race') return null;
-      if (!g.inputs[seat]) g.inputs[seat] = { count: 0 };
-      g.inputs[seat].count += 1;
       return null;
     }
     if (g.id === 'cheo-thuyen') {
@@ -4031,32 +4449,89 @@ function playerAction(room, player, body) {
     g.inputs[seat] = { choice: c, at: t };
     return null;
   }
-  if (a === 'guess') {
-    if (g.id !== 'doan-so' || g.phase !== 'guess') return 'Chưa đến lúc đoán.';
-    if (g.inputs[seat]) return null;
-    const v = body.value;
-    if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 1e12) return 'Số đoán không hợp lệ.';
-    g.inputs[seat] = { value: Math.round(v), at: t };
-    return null;
-  }
-  if (a === 'color') {
-    if (g.id !== 'nho-mau' || g.phase !== 'input') return 'Chưa đến lúc bấm màu.';
-    const inp = g.inputs[seat];
-    if (!inp || inp.status !== 'playing') return null;
-    const c = body.color;
-    if (!Number.isInteger(c) || c < 0 || c > 3) return 'Màu không hợp lệ.';
-    inp.taps.push(c);
-    const idx = inp.taps.length - 1;
-    if (c !== g.seq[idx]) inp.status = 'failed';
-    else if (inp.taps.length === g.seq.length) { inp.status = 'done'; inp.doneAt = t; }
-    return null;
-  }
   if (a === 'vote') {
+    if (g.id === 'ma-soi') {
+      if (g.phase !== 'vote') return 'Chưa đến lúc bỏ phiếu.';
+      if (!g.wolf.alive[seat]) return 'Bạn đã chết — chỉ theo dõi thôi nhé.';
+      if (g.votes[seat] != null) return null;
+      const target = body.seat;
+      if (!Number.isInteger(target) || target === seat || !playerAt(room, target) || !g.wolf.alive[target]) return 'Không bỏ phiếu cho người này được.';
+      g.votes[seat] = target;
+      return null;
+    }
     if (g.id !== 'ke-gia-mao' || g.phase !== 'vote') return 'Chưa đến lúc tố cáo.';
     if (g.votes[seat] != null) return null;
     const target = body.seat;
     if (!Number.isInteger(target) || target === seat || !playerAt(room, target)) return 'Không tố cáo được người này.';
     g.votes[seat] = target;
+    return null;
+  }
+  if (a === 'wolfVote' || a === 'wolfGuard' || a === 'wolfSeer' || a === 'wolfWitch') {
+    if (g.id !== 'ma-soi' || g.phase !== 'night') return 'Chưa đến lúc hành động ban đêm.';
+    const w = g.wolf;
+    if (!w.alive[seat]) return 'Bạn đã chết — chỉ theo dõi thôi nhé.';
+    const role = w.roles[seat];
+    const target = body.seat;
+    const targetOk = Number.isInteger(target) && !!playerAt(room, target) && !!w.alive[target];
+    if (a === 'wolfVote') {
+      if (role !== 'soi') return 'Chỉ có sói mới chọn con mồi.';
+      if (w.wolfVotes[seat] != null) return null;
+      if (!targetOk || target === seat) return 'Không chọn được người này.';
+      w.wolfVotes[seat] = target;
+      return null;
+    }
+    if (a === 'wolfGuard') {
+      if (role !== 'bao-ve') return 'Chỉ có Bảo Vệ mới chọn người để bảo vệ.';
+      if (w.guardPick != null) return null;
+      if (!targetOk) return 'Không chọn được người này.';
+      if (target === w.guardLast) return 'Đêm qua bạn đã bảo vệ người này rồi — luật không cho bảo vệ cùng một người hai đêm liền.';
+      w.guardPick = target;
+      return null;
+    }
+    if (a === 'wolfSeer') {
+      if (role !== 'tien-tri') return 'Chỉ có Tiên Tri mới soi được người khác.';
+      if (w.seerPick != null) return null;
+      if (!targetOk || target === seat) return 'Không soi được người này.';
+      wolfSeerApply(room, seat, target);
+      return null;
+    }
+    // wolfWitch: incremental — set the save flag and/or a poison
+    // target first, then confirm with done:true (the phone renders
+    // her current choices back from the view between steps).
+    if (role !== 'phu-thuy') return 'Chỉ có Phù Thủy mới dùng thuốc được.';
+    if (w.witch.done) return null;
+    if (body.done === true) { w.witch.done = true; return null; }
+    if (typeof body.save === 'boolean') {
+      if (body.save) {
+        if (w.saveLeft <= 0) return 'Thuốc cứu đã dùng hết rồi.';
+        if (!wolfWolvesIn(room)) return 'Sói chưa chọn xong con mồi — đợi một chút.';
+        if (wolfVictim(room) == null) return 'Đêm nay sói chưa chọn được ai.';
+      }
+      w.witch.save = body.save;
+      return null;
+    }
+    if (body.poison === null) { w.witch.poison = null; return null; }
+    if (body.poison !== undefined) {
+      if (w.poisonLeft <= 0) return 'Thuốc độc đã dùng hết rồi.';
+      const pt = body.poison;
+      if (!Number.isInteger(pt) || !playerAt(room, pt) || !w.alive[pt] || pt === seat) return 'Không đầu độc được người này.';
+      w.witch.poison = pt;
+      return null;
+    }
+    return null;
+  }
+  if (a === 'roll') {
+    if (g.id !== 'ca-ngua' || g.phase !== 'roll') return 'Chưa đến lúc thảy xúc xắc.';
+    if (g.ng.turn !== seat) return 'Chưa tới lượt của bạn.';
+    nguaRoll(room, t);
+    return null;
+  }
+  if (a === 'move') {
+    if (g.id !== 'ca-ngua' || g.phase !== 'pick') return 'Chưa đến lúc đi ngựa.';
+    if (g.ng.turn !== seat) return 'Chưa tới lượt của bạn.';
+    const h = body.horse;
+    if (!Number.isInteger(h) || g.ng.legal.indexOf(h) < 0) return 'Ngựa này đi không được.';
+    nguaMove(room, seat, h, t);
     return null;
   }
   if (a === 'symbol') {
@@ -4114,7 +4589,7 @@ export default {
         if (room.phase === 'playing') return fail('Phòng đang chơi, đợi ván sau nhé.');
         const name = typeof body.name === 'string' ? body.name.trim().slice(0, 14) : '';
         if (!name) return fail('Hãy nhập tên của bạn.');
-        if (room.players.length >= 4) return fail('Phòng đã đủ 4 người.');
+        if (room.players.length >= MAX_SEATS) return fail('Phòng đã đủ ' + MAX_SEATS + ' người.');
         let seat = 1;
         while (playerAt(room, seat)) seat += 1;
         const player = { seat, type: 'human', name, token: makeToken(), score: 0 };
@@ -4255,7 +4730,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .codebox { width: 62px; height: 76px; background: #fff; border-radius: 16px; font-family: 'Baloo 2', cursive; font-weight: 800;
   font-size: 42px; color: #4A3226; display: flex; align-items: center; justify-content: center;
   box-shadow: inset 0 -6px 0 rgba(140,90,30,.15), 0 8px 18px rgba(140,90,30,.15); border: 3px solid #FFE3B3; }
-.seats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 14px; }
+.seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-top: 14px; }
 .seat { background: #FFFDF8; border-radius: 24px; padding: 14px 10px; text-align: center; border: 3px dashed #EBD9BE; position: relative; }
 .seat.filled { border: 3px solid #FFE3B3; background: #fff; box-shadow: 0 8px 18px rgba(140,90,30,.1); }
 .seat .nm { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 19px; margin-top: 4px; }
@@ -4277,11 +4752,21 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .stage { border-radius: 32px; padding: 26px; color: #fff; min-height: 400px; box-shadow: inset 0 -10px 0 rgba(0,0,0,.12), 0 18px 34px rgba(120,72,20,.2); position: relative; overflow: hidden; }
 .pstage { touch-action: none; overscroll-behavior: none; }
 .stage h2 { margin: 0 0 8px; font-size: 34px; text-shadow: 0 3px 0 rgba(0,0,0,.15); }
-.g-nhanh-tay { background: linear-gradient(160deg, #FFD93D, #FF8C42); }
 .g-do-vui { background: linear-gradient(160deg, #6BCBFF, #4F7BE8); }
-.g-doan-so { background: linear-gradient(160deg, #7BE0B8, #2FA36B); }
-.g-dua-bam { background: linear-gradient(160deg, #FF9DE2, #B45FE8); }
-.g-nho-mau { background: linear-gradient(160deg, #A8C0FF, #6A5FE8); }
+.g-ma-soi { background: linear-gradient(160deg, #1E1B4B, #6D28A8); }
+.g-ca-ngua { background: linear-gradient(160deg, #78350F, #D97706); }
+.wolfgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 12px; }
+.wolfcard { background: rgba(255,255,255,.92); color: #4A3226; border-radius: 18px; padding: 10px 6px; text-align: center; font-weight: 700; }
+.wolfcard.dead { opacity: .62; filter: grayscale(.8); }
+.wolfcard .rolechip { display: inline-block; margin-top: 4px; padding: 2px 10px; border-radius: 999px; background: #312E81; color: #fff; font-size: 13px; }
+.ngboard { position: relative; width: min(92vw, 560px); padding-top: min(92vw, 560px); margin: 10px auto; background: #FDF6E3; border-radius: 18px; box-shadow: inset 0 0 0 3px rgba(0,0,0,.15); }
+.ngcell { position: absolute; box-sizing: border-box; border: 1px solid rgba(0,0,0,.18); border-radius: 4px; background: #fff; }
+.ngcell.safe { background: #FFE9A8; }
+.ngcell.quad { border: none; border-radius: 14px; }
+.ngstable { position: absolute; box-sizing: border-box; border: 2px dashed rgba(0,0,0,.25); border-radius: 50%; background: rgba(255,255,255,.85); }
+.nghorse { position: absolute; box-sizing: border-box; border-radius: 50%; border: 2px solid rgba(0,0,0,.35); color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; text-shadow: 0 1px 2px rgba(0,0,0,.5); z-index: 3; }
+.nghorse.turn { box-shadow: 0 0 0 3px #FFC93D, 0 0 14px #FFC93D; }
+.diceface { display: inline-flex; align-items: center; justify-content: center; width: 74px; height: 74px; border-radius: 16px; background: #fff; color: #312E81; font-size: 44px; box-shadow: 0 6px 0 rgba(0,0,0,.2); }
 .bigcircle { width: 250px; height: 250px; border-radius: 50%; margin: 16px auto; display: flex; align-items: center; justify-content: center;
   font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 34px; text-align: center; padding: 20px;
   box-shadow: inset 0 -12px 0 rgba(0,0,0,.15), 0 16px 30px rgba(0,0,0,.2); }
@@ -4576,16 +5061,16 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 <div id="toast"></div>
 <div id="recon">Đang kết nối lại…</div>
 <script>
-var COLORS = { blue: '#4FA8E8', pink: '#F77FB0', green: '#58C472', purple: '#A78BFA', orange: '#FFB35C' };
-var LIGHT = { blue: '#9AD1F5', pink: '#FFB3D1', green: '#A9E8B2', purple: '#CDBFFD', orange: '#FFD29B' };
-var MEM = ['#E84F4F', '#58C472', '#4FA8E8', '#FFC93D'];
-var MEMNAME = ['Đỏ', 'Xanh lá', 'Xanh dương', 'Vàng'];
+var COLORS = { blue: '#4FA8E8', pink: '#F77FB0', green: '#58C472', purple: '#A78BFA', orange: '#FFB35C', red: '#E84F4F', cyan: '#38C6D9', yellow: '#FFC93D', lime: '#9BC53D', brown: '#B07B4F', silver: '#B8C4CE', magenta: '#D63FD0' };
+var LIGHT = { blue: '#9AD1F5', pink: '#FFB3D1', green: '#A9E8B2', purple: '#CDBFFD', orange: '#FFD29B', red: '#FF9D9D', cyan: '#9AE8F5', yellow: '#FFE28A', lime: '#D3EC9B', brown: '#D9B48F', silver: '#E4EBF0', magenta: '#F2A3EC' };
 var SYMNAMES = ['ĐỎ', 'XANH', 'VÀNG', 'HỒNG'];
 var SYMCOLORS = ['#FF4757', '#3FA9F5', '#FFC93D', '#F77FB0'];
 var LETTERS = ['A', 'B', 'C', 'D'];
+var WOLF_ROLE_NAMES = { soi: 'Sói 🐺', 'tien-tri': 'Tiên Tri 🔮', 'bao-ve': 'Bảo Vệ 🛡️', 'phu-thuy': 'Phù Thủy 🧙', dan: 'Dân Làng 🧑‍🌾' };
+var DICE_FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 var S = { role: null, code: null, token: null, seat: null, view: null, sig: '', serverOffset: 0,
   audio: null, muted: localStorage.getItem('np_muted') === '1', lastCd: -1, lastTickSec: -1,
-  fxReveal: '', fxRound: '', fxConfetti: '', guess: '', blobN: 0, fxP: null, _nb: null, _koT: 0, _smT: 0,
+  fxReveal: '', fxRound: '', fxConfetti: '', blobN: 0, fxP: null, _nb: null, _koT: 0, _smT: 0,
   plMode: false, plQueue: [], raf: {}, rafLast: 0,
   lastOkAt: 0 };
 function el(id) { return document.getElementById(id); }
@@ -4593,6 +5078,7 @@ function esc(s) { return String(s == null ? '' : s).split('&').join('&amp;').spl
 function fmt(n) { var s = String(Math.round(Math.abs(n))); var out = ''; while (s.length > 3) { out = '.' + s.slice(-3) + out; s = s.slice(0, -3); } return (n < 0 ? '-' : '') + s + out; }
 function playerOf(v, seat) { for (var i = 0; i < v.players.length; i++) if (v.players[i].seat === seat) return v.players[i]; return null; }
 function gameMeta(v, id) { if (!v || !v.games) return null; for (var i = 0; i < v.games.length; i++) if (v.games[i].id === id) return v.games[i]; return null; }
+function seatLocked(gm, n) { return !!gm && ((gm.min && n < gm.min) || (gm.max && n > gm.max)); }
 function toast(msg) { var t = el('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(function () { t.style.display = 'none'; }, 3200); }
 function blobSVG(color, mood, size) {
   S.blobN += 1;
@@ -4625,7 +5111,7 @@ function blobSVG(color, mood, size) {
 function crownSVG(size) {
   return '<svg width="' + size + '" height="' + Math.round(size * 0.62) + '" viewBox="0 0 100 62"><path d="M6 56 L13 16 L35 36 L50 8 L65 36 L87 16 L94 56 Z" fill="#FFC93D" stroke="#E0A92E" stroke-width="4" stroke-linejoin="round"/><circle cx="50" cy="44" r="5" fill="#F77FB0"/></svg>';
 }
-var DARK = { blue: '#1D5C8F', pink: '#B23A72', green: '#2E7D46', purple: '#5F43B8', orange: '#C77414' };
+var DARK = { blue: '#1D5C8F', pink: '#B23A72', green: '#2E7D46', purple: '#5F43B8', orange: '#C77414', red: '#A52A2A', cyan: '#177E8C', yellow: '#B8860B', lime: '#5F7D1E', brown: '#7A4A21', silver: '#6E7B87', magenta: '#8F2A87' };
 function orbSVG(color, size, ko) {
   S.blobN += 1;
   var gid = 'og' + S.blobN;
@@ -4972,11 +5458,10 @@ function wsDrop() {
 }
 function serverNow() { return Date.now() + S.serverOffset; }
 
-var DUR = { 'do-vui': 15000, 'doan-so': 20000, 'dua-bam': 10000, 'nho-mau': 12000, 'keo-co': 20000 };
+var DUR = { 'do-vui': 15000, 'keo-co': 20000 };
 var GCOLORS = {
-  'nhanh-tay': 'linear-gradient(160deg,#FFD93D,#FF8C42)', 'do-vui': 'linear-gradient(160deg,#6BCBFF,#4F7BE8)',
-  'doan-so': 'linear-gradient(160deg,#7BE0B8,#2FA36B)', 'dua-bam': 'linear-gradient(160deg,#FF9DE2,#B45FE8)',
-  'nho-mau': 'linear-gradient(160deg,#A8C0FF,#6A5FE8)',
+  'do-vui': 'linear-gradient(160deg,#6BCBFF,#4F7BE8)',
+  'ma-soi': 'linear-gradient(160deg,#1E1B4B,#6D28A8)', 'ca-ngua': 'linear-gradient(160deg,#78350F,#D97706)',
   'day-ra': 'linear-gradient(160deg,#4A0E24,#A4133C)',
   'ne-dan': 'linear-gradient(160deg,#2A0A54,#6D28A8)', 'keo-co': 'linear-gradient(160deg,#064A38,#0B7A55)',
   'chia-cuop': 'linear-gradient(160deg,#241457,#4C2FA8)',
@@ -5051,7 +5536,7 @@ function hostHTML(v) {
     for (var i = 0; i < v.code.length; i++) h += '<div class="codebox">' + esc(v.code[i]) + '</div>';
     h += '</div>';
     h += '<div class="seats">';
-    for (var s = 1; s <= 4; s++) h += seatCard(v, s);
+    for (var s = 1; s <= 12; s++) h += seatCard(v, s);
     h += '</div>';
     var humans = 0; for (var j = 0; j < v.players.length; j++) if (v.players[j].type === 'human') humans++;
     h += '<p class="center" style="margin-top:14px">';
@@ -5064,16 +5549,26 @@ function hostHTML(v) {
     // In playlist mode the same cards become queue toggles instead of
     // one-tap starts, with numbered badges showing the queue order.
     function gameCard(gm) {
+      // Seat-range lock (same pattern in both modes): a game whose
+      // [min, max] excludes the current seat count shows WHY, and a
+      // tap explains instead of mysteriously failing.
+      var nP = v.players.length;
+      var rangeTxt = (gm.min === gm.max ? gm.min : gm.min + '–' + gm.max) + ' người';
+      var lockWhy = '';
+      if (gm.min && nP < gm.min) lockWhy = '🔒 Cần ít nhất ' + gm.min + ' người chơi (đang có ' + nP + ')';
+      else if (gm.max && nP > gm.max) lockWhy = '🔒 Tối đa ' + gm.max + ' người chơi (đang có ' + nP + ')';
       if (S.plMode) {
         var qi = S.plQueue.indexOf(gm.id);
-        var locked = gm.min && v.players.length < gm.min;
-        return '<button class="gamecard' + (qi >= 0 ? ' plon' : '') + (locked ? ' pllock' : '') + '" style="background:' + GCOLORS[gm.id] + '" data-cmd="plToggle" data-game="' + gm.id + '">'
+        return '<button class="gamecard' + (qi >= 0 ? ' plon' : '') + (lockWhy ? ' pllock' : '') + '" style="background:' + GCOLORS[gm.id] + '" data-cmd="plToggle" data-game="' + gm.id + '">'
           + (qi >= 0 ? '<span class="plbadge">' + (qi + 1) + '</span>' : '')
           + '<h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p>'
-          + (locked ? '<p class="small">🔒 Cần ' + gm.min + ' người chơi</p>' : '<p class="small">' + (qi >= 0 ? 'Đã chọn · chạm để bỏ khỏi hàng chờ' : 'Chạm để thêm vào hàng chờ') + '</p></button>');
+          + (lockWhy ? '<p class="small">' + lockWhy + '</p>' : '<p class="small">' + rangeTxt + ' · ' + (qi >= 0 ? 'Đã chọn · chạm để bỏ khỏi hàng chờ' : 'Chạm để thêm vào hàng chờ') + '</p></button>');
       }
       var small = gm.cat === 'coop' ? '1 trận hợp tác · Cả đội cùng nhận điểm theo hạng' : (gm.rounds > 1 ? gm.rounds + ' vòng · Vòng cuối ×2 điểm' : '1 trận sống còn · 300/200/100/50');
-      return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">' + small + '</p></button>';
+      if (lockWhy) {
+        return '<button class="gamecard pllock" style="background:' + GCOLORS[gm.id] + '" data-cmd="startLocked" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">' + lockWhy + '</p></button>';
+      }
+      return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">' + rangeTxt + ' · ' + small + '</p></button>';
     }
     // Playlist builder: arm the mode, tap cards to queue them, then
     // start the chain — or take a preset (random 5 / everything).
@@ -5115,7 +5610,8 @@ function hostHTML(v) {
   return h + '<div class="card center"><h2>Đang tải…</h2></div>';
 }
 function countdownHTML(g) {
-  return '<div class="cdwrap"><div class="baloo" style="font-size:30px">Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · VÒNG QUYẾT ĐỊNH ×2' : '') + '</div>'
+  var title = g.id === 'ma-soi' ? 'Đêm ' + g.round : g.id === 'ca-ngua' ? 'Bắt đầu nào!' : 'Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · VÒNG QUYẾT ĐỊNH ×2' : '');
+  return '<div class="cdwrap"><div class="baloo" style="font-size:30px">' + title + '</div>'
     + '<div class="cdnum" id="cdnum">3</div><div class="baloo" style="font-size:24px">Chuẩn bị…</div></div>';
 }
 // Shared client helpers for the two platformer games (wave 4): rect
@@ -5135,25 +5631,9 @@ function dmgColor(d) { return d >= 100 ? '#FF5A3C' : d >= 50 ? '#FFC93D' : '#7BE
 function hostStage(v) {
   var g = v.game;
   if (g.phase === 'countdown') return countdownHTML(g);
-  var h = '<h2>' + esc(g.name) + ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '') + '</h2>';
+  var h = '<h2>' + esc(g.name) + (g.id === 'ma-soi' ? ' · Đêm ' + (g.night || g.round) : g.id === 'ca-ngua' ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
   var t = serverNow();
-  if (g.id === 'nhanh-tay') {
-    if (g.phase === 'wait') h += '<div class="bigcircle wait">Đợi màu xanh…</div>';
-    else if (g.phase === 'go') h += '<div class="bigcircle go">BẤM!</div>';
-    if (g.phase === 'roundEnd' && g.lastRound) {
-      h += '<div class="rows">';
-      for (var i = 0; i < g.lastRound.entries.length; i++) {
-        var e = g.lastRound.entries[i]; var p = playerOf(v, e.seat);
-        var mid = e.status === 'tapped' ? e.reactionMs + ' ms' + (e.gapMs > 0 ? ' (+' + e.gapMs + ' ms)' : ' · NHANH NHẤT!') : (e.status === 'early' ? 'Bấm sớm!' : 'Không bấm');
-        h += '<div class="rrow">' + blobSVG(p.color, p.mood, 34) + ' ' + esc(p.name) + '<span class="muted">' + mid + '</span><span class="pts">' + (e.points > 0 ? '+' : '') + fmt(e.points) + '</span></div>';
-      }
-      h += '</div>';
-    } else {
-      h += '<div class="scorebar">';
-      for (var j = 0; j < v.players.length; j++) { var pp = v.players[j]; var st = g.status ? g.status[pp.seat] : 'waiting'; h += '<span class="scorechip">' + blobSVG(pp.color, pp.mood, 28) + ' ' + esc(pp.name) + ' · ' + (st === 'tapped' ? 'đã bấm!' : st === 'early' ? 'bấm sớm!' : 'đang đợi…') + '</span>'; }
-      h += '</div>';
-    }
-  } else if (g.id === 'do-vui') {
+  if (g.id === 'do-vui') {
     if (g.phase === 'question' || g.phase === 'reveal') {
       h += '<div class="baloo" style="font-size:30px">' + esc(g.question) + '</div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - DUR['do-vui']) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
@@ -5173,51 +5653,6 @@ function hostStage(v) {
         for (var c = 0; c < v.standings.length; c++) { var rp = playerOf(v, v.standings[c]); var pts = g.reveal.points[rp.seat] || 0; var stk = g.reveal.streaks[rp.seat] || 0; h += '<div class="rrow">' + blobSVG(rp.color, rp.mood, 34) + ' ' + esc(rp.name) + (stk >= 2 ? '<span class="chip hot">Chuỗi đúng ×' + stk + '</span>' : '') + '<span class="pts">' + (pts > 0 ? '+' : '') + fmt(pts) + '</span></div>'; }
         h += '</div>';
       }
-    }
-  } else if (g.id === 'doan-so') {
-    if (g.phase === 'guess') {
-      h += '<div class="baloo" style="font-size:30px">' + esc(g.question) + '</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - DUR['doan-so']) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      h += '<div class="scorebar">';
-      for (var d = 0; d < v.players.length; d++) { var gp = v.players[d]; h += '<span class="scorechip">' + blobSVG(gp.color, gp.mood, 28) + ' ' + esc(gp.name) + ' ' + (g.guessed && g.guessed[gp.seat] ? 'đã đoán ✓' : 'đang nghĩ…') + '</span>'; }
-      h += '</div>';
-    } else if (g.phase === 'reveal' && g.reveal) {
-      h += '<div class="baloo" style="font-size:32px">Đáp án đúng: ' + fmt(g.reveal.answer) + ' ' + esc(g.unit) + '</div>';
-      h += '<div class="rows">';
-      for (var e2 = 0; e2 < g.reveal.entries.length; e2++) {
-        var en = g.reveal.entries[e2]; var ep = playerOf(v, en.seat);
-        var dv = en.value === null ? '' : String(en.value);
-        var dt = en.value === null ? 'không đoán' : 'lệch ' + fmt(en.diff) + ' ' + esc(g.unit);
-        h += '<div class="rrow rev" data-reveal="' + en.revealAt + '" data-value="' + dv + '" data-difftext="' + esc(dt) + '">' + blobSVG(ep.color, ep.mood, 34) + ' ' + esc(ep.name) + ' <span class="gv">…</span> <span class="gd muted"></span><span class="pts">' + (en.points > 0 ? '+' : '') + fmt(en.points) + '</span></div>';
-      }
-      h += '</div>';
-    }
-  } else if (g.id === 'dua-bam') {
-    if (g.phase === 'race') {
-      h += '<div class="baloo" style="font-size:28px">BẤM! BẤM! BẤM!</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - DUR['dua-bam']) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      for (var r = 0; r < v.standings.length; r++) { var rb = playerOf(v, v.standings[r]); h += '<div class="racebar"><i data-seat="' + rb.seat + '" style="background:' + COLORS[rb.color] + ';width:0%"></i><b id="rcl-' + rb.seat + '">' + esc(rb.name) + ' · 0</b></div>'; }
-    } else if (g.phase === 'pause' && g.lastRound) {
-      h += '<div class="rows">';
-      for (var r2 = 0; r2 < g.lastRound.entries.length; r2++) { var re = g.lastRound.entries[r2]; var rp2 = playerOf(v, re.seat); h += '<div class="rrow">' + blobSVG(rp2.color, rp2.mood, 34) + ' ' + esc(rp2.name) + '<span class="muted">' + re.taps + ' lần bấm</span><span class="pts">+' + fmt(re.points) + '</span></div>'; }
-      h += '</div>';
-    }
-  } else if (g.id === 'nho-mau') {
-    if (g.phase === 'show') {
-      h += '<div class="baloo" style="font-size:28px">Nhìn kỹ dãy màu! Dãy dài ' + g.len + ' màu</div>';
-      h += '<div class="pads">';
-      for (var mI = 0; mI < 4; mI++) h += '<div class="pad" id="pad' + mI + '" style="background:' + MEM[mI] + '"></div>';
-      h += '</div>';
-    } else if (g.phase === 'input') {
-      h += '<div class="baloo" style="font-size:28px">Bấm lại dãy màu trên điện thoại!</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - DUR['nho-mau']) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      h += '<div class="scorebar">';
-      for (var m2 = 0; m2 < v.players.length; m2++) { var mp = v.players[m2]; var stt = g.statuses ? g.statuses[mp.seat] : 'playing'; h += '<span class="scorechip">' + blobSVG(mp.color, mp.mood, 28) + ' ' + esc(mp.name) + ' · ' + (stt === 'done' ? 'xong!' : stt === 'failed' ? 'sai rồi' : 'đang bấm…') + '</span>'; }
-      h += '</div>';
-    } else if (g.phase === 'pause' && g.lastRound) {
-      h += '<div class="rows">';
-      for (var m3 = 0; m3 < v.standings.length; m3++) { var mp3 = playerOf(v, v.standings[m3]); var mpts = g.lastRound.points[mp3.seat] || 0; h += '<div class="rrow">' + blobSVG(mp3.color, mp3.mood, 34) + ' ' + esc(mp3.name) + '<span class="muted">dãy ' + g.lastRound.len + ' màu</span><span class="pts">' + (mpts > 0 ? '+' : '') + fmt(mpts) + '</span></div>'; }
-      h += '</div>';
     }
   } else if (g.id === 'day-ra') {
     if (g.phase === 'arena') {
@@ -5464,8 +5899,131 @@ function hostStage(v) {
       h += '</div>';
       h += '<p class="center">Hồ đỏ chỉ Lửa qua được, hồ xanh chỉ Nước, hồ xanh lá hại cả hai! Đứng lên nút vàng để mở cổng cho đồng đội, rồi về đúng cửa của mình.</p>';
     }
+  } else if (g.id === 'ma-soi') {
+    var deadRole = {};
+    if (g.deadList) for (var dL = 0; dL < g.deadList.length; dL++) deadRole[g.deadList[dL].seat] = g.deadList[dL].role;
+    var wbanner = { night: '🌙 ĐÊM ' + (g.night || 1) + ' — LÀNG ĐANG NGỦ…', dawn: '☀️ BÌNH MINH ĐÊM ' + (g.night || 1), discuss: '🗣️ BÀN LUẬN — AI LÀ SÓI?', vote: '🗳️ BỎ PHIẾU TREO CỔ', execute: '⚖️ KẾT QUẢ BỎ PHIẾU', wolfEnd: '🏁 TRỜI SÁNG HẲN — KẾT THÚC!' };
+    h += '<div class="center baloo" style="font-size:27px">' + (wbanner[g.phase] || '') + '</div>';
+    if (g.phase === 'night') {
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 45000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      h += '<p class="center">Sói đang săn mồi · Bảo Vệ đang canh giữ · Tiên Tri đang soi · Phù Thủy đang cân nhắc hai lọ thuốc — tất cả bí mật trên điện thoại của từng người!</p>';
+    } else if (g.phase === 'dawn') {
+      if (g.dawnDeaths && g.dawnDeaths.length) {
+        h += '<div class="baloo center" style="font-size:24px">Đêm qua, làng đã mất:</div><div class="rows">';
+        for (var dI = 0; dI < g.dawnDeaths.length; dI++) { var dd = g.dawnDeaths[dI]; var dp5 = playerOf(v, dd.seat); if (dp5) h += '<div class="rrow">' + blobSVG(dp5.color, 'buon', 34) + ' ' + esc(dp5.name) + '<span class="chip hot">' + (WOLF_ROLE_NAMES[dd.role] || '') + '</span><span class="muted">' + (dd.role === 'soi' ? 'Một con sói đã gục ngã!' : 'Một người vô tội ra đi…') + '</span></div>'; }
+        h += '</div>';
+      } else {
+        h += '<div class="baloo center" style="font-size:25px">🌿 Một đêm yên bình — không ai phải ra đi!</div>';
+      }
+    } else if (g.phase === 'discuss') {
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 60000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      if (g.chatLog) for (var cI7 = 0; cI7 < g.chatLog.length; cI7++) { var cp7 = playerOf(v, g.chatLog[cI7].seat); h += '<div class="chatrow">' + blobSVG(cp7 ? cp7.color : 'blue', 'cuoi', 26) + ' <b>' + esc(cp7 ? cp7.name : '') + ':</b> ' + esc(g.chatLog[cI7].text) + '</div>'; }
+    } else if (g.phase === 'vote') {
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      h += '<div class="scorebar">';
+      for (var vI4 = 0; vI4 < v.players.length; vI4++) { var vp5 = v.players[vI4]; var isDead = g.aliveMap && !g.aliveMap[vp5.seat]; h += '<span class="scorechip">' + blobSVG(vp5.color, vp5.mood, 28) + ' ' + esc(vp5.name) + ' ' + (isDead ? '💀' : (g.voted && g.voted[vp5.seat] ? 'đã bỏ phiếu ✓' : 'đang nghĩ…')) + '</span>'; }
+      h += '</div>';
+    } else if (g.phase === 'execute' || g.phase === 'wolfEnd') {
+      if (g.exec) {
+        if (g.exec.seat) { var ep2 = playerOf(v, g.exec.seat); h += '<div class="center baloo" style="font-size:26px">Làng đã treo cổ ' + esc(ep2 ? ep2.name : '') + ' — đó là ' + (WOLF_ROLE_NAMES[g.exec.role] || '') + '!</div>'; }
+        else h += '<div class="center baloo" style="font-size:25px">Phiếu hoà hoặc chưa đủ — hôm nay không ai bị treo cổ.</div>';
+      }
+      if (g.voteTally) {
+        h += '<div class="rows">';
+        for (var tSeat in g.voteTally) { var tp5 = playerOf(v, +tSeat); if (tp5) h += '<div class="rrow">' + blobSVG(tp5.color, tp5.mood, 30) + ' ' + esc(tp5.name) + '<span class="pts">' + g.voteTally[tSeat] + ' phiếu</span></div>'; }
+        h += '</div>';
+      }
+    }
+    if (g.phase === 'wolfEnd') {
+      h += '<div class="center baloo" style="font-size:30px">' + (g.winner === 'soi' ? '🐺 BẦY SÓI THẮNG! Làng đã bị sói ăn mòn…' : '🎉 DÂN LÀNG THẮNG! Sói đã bị quét sạch!') + '</div>';
+      h += '<div class="rows">';
+      for (var wI = 0; wI < v.players.length; wI++) { var wp = v.players[wI]; var wr = g.roles ? g.roles[wp.seat] : null; h += '<div class="rrow">' + blobSVG(wp.color, wp.mood, 34) + ' ' + esc(wp.name) + (wr ? '<span class="chip ' + (wr === 'soi' ? 'hot' : 'cool') + '">' + WOLF_ROLE_NAMES[wr] + '</span>' : '') + '<span class="pts">+' + fmt(g.points[wp.seat] || 0) + '</span></div>'; }
+      h += '</div>';
+    } else {
+      h += '<div class="wolfgrid">';
+      for (var gI2 = 0; gI2 < v.players.length; gI2++) {
+        var gp3 = v.players[gI2]; var alive3 = !g.aliveMap || g.aliveMap[gp3.seat];
+        h += '<div class="wolfcard' + (alive3 ? '' : ' dead') + '">' + blobSVG(gp3.color, alive3 ? gp3.mood : 'buon', 54) + '<div>' + esc(gp3.name) + '</div>'
+          + (alive3 ? '<div class="small muted">😴 đang yên giấc / còn sống</div>' : '<div class="rolechip">💀 ' + (WOLF_ROLE_NAMES[deadRole[gp3.seat]] || '') + '</div>') + '</div>';
+      }
+      h += '</div>';
+    }
+  } else if (g.id === 'ca-ngua') {
+    var turnP = g.turn ? playerOf(v, g.turn) : null;
+    if (g.phase === 'ngWin' && g.winner) {
+      var winP = playerOf(v, g.winner);
+      h += '<div class="center baloo" style="font-size:29px">🏆 ' + esc(winP ? winP.name : '') + ' ĐƯA CẢ 4 NGỰA VỀ CHUỒNG — THẮNG!</div>';
+    } else {
+      h += '<div class="center baloo" style="font-size:24px">Lượt của: ' + (turnP ? esc(turnP.name) : '') + (g.dice ? ' · <span class="diceface">' + DICE_FACES[g.dice] + '</span> ' + g.dice + ' chấm' : ' · đang chờ thảy xúc xắc…') + '</div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    }
+    h += nguaBoardHTML(v, g);
+    h += '<div class="scorebar">';
+    for (var nI2 = 0; nI2 < v.players.length; nI2++) { var np3 = v.players[nI2]; var hs = g.horses ? (g.horses[np3.seat] || []) : []; var home3 = 0; for (var hI3 = 0; hI3 < hs.length; hI3++) if (hs[hI3] === 58) home3++; h += '<span class="scorechip">' + blobSVG(np3.color, np3.mood, 28) + ' ' + esc(np3.name) + ' · 🐴 về đích ' + home3 + '/4 · tiến độ ' + (g.progress ? (g.progress[np3.seat] || 0) : 0) + '</span>'; }
+    h += '</div>';
+    if (g.log) for (var lI = Math.max(0, g.log.length - 4); lI < g.log.length; lI++) h += '<div class="chatrow">🎲 ' + esc(g.log[lI]) + '</div>';
+    h += '<p class="center">Ô vàng là ô an toàn — ngựa đứng đó không bị đá. Thảy 6 được đi tiếp; 6 ba lần liên tiếp thì mất lượt!</p>';
   }
   return h;
+}
+// Cờ Cá Ngựa board: geometry arrives in the view (g.board), so the
+// renderer is a pure lookup — loop cells, home stretches, stables and
+// one token per horse; horses sharing a cell fan out into corners.
+function nguaBoardHTML(v, g) {
+  var B = g.board; if (!B) return '';
+  var CELL = 100 / 15;
+  // token coordinates per horse
+  var toks = [];
+  for (var si = 0; si < v.players.length; si++) {
+    var pl2 = v.players[si]; var bi = g.boards[pl2.seat]; var hs2 = g.horses[pl2.seat] || [];
+    for (var hi = 0; hi < hs2.length; hi++) {
+      var p2 = hs2[hi]; var xy = null;
+      if (p2 === 0) xy = B.stable[bi][hi];
+      else if (p2 <= 51) xy = B.loop[(bi * 13 + p2 - 1) % 52];
+      else if (p2 <= 57) xy = B.stretch[bi][p2 - 52];
+      else xy = [6 + (bi % 2) * 2, 6 + Math.floor(bi / 2) * 2];
+      toks.push({ seat: pl2.seat, hi: hi, x: xy[0], y: xy[1], p: p2 });
+    }
+  }
+  var groups = {};
+  toks.forEach(function (tk) { var k = tk.x + ',' + tk.y; (groups[k] = groups[k] || []).push(tk); });
+  var h = '<div class="ngboard">';
+  var quadXY = [[0, 0], [9, 0], [9, 9], [0, 9]];
+  for (var qi = 0; qi < v.players.length; qi++) {
+    var qp = v.players[qi]; var qb = g.boards[qp.seat];
+    h += '<div class="ngcell quad" style="left:' + (quadXY[qb][0] * CELL) + '%;top:' + (quadXY[qb][1] * CELL) + '%;width:' + (6 * CELL) + '%;height:' + (6 * CELL) + '%;background:' + LIGHT[qp.color] + '"></div>';
+  }
+  for (var ci = 0; ci < B.loop.length; ci++) {
+    var c2 = B.loop[ci];
+    var fill = '';
+    if (B.safe.indexOf(ci) >= 0) fill = '';
+    var startBoard = ci % 13 === 0 ? ci / 13 : -1;
+    var st = 'left:' + (c2[0] * CELL) + '%;top:' + (c2[1] * CELL) + '%;width:' + CELL + '%;height:' + CELL + '%';
+    if (startBoard >= 0) {
+      var sp2 = null;
+      for (var sj = 0; sj < v.players.length; sj++) if (g.boards[v.players[sj].seat] === startBoard) sp2 = v.players[sj];
+      if (sp2) st += ';background:' + LIGHT[sp2.color];
+    }
+    h += '<div class="ngcell' + (B.safe.indexOf(ci) >= 0 ? ' safe' : '') + '" style="' + st + '"></div>';
+  }
+  for (var bi2 = 0; bi2 < B.stretch.length; bi2++) {
+    var owner = null;
+    for (var oj = 0; oj < v.players.length; oj++) if (g.boards[v.players[oj].seat] === bi2) owner = v.players[oj];
+    if (!owner) continue;
+    for (var sti = 0; sti < B.stretch[bi2].length; sti++) { var sc = B.stretch[bi2][sti]; h += '<div class="ngcell" style="left:' + (sc[0] * CELL) + '%;top:' + (sc[1] * CELL) + '%;width:' + CELL + '%;height:' + CELL + '%;background:' + LIGHT[owner.color] + '"></div>'; }
+    for (var sbi = 0; sbi < B.stable[bi2].length; sbi++) { var sb = B.stable[bi2][sbi]; h += '<div class="ngstable" style="left:' + ((sb[0] + 0.15) * CELL) + '%;top:' + ((sb[1] + 0.15) * CELL) + '%;width:' + (0.7 * CELL) + '%;height:' + (0.7 * CELL) + '%;border-color:' + COLORS[owner.color] + '"></div>'; }
+  }
+  toks.forEach(function (tk) {
+    var owner2 = playerOf(v, tk.seat);
+    var grp = groups[tk.x + ',' + tk.y];
+    var idx = grp.indexOf(tk);
+    var many = grp.length > 1;
+    var size = many ? 0.52 : 0.8;
+    var ox = many ? (idx % 2) * 0.48 : 0.1;
+    var oy = many ? Math.floor(idx / 2) * 0.48 : 0.1;
+    h += '<div class="nghorse' + (g.turn === tk.seat && g.phase !== 'ngWin' ? ' turn' : '') + '" style="left:' + ((tk.x + ox) * CELL) + '%;top:' + ((tk.y + oy) * CELL) + '%;width:' + (size * CELL) + '%;height:' + (size * CELL) + '%;background:' + COLORS[owner2.color] + ';font-size:' + (many ? 11 : 14) + 'px">' + (tk.hi + 1) + '</div>';
+  });
+  return h + '</div>';
 }
 function resultsHTML(v, isHost) {
   var lg = v.lastGame;
@@ -5572,23 +6130,23 @@ function viewSig(v) {
     } else if (g.id === 'den-lua-nuoc') {
       gp = pl ? [g.id, g.phase, g.hearts, g.gemCount, g.myEl, g.myHome, g.lastRound]
         : [g.id, g.phase, g.hearts, g.gemCount, g.gateOpen, g.lastRound];
+    } else if (g.id === 'ma-soi') {
+      gp = pl ? [g.id, g.phase, g.night, g.aliveMap, g.deadList, g.myRole, g.myAlive, g.myWolfVote, g.wolfVotesIn, g.myGuardPick, g.mySeerPick, g.mySeerNotes, g.myVictim, g.myWitchSave, g.myWitchPoison, g.myWitchDone, g.voted, g.chatLog, g.exec, g.winner, g.points, g.lastRound]
+        : [g.id, g.phase, g.night, g.aliveMap, g.deadList, g.dawnDeaths, g.voted, g.chatLog, g.exec, g.voteTally, g.winner, g.roles, g.points, g.lastRound];
+    } else if (g.id === 'ca-ngua') {
+      gp = pl ? [g.id, g.phase, g.turn, g.dice, g.horses, g.last, g.winner, g.myLegal, g.myTurn]
+        : [g.id, g.phase, g.turn, g.dice, g.horses, g.last, g.winner, g.log];
     } else {
       if (pl) {
       // PLAYER signature for the tap/answer games: keep only what the
       // phone actually renders and what changes on real game events.
-      // Dropped vs the host signature: g.mine as a raw counter (dua-bam
-      // mine = my own tap count, nho-mau mine.taps — both change with
-      // EVERY press I make, and tick() already refreshes the on-screen
-      // counters from the raw view), and g.answered / g.guessed /
-      // g.statuses, which track the OTHER players and are never drawn
-      // on the phone. Rebuilding the controls mid-press is what ate
-      // real finger presses; the host signature is unchanged.
-      var pm = g.mine;
-      if (g.id === 'nho-mau' && pm) pm = pm.status;
-      else if (g.id === 'dua-bam') pm = null;
-      gp = [g.id, g.phase, g.round, g.points, g.lastRound, g.reveal, g.status, pm, g.myStreak];
+      // Dropped vs the host signature: g.answered / g.statuses, which
+      // track the OTHER players and are never drawn on the phone.
+      // Rebuilding the controls mid-press is what ate real finger
+      // presses; the host signature is unchanged.
+      gp = [g.id, g.phase, g.round, g.points, g.lastRound, g.reveal, g.status, g.mine, g.myStreak];
     } else {
-      gp = [g.id, g.phase, g.round, g.points, g.lastRound, g.reveal, g.status, g.answered, g.guessed, g.statuses, g.mine];
+      gp = [g.id, g.phase, g.round, g.points, g.lastRound, g.reveal, g.status, g.answered, g.statuses, g.mine];
     }
     }
   }
@@ -6115,29 +6673,10 @@ function tick() {
     var pct = Math.max(0, Math.min(100, (end - t) / (end - start) * 100));
     bars[i].style.width = pct + '%';
   }
-  if (g && ((g.id === 'do-vui' && g.phase === 'question') || (g.id === 'dua-bam' && g.phase === 'race') || (g.id === 'doan-so' && g.phase === 'guess'))) {
+  if (g && g.id === 'do-vui' && g.phase === 'question') {
     var rem = g.endsAt - t;
     if (rem <= 3000 && rem > 0) { var s2 = Math.ceil(rem / 1000); if (s2 !== S.lastTickSec) { S.lastTickSec = s2; beep(1150, 0.045, 'square', 0.09); } }
     else if (rem > 3000) S.lastTickSec = -1;
-  }
-  if (g && g.id === 'nho-mau' && g.phase === 'show' && S.role === 'host' && g.seq) {
-    var len = g.seq.length; var total = 900 + len * 750;
-    var elapsed = total - (g.endsAt - t);
-    var active = -1;
-    if (elapsed >= 450) { var idx = Math.floor((elapsed - 450) / 750); var within = (elapsed - 450) - idx * 750; if (idx < len && within < 450) active = g.seq[idx]; }
-    for (var pi = 0; pi < 4; pi++) { var pad = el('pad' + pi); if (pad) { if (pi === active) pad.classList.add('on'); else pad.classList.remove('on'); } }
-  }
-  if (g && g.id === 'dua-bam' && g.counts) {
-    var max = 1; var seat;
-    for (seat in g.counts) if (g.counts[seat] > max) max = g.counts[seat];
-    for (seat in g.counts) {
-      var bar = document.querySelector('.racebar i[data-seat="' + seat + '"]');
-      if (bar) bar.style.width = (g.counts[seat] / max * 100) + '%';
-      var lab = el('rcl-' + seat);
-      if (lab) { var pl = playerOf(v, +seat); lab.textContent = (pl ? pl.name : '') + ' · ' + g.counts[seat]; }
-    }
-    var mc = el('mycount');
-    if (mc && S.role === 'player') mc.textContent = g.counts[S.seat] || 0;
   }
   patchPositions(v);
   var rows = document.querySelectorAll('.rev');
@@ -6163,7 +6702,7 @@ function homeHTML() {
   h += '</div>';
   h += '<p><input type="text" id="joinName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
   h += '<p><button class="btn pink" data-cmd="join" style="font-size:22px">Vào phòng</button></p></div>';
-  h += '<p class="center muted small" style="margin-top:14px">23 game: Nhanh Tay · Đố Vui Tốc Độ · Đoán Số Chuẩn · Đua Bấm Nút · Nhớ Màu · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Người Que Đại Chiến · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước — 17 game đấu + 6 game hợp tác!</p>';
+  h += '<p class="center muted small" style="margin-top:14px">21 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Ma Sói · Cờ Cá Ngựa · Người Que Đại Chiến · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước — 15 game đấu + 6 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
   return h;
 }
 function playerHTML(v) {
@@ -6188,23 +6727,8 @@ function playerGame(v) {
   var me = playerOf(v, S.seat);
   var h = '<div class="stage pstage g-' + g.id + (isActionGame(g.id) ? ' neon-stage' : '') + '">';
   if (g.phase === 'countdown') { h += '<div class="center baloo" style="font-size:26px">' + esc(g.name) + '</div>' + countdownHTML(g) + '</div>'; return h; }
-  h += '<h2>' + esc(g.name) + ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '') + '</h2>';
-  if (g.id === 'nhanh-tay') {
-    if (g.phase === 'wait') {
-      if (g.mine === 'early') h += '<div class="center"><div class="baloo" style="font-size:30px">Bạn bấm sớm!</div><p>−100 điểm vòng này. Đợi vòng sau nhé.</p></div>';
-      else h += '<button class="tapbtn wait" data-cmd="tap">ĐỢI…<br><span style="font-size:17px">Đừng bấm vội!</span></button>';
-    } else if (g.phase === 'go') {
-      if (g.mine === 'tapped') h += '<div class="center baloo" style="font-size:30px">Đã bấm! Đợi kết quả…</div>';
-      else h += '<button class="tapbtn go" data-cmd="tap">BẤM NGAY!</button>';
-    } else if (g.phase === 'roundEnd' && g.lastRound) {
-      var e = null; for (var i = 0; i < g.lastRound.entries.length; i++) if (g.lastRound.entries[i].seat === S.seat) e = g.lastRound.entries[i];
-      if (e) {
-        h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, e.points > 0 ? 'reo' : 'buon', 100) + '</span>';
-        h += '<div class="baloo" style="font-size:28px">' + (e.status === 'tapped' ? 'Bạn bấm trong ' + e.reactionMs + ' ms' + (e.gapMs > 0 ? ' (chậm hơn ' + e.gapMs + ' ms)' : ' — NHANH NHẤT!') : e.status === 'early' ? 'Bấm sớm mất rồi!' : 'Bạn chưa bấm') + '</div>';
-        h += '<div class="baloo" style="font-size:24px">' + (e.points > 0 ? '+' : '') + fmt(e.points) + ' điểm</div></div>';
-      }
-    }
-  } else if (g.id === 'do-vui') {
+  h += '<h2>' + esc(g.name) + (g.id === 'ma-soi' ? ' · Đêm ' + (g.night || g.round) : g.id === 'ca-ngua' ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
+  if (g.id === 'do-vui') {
     if (g.phase === 'question') {
       h += '<div class="baloo" style="font-size:22px">' + esc(g.question) + '</div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - DUR['do-vui']) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
@@ -6222,55 +6746,6 @@ function playerGame(v) {
       h += '<div class="baloo" style="font-size:30px">' + (okAns ? 'ĐÚNG RỒI!' : 'Chưa đúng!') + '</div>';
       h += '<p>Đáp án đúng: <b>' + LETTERS[g.reveal.correct] + '. ' + esc(g.options[g.reveal.correct]) + '</b></p>';
       h += '<div class="baloo" style="font-size:24px">+' + fmt(g.reveal.points[S.seat] || 0) + ' điểm</div></div>';
-    }
-  } else if (g.id === 'doan-so') {
-    if (g.phase === 'guess') {
-      h += '<div class="baloo" style="font-size:22px">' + esc(g.question) + ' (' + esc(g.unit) + ')</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - DUR['doan-so']) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      if (g.mine == null) {
-        h += '<div class="guessbox center" id="guessVal">' + (S.guess ? fmt(+S.guess) : '') + '</div>';
-        h += '<div class="keypad">';
-        var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'D'];
-        for (var kI = 0; kI < keys.length; kI++) h += '<button class="key" data-cmd="key" data-k="' + keys[kI] + '">' + (keys[kI] === 'C' ? 'Xoá' : keys[kI] === 'D' ? '←' : keys[kI]) + '</button>';
-        h += '</div>';
-        h += '<p class="center"><button class="btn green" data-cmd="guessSubmit" style="font-size:23px">ĐOÁN!</button></p>';
-      } else {
-        h += '<div class="center baloo" style="font-size:27px">Đã đoán: ' + fmt(g.mine) + ' ' + esc(g.unit) + '</div><p class="center">Đợi kết quả trên TV…</p>';
-      }
-    } else if (g.phase === 'reveal' && g.reveal) {
-      var myE = null; for (var gi = 0; gi < g.reveal.entries.length; gi++) if (g.reveal.entries[gi].seat === S.seat) myE = g.reveal.entries[gi];
-      h += '<div class="center"><div class="baloo" style="font-size:28px">Đáp án đúng: ' + fmt(g.reveal.answer) + ' ' + esc(g.unit) + '</div>';
-      if (myE) h += '<p>Bạn đoán ' + (myE.value === null ? '—' : fmt(myE.value)) + (myE.diff !== null ? ' · lệch ' + fmt(myE.diff) : '') + '</p><div class="baloo" style="font-size:24px">+' + fmt(myE.points) + ' điểm</div>';
-      h += '</div>';
-    }
-  } else if (g.id === 'dua-bam') {
-    if (g.phase === 'race') {
-      h += '<div class="center baloo" style="font-size:26px">Số lần bấm của bạn</div>';
-      h += '<div class="center baloo" style="font-size:64px" id="mycount">' + (g.mine || 0) + '</div>';
-      h += '<button class="tapbtn race" data-cmd="tap">BẤM!</button>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - DUR['dua-bam']) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    } else if (g.phase === 'pause' && g.lastRound) {
-      h += '<div class="rows">';
-      for (var rI = 0; rI < g.lastRound.entries.length; rI++) { var re2 = g.lastRound.entries[rI]; var rp = playerOf(v, re2.seat); h += '<div class="rrow">' + blobSVG(rp.color, rp.mood, 32) + ' ' + esc(rp.name) + '<span class="muted">' + re2.taps + ' lần</span><span class="pts">+' + fmt(re2.points) + '</span></div>'; }
-      h += '</div>';
-    }
-  } else if (g.id === 'nho-mau') {
-    if (g.phase === 'show') {
-      h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, 'ngacnhien', 110) + '</span><div class="baloo" style="font-size:27px">Nhìn lên TV<br>và nhớ dãy màu!</div><p>Dãy dài ' + g.len + ' màu</p></div>';
-    } else if (g.phase === 'input') {
-      var mine = g.mine || { taps: 0, status: 'playing' };
-      if (mine.status === 'done') h += '<div class="center baloo" style="font-size:29px">Hoàn thành! Đợi kết quả…</div>';
-      else if (mine.status === 'failed') h += '<div class="center baloo" style="font-size:29px">Sai rồi! Vòng này 0 điểm.</div>';
-      else {
-        h += '<div class="center baloo" style="font-size:23px">Đã bấm <span id="coltaps">' + mine.taps + '</span>/' + g.len + ' màu</div>';
-        h += '<div class="pads">';
-        for (var cI = 0; cI < 4; cI++) h += '<button class="pad" data-cmd="color" data-i="' + cI + '" style="background:' + MEM[cI] + ';opacity:.9" aria-label="' + MEMNAME[cI] + '"></button>';
-        h += '</div>';
-        h += '<div class="tbar"><i data-start="' + (g.endsAt - DUR['nho-mau']) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      }
-    } else if (g.phase === 'pause' && g.lastRound) {
-      var mp2 = g.lastRound.points[S.seat] || 0;
-      h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, mp2 > 0 ? 'reo' : 'buon', 100) + '</span><div class="baloo" style="font-size:27px">' + (mp2 > 0 ? 'Nhớ siêu quá!' : 'Chưa thuộc dãy này') + '</div><div class="baloo" style="font-size:23px">+' + fmt(mp2) + ' điểm</div></div>';
     }
   } else if (g.id === 'day-ra' || g.id === 'ne-dan') {
     var myB = g.blobs ? g.blobs[S.seat] : null;
@@ -6477,6 +6952,118 @@ function playerGame(v) {
       h += '<p class="center small">' + (g.myEl === 'lua' ? 'Bạn là LỬA: hồ đỏ an toàn, hồ xanh dương chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc đỏ.' : 'Bạn là NƯỚC: hồ xanh dương an toàn, hồ đỏ chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc xanh.') + ' Đứng lên nút vàng để mở cổng cho đồng đội. A hoặc Y: nhảy.</p>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 150000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
+  } else if (g.id === 'ma-soi') {
+    var roleName = WOLF_ROLE_NAMES[g.myRole] || '';
+    h += '<div class="center"><span class="chip ' + (g.myRole === 'soi' ? 'hot' : 'cool') + '" style="font-size:17px">Vai của bạn: ' + roleName + '</span></div>';
+    if (!g.myAlive) {
+      h += '<div class="center"><div class="ko-big">💀</div><div class="baloo" style="font-size:26px">Bạn đã chết — theo dõi tiếp nhé!</div><p>Xem mọi người bàn luận và bỏ phiếu trên TV. Vai của bạn sẽ được công bố khi game kết thúc.</p></div>';
+    } else if (g.phase === 'night') {
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 45000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      if (g.myRole === 'soi') {
+        h += '<div class="center baloo" style="font-size:21px">🐺 Bầy sói: ' + (g.wolfTeam || []).map(function (s2) { var wp2 = playerOf(v, s2); return esc(wp2 ? wp2.name : ''); }).join(', ') + '</div>';
+        if (g.myWolfVote == null) {
+          h += '<div class="baloo" style="font-size:21px">Chọn con mồi đêm nay:</div><div class="optgrid">';
+          for (var wv = 0; wv < v.players.length; wv++) { var wvp = v.players[wv]; if (wvp.seat === S.seat || (g.aliveMap && !g.aliveMap[wvp.seat])) continue; var isMate = (g.wolfTeam || []).indexOf(wvp.seat) >= 0; h += '<button class="opt" data-cmd="wolfPick" data-kind="wolfVote" data-i="' + wvp.seat + '">' + esc(wvp.name) + (isMate ? ' 🐺 (đồng đội)' : '') + '</button>'; }
+          h += '</div>';
+        } else {
+          var vt = playerOf(v, g.myWolfVote);
+          h += '<div class="center baloo" style="font-size:23px">Đã chọn con mồi: ' + esc(vt ? vt.name : '') + '<br><span style="font-size:18px">Phiếu sói đã vào: ' + (g.wolfVotesIn || 0) + '/' + (g.wolfTeam || []).length + '</span></div>';
+        }
+      } else if (g.myRole === 'bao-ve') {
+        if (g.myGuardPick == null) {
+          h += '<div class="baloo" style="font-size:21px">Đêm nay bạn bảo vệ ai? (được bảo vệ chính mình; không trùng người đêm qua)</div><div class="optgrid">';
+          for (var gv = 0; gv < v.players.length; gv++) { var gvp = v.players[gv]; if (g.aliveMap && !g.aliveMap[gvp.seat]) continue; var wasLast = g.myGuardLast === gvp.seat; h += '<button class="opt" data-cmd="wolfPick" data-kind="wolfGuard" data-i="' + gvp.seat + '"' + (wasLast ? ' disabled style="opacity:.45"' : '') + '>' + esc(gvp.name) + (gvp.seat === S.seat ? ' (bạn)' : '') + (wasLast ? ' · đêm qua đã bảo vệ' : '') + '</button>'; }
+          h += '</div>';
+        } else { var gp6 = playerOf(v, g.myGuardPick); h += '<div class="center baloo" style="font-size:23px">🛡️ Đang bảo vệ: ' + esc(gp6 ? gp6.name : '') + '</div>'; }
+      } else if (g.myRole === 'tien-tri') {
+        if (g.mySeerPick == null) {
+          h += '<div class="baloo" style="font-size:21px">Đêm nay bạn soi ai?</div><div class="optgrid">';
+          for (var sv2 = 0; sv2 < v.players.length; sv2++) { var svp = v.players[sv2]; if (svp.seat === S.seat || (g.aliveMap && !g.aliveMap[svp.seat])) continue; h += '<button class="opt" data-cmd="wolfPick" data-kind="wolfSeer" data-i="' + svp.seat + '">' + esc(svp.name) + '</button>'; }
+          h += '</div>';
+        } else { var sp7 = playerOf(v, g.mySeerPick); var seenWolf = (g.mySeerNotes || []).some(function (n2) { return n2.seat === g.mySeerPick && n2.wolf; }); h += '<div class="center baloo" style="font-size:23px">🔮 ' + esc(sp7 ? sp7.name : '') + (seenWolf ? ' LÀ SÓI! 🐺' : ' là dân lành ✅') + '</div>'; }
+        if (g.mySeerNotes && g.mySeerNotes.length) {
+          h += '<div class="rows"><div class="baloo" style="font-size:19px">📖 Sổ tay tiên tri (chỉ mình bạn thấy):</div>';
+          for (var sn = 0; sn < g.mySeerNotes.length; sn++) { var np4 = playerOf(v, g.mySeerNotes[sn].seat); h += '<div class="rrow">' + blobSVG(np4 ? np4.color : 'blue', 'cuoi', 28) + ' ' + esc(np4 ? np4.name : '') + '<span class="pts">' + (g.mySeerNotes[sn].wolf ? '🐺 SÓI' : '✅ dân') + '</span></div>'; }
+          h += '</div>';
+        }
+      } else if (g.myRole === 'phu-thuy') {
+        if (g.myWitchDone) {
+          h += '<div class="center baloo" style="font-size:23px">🧙 Đã quyết định xong — đi ngủ thôi!</div>';
+        } else if (!g.wolvesIn) {
+          h += '<div class="center baloo" style="font-size:22px">🧙 Đợi bầy sói chọn xong con mồi…</div><p class="center">Thuốc của bạn: 🧪 cứu ×' + (g.mySaveLeft || 0) + ' · ☠️ độc ×' + (g.myPoisonLeft || 0) + '</p>';
+        } else {
+          var vic = g.myVictim ? playerOf(v, g.myVictim) : null;
+          h += '<div class="center baloo" style="font-size:22px">Con mồi của sói đêm nay: ' + (vic ? esc(vic.name) : '—') + (g.myVictim === S.seat ? ' (CHÍNH LÀ BẠN!)' : '') + '</div>';
+          if (g.mySaveLeft > 0) h += '<p class="center"><button class="btn ' + (g.myWitchSave ? 'green' : 'ghost') + '" data-cmd="witchSave">' + (g.myWitchSave ? '🧪 ĐÃ CHỌN CỨU — bấm để huỷ' : '🧪 Dùng thuốc cứu người này') + '</button></p>';
+          else h += '<p class="center muted">Thuốc cứu đã dùng hết.</p>';
+          if (g.myPoisonLeft > 0) {
+            h += '<div class="baloo" style="font-size:20px">☠️ Đầu độc ai? ' + (g.myWitchPoison ? '(đang chọn: ' + esc((playerOf(v, g.myWitchPoison) || {}).name || '') + ')' : '(chưa chọn)') + '</div><div class="optgrid">';
+            for (var pv2 = 0; pv2 < v.players.length; pv2++) { var pvp = v.players[pv2]; if (pvp.seat === S.seat || (g.aliveMap && !g.aliveMap[pvp.seat])) continue; h += '<button class="opt" data-cmd="wolfPick" data-kind="wolfPoison" data-i="' + pvp.seat + '">' + esc(pvp.name) + '</button>'; }
+            h += '</div>';
+            if (g.myWitchPoison) h += '<p class="center"><button class="btn small ghost" data-cmd="witchPoisonClear">Bỏ chọn đầu độc</button></p>';
+          } else h += '<p class="center muted">Thuốc độc đã dùng hết.</p>';
+          h += '<p class="center"><button class="btn pink" data-cmd="witchDone" style="font-size:21px">Xác nhận — đi ngủ</button></p>';
+        }
+      } else {
+        h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, 'ngu', 100) + '</span><div class="baloo" style="font-size:24px">Bạn là dân làng — ngủ ngon nhé…</div><p>Đợi trời sáng trên TV.</p></div>';
+      }
+    } else if (g.phase === 'dawn') {
+      if (g.dawnDeaths && g.dawnDeaths.length) {
+        h += '<div class="center baloo" style="font-size:24px">☀️ Đêm qua làng mất: ' + g.dawnDeaths.map(function (d3) { var dp6 = playerOf(v, d3.seat); return esc(dp6 ? dp6.name : ''); }).join(', ') + '</div>';
+      } else h += '<div class="center baloo" style="font-size:24px">☀️ Đêm qua bình yên — không ai ra đi!</div>';
+    } else if (g.phase === 'discuss') {
+      h += '<div class="baloo" style="font-size:21px">Bàn luận: ai là sói?</div>';
+      if (g.chatLog) for (var pI7 = 0; pI7 < g.chatLog.length; pI7++) { var pp7 = playerOf(v, g.chatLog[pI7].seat); h += '<div class="chatrow">' + blobSVG(pp7 ? pp7.color : 'blue', 'cuoi', 24) + ' <b>' + esc(pp7 ? pp7.name : '') + ':</b> ' + esc(g.chatLog[pI7].text) + '</div>'; }
+      h += '<p class="center"><input type="text" id="chatText" maxlength="60" placeholder="Nói gì đó…" style="width:min(70vw,300px)"> <button class="btn small blue" data-cmd="chatSend">Gửi</button></p>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 60000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    } else if (g.phase === 'vote') {
+      if (g.voted && g.voted[S.seat]) {
+        h += '<div class="center baloo" style="font-size:25px">Đã bỏ phiếu! Đợi kết quả…</div>';
+      } else {
+        h += '<div class="baloo" style="font-size:22px">Treo cổ ai? Chọn một người bạn nghi là sói:</div><div class="optgrid">';
+        for (var vv = 0; vv < v.players.length; vv++) { var vvp = v.players[vv]; if (vvp.seat === S.seat || (g.aliveMap && !g.aliveMap[vvp.seat])) continue; h += '<button class="opt" data-cmd="vote" data-i="' + vvp.seat + '">' + esc(vvp.name) + '</button>'; }
+        h += '</div>';
+      }
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    } else if (g.phase === 'execute') {
+      if (g.exec && g.exec.seat) { var ep3 = playerOf(v, g.exec.seat); h += '<div class="center baloo" style="font-size:25px">⚖️ ' + esc(ep3 ? ep3.name : '') + ' bị treo cổ — là ' + (WOLF_ROLE_NAMES[g.exec.role] || '') + '</div>'; }
+      else h += '<div class="center baloo" style="font-size:24px">⚖️ Hôm nay không ai bị treo cổ.</div>';
+    } else if (g.phase === 'wolfEnd') {
+      var iWon2 = (g.winner === 'soi') === (g.myRole === 'soi');
+      h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, iWon2 ? 'reo' : 'buon', 100) + '</span>';
+      h += '<div class="baloo" style="font-size:27px">' + (g.winner === 'soi' ? '🐺 Bầy sói thắng!' : '🎉 Dân làng thắng!') + '</div>';
+      h += '<p>Bạn là ' + roleName + ' · +' + fmt(g.points[S.seat] || 0) + ' điểm</p>';
+      if (g.roles) { h += '<div class="rows">'; for (var wr2 = 0; wr2 < v.players.length; wr2++) { var wrp = v.players[wr2]; h += '<div class="rrow">' + blobSVG(wrp.color, wrp.mood, 30) + ' ' + esc(wrp.name) + '<span class="chip ' + (g.roles[wrp.seat] === 'soi' ? 'hot' : 'cool') + '">' + (WOLF_ROLE_NAMES[g.roles[wrp.seat]] || '') + '</span></div>'; } h += '</div>'; }
+      h += '</div>';
+    }
+  } else if (g.id === 'ca-ngua') {
+    var myHs = g.horses ? (g.horses[S.seat] || []) : [];
+    var turnP2 = g.turn ? playerOf(v, g.turn) : null;
+    if (g.phase === 'ngWin') {
+      var winP2 = g.winner ? playerOf(v, g.winner) : null;
+      h += '<div class="center"><div class="baloo" style="font-size:27px">🏆 ' + esc(winP2 ? winP2.name : '') + ' thắng!</div><p>Bạn về hạng theo tiến độ — xem bảng điểm trên TV nhé.</p></div>';
+    } else if (g.myTurn && g.phase === 'roll') {
+      h += '<div class="center baloo" style="font-size:25px">🎲 LƯỢT CỦA BẠN!</div>';
+      h += '<p class="center"><button class="btn pink" data-cmd="roll" style="font-size:26px;padding:18px 34px">THẢY XÚC XẮC</button></p>';
+      h += '<p class="center small">Thảy 6 để xuất chuồng và được thảy tiếp · Ba lần 6 liên tiếp là mất lượt!</p>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    } else if (g.myTurn && g.phase === 'pick') {
+      h += '<div class="center baloo" style="font-size:24px">Bạn thảy được: <span class="diceface">' + DICE_FACES[g.dice] + '</span> ' + g.dice + ' chấm</div>';
+      if (g.myLegal && g.myLegal.length) {
+        h += '<div class="baloo" style="font-size:21px">Chọn ngựa để đi:</div><div class="optgrid">';
+        for (var ml = 0; ml < g.myLegal.length; ml++) { var mle = g.myLegal[ml]; h += '<button class="opt" data-cmd="move" data-i="' + mle.horse + '">🐴 Ngựa ' + (mle.horse + 1) + '<br><span style="font-size:16px">' + esc(mle.hint) + '</span></button>'; }
+        h += '</div>';
+      } else {
+        h += '<div class="center baloo" style="font-size:22px">Không có nước đi nào — đợi qua lượt…</div>';
+      }
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    } else {
+      h += '<div class="center baloo" style="font-size:22px">Lượt của ' + esc(turnP2 ? turnP2.name : '') + (g.dice ? ' · vừa thảy ' + DICE_FACES[g.dice] : '') + '</div>';
+      h += '<div class="rows">';
+      for (var mh = 0; mh < myHs.length; mh++) h += '<div class="rrow">🐴 Ngựa ' + (mh + 1) + '<span class="muted">' + (myHs[mh] === 0 ? 'đang trong chuồng' : myHs[mh] === 58 ? 'ĐÃ VỀ ĐÍCH 🏆' : myHs[mh] >= 52 ? 'đường về chuồng ' + (myHs[mh] - 51) + '/6' : 'ô ' + myHs[mh] + '/51') + '</span></div>';
+      h += '</div>';
+      h += '<p class="center">Xem bàn cờ trên TV nhé!</p>';
+    }
   }
   return h + '</div>';
 }
@@ -6517,7 +7104,7 @@ function tryJoin(code, name, attempt) {
 // navigation) keep the plain click path, as do clicks with no press
 // before them (keyboard / assistive tech).
 // ---------------------------------------------------------------------
-var GAME_CMDS = { tap: 1, answer: 1, color: 1, key: 1, guessSubmit: 1, choose: 1, vote: 1, symbol: 1 };
+var GAME_CMDS = { tap: 1, answer: 1, choose: 1, vote: 1, symbol: 1, roll: 1, move: 1, wolfPick: 1, witchSave: 1, witchDone: 1, witchPoisonClear: 1 };
 var cmdGuard = {};
 function findCmdNode(node) {
   while (node && node !== document.body) { if (node.getAttribute && node.getAttribute('data-cmd')) return node; node = node.parentNode; }
@@ -6572,6 +7159,9 @@ function runCmd(node) {
   } else if (cmd === 'start') {
     sfxTap();
     act({ action: 'startGame', game: node.getAttribute('data-game') });
+  } else if (cmd === 'startLocked') {
+    var lgm = gameMeta(S.view, node.getAttribute('data-game'));
+    if (lgm && S.view) toast(lgm.name + ' chơi được với ' + lgm.min + '–' + lgm.max + ' người — phòng đang có ' + S.view.players.length + ' người. Thêm/xoá Máy hoặc rủ thêm bạn nhé.');
   } else if (cmd === 'quitGame') {
     sfxTap();
     act({ action: 'quitToChoosing' });
@@ -6588,20 +7178,20 @@ function runCmd(node) {
     var pqi = S.plQueue.indexOf(pgid);
     if (pqi >= 0) S.plQueue.splice(pqi, 1);
     else {
-      if (pgm && pgm.min && S.view && S.view.players.length < pgm.min) { toast(pgm.name + ' cần ' + pgm.min + ' người chơi mới xếp hàng chờ được.'); return; }
+      if (pgm && S.view && seatLocked(pgm, S.view.players.length)) { toast(pgm.name + ' chơi được với ' + pgm.min + '–' + pgm.max + ' người — phòng đang có ' + S.view.players.length + ' người.'); return; }
       S.plQueue.push(pgid);
     }
     sfxTap(); S.sig = ''; render();
   } else if (cmd === 'plRandom') {
     var pool = [];
-    for (var rpi = 0; rpi < S.view.games.length; rpi++) { var rgm = S.view.games[rpi]; if (!(rgm.min && S.view.players.length < rgm.min)) pool.push(rgm.id); }
+    for (var rpi = 0; rpi < S.view.games.length; rpi++) { var rgm = S.view.games[rpi]; if (!seatLocked(rgm, S.view.players.length)) pool.push(rgm.id); }
     var picked = [];
     while (picked.length < 5 && pool.length) { var rix = Math.floor(Math.random() * pool.length); picked.push(pool.splice(rix, 1)[0]); }
     S.plQueue = picked;
     sfxTap(); S.sig = ''; render();
   } else if (cmd === 'plAll') {
     S.plQueue = [];
-    for (var api2 = 0; api2 < S.view.games.length; api2++) { var agm = S.view.games[api2]; if (!(agm.min && S.view.players.length < agm.min)) S.plQueue.push(agm.id); }
+    for (var api2 = 0; api2 < S.view.games.length; api2++) { var agm = S.view.games[api2]; if (!seatLocked(agm, S.view.players.length)) S.plQueue.push(agm.id); }
     sfxTap(); S.sig = ''; render();
   } else if (cmd === 'plStart') {
     if (S.plQueue.length < 2) { toast('Chọn ít nhất 2 game cho liên hoàn nhé.'); return; }
@@ -6614,29 +7204,32 @@ function runCmd(node) {
     act({ action: cmd });
   } else if (cmd === 'tap') {
     sfxTap();
-    if (S.view && S.view.game && S.view.game.id === 'dua-bam') { var mc = el('mycount'); if (mc) mc.textContent = (+mc.textContent || 0) + 1; }
     act({ action: 'tap' });
   } else if (cmd === 'answer') {
     sfxTap();
     act({ action: 'answer', choice: +node.getAttribute('data-i') });
-  } else if (cmd === 'color') {
-    var ci = +node.getAttribute('data-i');
-    var cv = el('coltaps'); if (cv) cv.textContent = (+cv.textContent || 0) + 1;
-    beep(320 + ci * 130, 0.1, 'triangle', 0.14);
-    node.classList.add('on');
-    setTimeout(function () { node.classList.remove('on'); }, 200);
-    act({ action: 'color', color: ci });
-  } else if (cmd === 'key') {
-    var k = node.getAttribute('data-k');
-    if (k === 'C') S.guess = '';
-    else if (k === 'D') S.guess = S.guess.slice(0, -1);
-    else if (S.guess.length < 9) S.guess += k;
-    var gv = el('guessVal'); if (gv) gv.textContent = S.guess ? fmt(+S.guess) : '';
+  } else if (cmd === 'roll') {
     sfxTap();
-  } else if (cmd === 'guessSubmit') {
-    if (!S.guess) { toast('Nhập số đoán trước đã.'); return; }
-    var val = +S.guess; S.guess = '';
-    act({ action: 'guess', value: val });
+    act({ action: 'roll' });
+  } else if (cmd === 'move') {
+    sfxTap();
+    act({ action: 'move', horse: +node.getAttribute('data-i') });
+  } else if (cmd === 'wolfPick') {
+    sfxTap();
+    var wk = node.getAttribute('data-kind');
+    var wi = +node.getAttribute('data-i');
+    if (wk === 'wolfPoison') act({ action: 'wolfWitch', poison: wi });
+    else act({ action: wk, seat: wi });
+  } else if (cmd === 'witchSave') {
+    sfxTap();
+    var wsv = S.view && S.view.game ? !!S.view.game.myWitchSave : false;
+    act({ action: 'wolfWitch', save: !wsv });
+  } else if (cmd === 'witchPoisonClear') {
+    sfxTap();
+    act({ action: 'wolfWitch', poison: null });
+  } else if (cmd === 'witchDone') {
+    sfxTap();
+    act({ action: 'wolfWitch', done: true });
   } else if (cmd === 'choose') {
     sfxTap();
     act({ action: 'choose', choice: node.getAttribute('data-c') });
@@ -6947,7 +7540,7 @@ if (!window.PointerEvent) {
   setInterval(tick, 150);
   setInterval(function () {
     var v = S.view;
-    if (v && v.game && ((v.game.id === 'nhanh-tay' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend') || (v.game.id === 'nguoi-que' && v.game.phase === 'fight') || (v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple'))) poll();
+    if (v && v.game && ((v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend') || (v.game.id === 'nguoi-que' && v.game.phase === 'fight') || (v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple'))) poll();
   }, 220);
 })();
 </script>

@@ -5,13 +5,12 @@
 //   stays in env as a spy: with ROOMS_DO present it must see ZERO traffic.
 // - Uses a fake clock (Date.now patched) so timed phases run instantly.
 // - Plays a full match: lobby/bots -> Đố Vui (streak + ×2 verified exactly)
-//   -> Đoán Số (×2 verified) -> Nhớ Màu (×2 verified) -> Đua Bấm Nút (+ replay)
-//   -> Nhanh Tay (ms gaps) -> Đẩy Ra Khỏi Sàn (gamepad held-state arena)
+//   -> Đẩy Ra Khỏi Sàn (gamepad held-state arena)
 //   -> Né Đạn (tick arena survival) -> Kéo Co (team knot math, exact)
 //   -> Chia Hay Cướp (secret choices, rotating pairs, exact totals)
 //   -> podium/final, and checks cumulative totals == sum of per-game points.
 // Run: node tests/local-test.mjs
-import worker, { QUIZ_BANK, EST_BANK, IMPOSTOR_BANK, RoomStore } from '../worker.mjs';
+import worker, { QUIZ_BANK, IMPOSTOR_BANK, RoomStore } from '../worker.mjs';
 
 let now = 1700000000000;
 Date.now = () => now;
@@ -144,14 +143,11 @@ async function pumpD(drv, stepMs, until, label, maxIter) {
   }
   throw new Error('pump timeout: ' + label);
 }
-// Play dua-bam in a driver room all the way to the results phase.
-async function raceToResults(drv, humanTok) {
-  for (let r = 1; r <= 3; r++) {
-    await pumpD(drv, 200, (s) => s.game && s.game.phase === 'race' && s.game.round === r, 'race r' + r);
-    if (humanTok) for (let i = 0; i < 12; i++) await drv.pAct(humanTok, { action: 'tap' });
-    await pumpD(drv, 400, (s) => s.phase === 'results' || (s.game && s.game.phase === 'pause' && s.game.round === r), 'race resolve r' + r);
-  }
-  return pumpD(drv, 400, (s) => s.phase === 'results', 'race results');
+// Play cao-boi in a driver room all the way to the results phase.
+// Nobody needs to touch anything: every round resolves on its own
+// timer (bots fire from their plans, idle humans simply never shoot).
+async function duelToResults(drv) {
+  return pumpD(drv, 500, (s) => s.phase === 'results', 'duel results', 2000);
 }
 // Run fn with Math.random served from a fixed queue (then restored).
 // Room creation draws its candidate codes from Math.random via randInt,
@@ -188,99 +184,6 @@ async function playQuiz() {
   const v = await pump(500, (s) => s.phase === 'results', 'quiz results');
   assert(v.lastGame.points[P1.seat] === 2675, 'quiz match total == 2675 (streak + ×2 provably covered), got ' + v.lastGame.points[P1.seat]);
   return v;
-}
-
-async function playGuess() {
-  console.log('Game: Đoán Số Chuẩn (worst→best drama reveal, ×2 final)');
-  await toGame('doan-so');
-  for (let q = 1; q <= 5; q++) {
-    await pump(250, (s) => s.game && s.game.phase === 'guess' && s.game.round === q, 'guess q' + q);
-    const pv = await pState();
-    const bankQ = EST_BANK.find((b) => b.q === pv.game.question);
-    assert(!!bankQ, 'estimation question comes from the bank (q' + q + ')');
-    await pAct({ action: 'guess', value: bankQ.answer }); // exact answer -> rank 1
-    const v = await pump(500, (s) => s.game && s.game.phase === 'reveal' && s.game.round === q, 'guess reveal ' + q);
-    const entries = v.game.reveal.entries;
-    let seenNumber = false; let lastDiff = Infinity; let orderOk = true;
-    for (const e of entries) {
-      if (e.value === null) { if (seenNumber) orderOk = false; }
-      else { seenNumber = true; if (e.diff > lastDiff) orderOk = false; lastDiff = e.diff; }
-    }
-    assert(orderOk, 'reveal order is worst -> best deviation (q' + q + ')');
-    assert(entries.every((e) => typeof e.revealAt === 'number'), 'reveal entries carry stagger timestamps (q' + q + ')');
-    const mine = entries.find((e) => e.seat === P1.seat);
-    const expected = q === 5 ? 600 : 300;
-    assert(mine.points === expected, 'guess q' + q + ' exact answer scores ' + expected + (q === 5 ? ' (300 ×2 final)' : '') + ', got ' + mine.points);
-  }
-  const v = await pump(500, (s) => s.phase === 'results', 'guess results');
-  assert(v.lastGame.points[P1.seat] === 1800, 'guess match total == 1800, got ' + v.lastGame.points[P1.seat]);
-  return v;
-}
-
-async function playMemory() {
-  console.log('Game: Nhớ Màu (sequence replay, ×2 final)');
-  await toGame('nho-mau');
-  const expected = [220, 260, 300, 340, 760];
-  for (let r = 1; r <= 5; r++) {
-    const vShow = await pump(200, (s) => s.game && s.game.phase === 'show' && s.game.round === r, 'memory show r' + r);
-    const seq = vShow.game.seq;
-    assert(Array.isArray(seq) && seq.length === r + 2, 'host sees sequence of length ' + (r + 2) + ' (r' + r + ')');
-    const pv = await pState();
-    assert(pv.game.seq === undefined, 'sequence is hidden from phones (r' + r + ')');
-    await pump(200, (s) => s.game && s.game.phase === 'input' && s.game.round === r, 'memory input r' + r);
-    for (const c of seq) await pAct({ action: 'color', color: c });
-    const v = await pump(300, (s) => s.phase === 'results' || (s.game && s.game.phase === 'pause' && s.game.round === r), 'memory resolve r' + r);
-    if (r < 5) assert(v.game.lastRound.points[P1.seat] === expected[r - 1], 'memory r' + r + ' points == ' + expected[r - 1] + ', got ' + v.game.lastRound.points[P1.seat]);
-  }
-  const v = await pump(300, (s) => s.phase === 'results', 'memory results');
-  assert(v.lastGame.points[P1.seat] === 1880, 'memory match total == 1880 (final round 380 ×2), got ' + v.lastGame.points[P1.seat]);
-  return v;
-}
-
-async function playRace() {
-  console.log('Game: Đua Bấm Nút (tap counting) + Chơi lại ngay');
-  await toGame('dua-bam');
-  for (let r = 1; r <= 3; r++) {
-    await pump(200, (s) => s.game && s.game.phase === 'race' && s.game.round === r, 'race r' + r);
-    for (let i = 0; i < 37; i++) await pAct({ action: 'tap' });
-    const pv = await pState();
-    assert(pv.game.mine === 37, 'race r' + r + ': server counted exactly 37 human taps');
-    await pump(400, (s) => s.phase === 'results' || (s.game && s.game.phase === 'pause' && s.game.round === r), 'race resolve r' + r);
-  }
-  const v = await pump(400, (s) => s.phase === 'results', 'race results');
-  assert(v.lastGame.points[P1.seat] > 0, 'race awards the human points');
-  // "Chơi lại ngay": replay the same game straight from the results screen.
-  const scoreBefore = v.players.find((p) => p.seat === P1.seat).score;
-  const vr = await hAct({ action: 'replay' });
-  assert(vr.phase === 'playing' && vr.game && vr.game.id === 'dua-bam' && vr.game.round === 1 && vr.game.phase === 'countdown', 'replay restarts the same game at round 1 with a countdown');
-  assert(vr.players.find((p) => p.seat === P1.seat).score === scoreBefore, 'replay keeps cumulative scores untouched');
-  for (let r = 1; r <= 3; r++) {
-    await pump(300, (s) => s.phase === 'results' || (s.game && s.game.phase === 'pause' && s.game.round === r), 'replay race r' + r);
-  }
-  const v2 = await pump(400, (s) => s.phase === 'results', 'replay race results');
-  return [v, v2];
-}
-
-async function playReact() {
-  console.log('Game: Nhanh Tay (millisecond gaps)');
-  await toGame('nhanh-tay');
-  for (let r = 1; r <= 5; r++) {
-    const vGo = await pump(150, (s) => s.phase === 'results' || (s.game && s.game.phase === 'go' && s.game.round === r), 'react go r' + r);
-    if (vGo.phase === 'results') break;
-    await pAct({ action: 'tap' });
-    const v = await pump(200, (s) => s.phase === 'results' || (s.game && s.game.phase === 'roundEnd' && s.game.round === r), 'react end r' + r);
-    if (v.game && v.game.lastRound) {
-      const tapped = v.game.lastRound.entries.filter((e) => e.status === 'tapped');
-      if (tapped.length) {
-        assert(tapped[0].gapMs === 0, 'fastest player has 0ms gap (r' + r + ')');
-        let asc = true;
-        for (let i = 1; i < tapped.length; i++) if (tapped[i].gapMs < tapped[i - 1].gapMs) asc = false;
-        assert(asc, 'ms gaps are ascending by reaction (r' + r + ')');
-      }
-    }
-    if (v.phase !== 'results') await pump(200, (s) => s.phase === 'results' || (s.game && s.game.phase !== 'roundEnd'), 'react drain r' + r);
-  }
-  return pump(300, (s) => s.phase === 'results', 'react results');
 }
 
 async function playArena() {
@@ -459,12 +362,12 @@ async function main() {
   console.log('== Nảy Party — local worker test ==');
   const home = await call('GET', '/');
   assert(home.status === 200 && home.text.indexOf('Nảy Party') >= 0, 'GET / serves the game page');
-  assert(home.text.indexOf('Nhanh Tay') >= 0 && home.text.indexOf('Đẩy Ra Khỏi Sàn') >= 0, 'page lists all games incl. the arena');
+  assert(home.text.indexOf('Đố Vui Tốc Độ') >= 0 && home.text.indexOf('Đẩy Ra Khỏi Sàn') >= 0, 'page lists all games incl. the arena');
   assert(home.text.indexOf('Né Đạn') >= 0 && home.text.indexOf('Kéo Co') >= 0 && home.text.indexOf('Chia Hay Cướp') >= 0, 'page lists the 3 new games (Né Đạn, Kéo Co, Chia Hay Cướp)');
   assert(home.text.indexOf('Cướp Sao') >= 0 && home.text.indexOf('Giữ Vương Miện') >= 0 && home.text.indexOf('Sơn Sàn') >= 0 && home.text.indexOf('Cao Bồi') >= 0, 'page lists the 4 newest games (Cướp Sao, Giữ Vương Miện, Sơn Sàn, Cao Bồi)');
   assert(home.text.indexOf('Đấu với nhau') >= 0 && home.text.indexOf('Hợp tác') >= 0 && home.text.indexOf('Sắp ra mắt') < 0, 'game chooser is grouped by category: Đấu với nhau + Hợp tác, placeholder tile GONE (co-op wave shipped)');
   assert(home.text.indexOf('Chung Một Thân') >= 0 && home.text.indexOf('Đẩy Hộp Về Đích') >= 0 && home.text.indexOf('Chèo Thuyền') >= 0, 'page lists the 3 co-op games (Chung Một Thân, Đẩy Hộp Về Đích, Chèo Thuyền)');
-  assert(home.text.indexOf('23 game') >= 0, 'homepage footer counts all 23 games');
+  assert(home.text.indexOf('21 game') >= 0, 'homepage footer counts all 21 games');
   assert(home.text.indexOf('astar') >= 0 && home.text.indexOf('acrown') >= 0 && home.text.indexOf('splatgrid') >= 0 && home.text.indexOf('duel-bang') >= 0, 'new-game renderers ship in the page (star / crown / splat grid / duel banner)');
   assert(home.text.indexOf('sharedblob') >= 0 && home.text.indexOf('acrate') >= 0 && home.text.indexOf('agoal') >= 0 && home.text.indexOf('aboat') >= 0 && home.text.indexOf('teambanner') >= 0 && home.text.indexOf('function sharedOrbSVG(') >= 0, 'co-op renderers ship in the page (shared orb / crate / goal / boat / team banner)');
   assert(home.text.indexOf('id="recon"') >= 0 && home.text.indexOf('Đang kết nối lại') >= 0, 'stale-view watchdog badge ships in the page (recon element + label)');
@@ -521,17 +424,12 @@ async function main() {
   P1 = { seat: joined.seat, token: joined.playerToken };
   v = await hState();
   assert(v.players.length === 3, 'room has 3 filled seats (1 human + 2 bots)');
-  assert(v.games && v.games.length === 23, 'lobby game list carries all 23 games');
-  assert(v.games.filter((gm) => gm.cat === 'versus').length === 17, 'exactly 17 games are categorized versus');
+  assert(v.games && v.games.length === 21, 'lobby game list carries all 21 games');
+  assert(v.games.filter((gm) => gm.cat === 'versus').length === 15, 'exactly 15 games are categorized versus');
   assert(v.games.filter((gm) => gm.cat === 'coop').map((gm) => gm.id).sort().join(',') === 'cheo-thuyen,chung-mot-than,day-hop,den-lua-nuoc,giai-ma-chung,thu-thanh', 'co-op group is exactly the 6 co-op games (chung-mot-than, day-hop, cheo-thuyen, thu-thanh, giai-ma-chung, den-lua-nuoc)');
   assert(v.players.every((p) => typeof p.mood === 'string' && p.mood.length > 0), 'every player blob carries a mood/expression');
 
   collect(await playQuiz());
-  collect(await playGuess());
-  collect(await playMemory());
-  const raceResults = await playRace();
-  raceResults.forEach(collect);
-  collect(await playReact());
   collect(await playArena());
   collect(await playDodge());
   collect(await playTug());
@@ -593,9 +491,11 @@ async function main() {
   assert(home.text.indexOf('.pstage') >= 0 && home.text.indexOf('overscroll-behavior: none') >= 0
     && home.text.indexOf('.pressed') >= 0 && home.text.indexOf('pressFx') >= 0,
     'playing container blocks overscroll/pull-refresh; presses get instant .pressed feedback');
-  assert(home.text.indexOf('padBitHeld') >= 0 && home.text.indexOf("g.id === 'dua-bam') pm = null") >= 0
+  assert(home.text.indexOf('padBitHeld') >= 0
     && home.text.indexOf('Math.round((g.knot || 0) / 9)') >= 0,
     'player view signature is stabilized (no per-tap/per-press rebuilds) and lost pad releases recover');
+  assert(['dua-bam', 'nhanh-tay', 'doan-so', 'nho-mau'].every((id) => home.text.indexOf(id) === -1),
+    'removed games (dua-bam / nhanh-tay / doan-so / nho-mau) leave ZERO references in the served page');
 
   console.log('Audit B: garbage inputs never produce an unhandled 500');
   const gRoom = (await call('POST', '/api/rooms', {})).data;
@@ -679,11 +579,11 @@ async function main() {
   const sDrv = await newDrv();
   const chu = await sDrv.join('Chu');
   await sDrv.act({ action: 'addBot', seat: 2 });
-  let sr = await sDrv.act({ action: 'startGame', game: 'dua-bam' });
-  assert(sr.ok === true && sr.phase === 'playing', 'spectator scenario: race starts');
+  let sr = await sDrv.act({ action: 'startGame', game: 'cao-boi' });
+  assert(sr.ok === true && sr.phase === 'playing', 'spectator scenario: duel starts');
   const midJoin = await sDrv.join('Tre');
   assert(midJoin.ok === false && midJoin.error.indexOf('Phòng đang chơi') >= 0, 'joining mid-game is still rejected');
-  const resV = await raceToResults(sDrv, chu.playerToken);
+  const resV = await duelToResults(sDrv);
   const banked = JSON.parse(JSON.stringify(resV.lastGame.points));
   const bankedScores = resV.players.map((p) => [p.seat, p.score]);
   const xem = await sDrv.join('Xem');
@@ -732,8 +632,8 @@ async function main() {
   const fDrv = await newDrv();
   const dau = await fDrv.join('Dau');
   await fDrv.act({ action: 'addBot', seat: 2 });
-  await fDrv.act({ action: 'startGame', game: 'dua-bam' });
-  await raceToResults(fDrv, dau.playerToken);
+  await fDrv.act({ action: 'startGame', game: 'cao-boi' });
+  await duelToResults(fDrv);
   await fDrv.act({ action: 'continue' });
   await fDrv.act({ action: 'finish' });
   let fv = await fDrv.state();
@@ -745,8 +645,8 @@ async function main() {
   await fDrv.act({ action: 'playAgain' });
   fv = await fDrv.state();
   assert(fv.phase === 'lobby' && fv.players.length === 3 && fv.players.every((p) => p.score === 0), 'play-again includes the final-joiner, all scores reset');
-  const again = await fDrv.act({ action: 'startGame', game: 'nhanh-tay' });
-  assert(again.ok === true && again.game && again.game.id === 'nhanh-tay', 'final-joiner counts as a full player for the next start gate');
+  const again = await fDrv.act({ action: 'startGame', game: 'do-vui' });
+  assert(again.ok === true && again.game && again.game.id === 'do-vui', 'final-joiner counts as a full player for the next start gate');
 
   console.log('Audit F: duplicate-name joins keep distinct seats/tokens');
   const dDrv = await newDrv();
@@ -782,7 +682,7 @@ async function main() {
   const fresh = await rb.join('Moi');
   assert(fresh.ok === true && fresh.seat === 1, 'a fresh player can join the recycled room at P1');
   await rb.act({ action: 'addBot', seat: 2 });
-  const rbStart = await rb.act({ action: 'startGame', game: 'nhanh-tay' });
+  const rbStart = await rb.act({ action: 'startGame', game: 'do-vui' });
   assert(rbStart.ok === true && rbStart.phase === 'playing', 'recycled room can start a game normally');
 
   // =====================================================================
@@ -2531,31 +2431,31 @@ async function main() {
   const plDrv = await newDrv();
   const plJoin = await plDrv.join('LienHoan');
   await plDrv.act({ action: 'addBot', seat: 2 });
-  const badPl = await plDrv.act({ action: 'playlistStart', games: ['dua-bam'] });
+  const badPl = await plDrv.act({ action: 'playlistStart', games: ['cao-boi'] });
   assert(badPl && badPl.error, 'playlist: a chain of one game is rejected');
-  const plStart = await plDrv.act({ action: 'playlistStart', games: ['dua-bam', 'ke-gia-mao', 'nhanh-tay'] });
-  assert(plStart && plStart.ok && plStart.phase === 'playing' && plStart.game && plStart.game.id === 'dua-bam',
+  const plStart = await plDrv.act({ action: 'playlistStart', games: ['cao-boi', 'ke-gia-mao', 'do-vui'] });
+  assert(plStart && plStart.ok && plStart.phase === 'playing' && plStart.game && plStart.game.id === 'cao-boi',
     'playlist: the first queued game starts immediately');
   assert(plStart.playlist && plStart.playlist.active && plStart.playlist.total === 2,
     'playlist: seat-gated Kẻ Giả Mạo is filtered out of a 2-seat queue at start (total ' + (plStart.playlist && plStart.playlist.total) + ')');
-  assert(plStart.playlist.pos === 1 && plStart.playlist.nextName === 'Nhanh Tay',
+  assert(plStart.playlist.pos === 1 && plStart.playlist.nextName === 'Đố Vui Tốc Độ',
     'playlist: the view exposes progress (pos 1) and the next game name during play');
-  const plR1 = await raceToResults(plDrv, plJoin.playerToken);
+  const plR1 = await duelToResults(plDrv);
   assert(plR1.phase === 'results' && plR1.playlist && plR1.playlist.active
-    && plR1.playlist.nextName === 'Nhanh Tay' && plR1.playlist.nextInSec >= 1 && plR1.playlist.nextInSec <= 8,
+    && plR1.playlist.nextName === 'Đố Vui Tốc Độ' && plR1.playlist.nextInSec >= 1 && plR1.playlist.nextInSec <= 8,
     'playlist: the intermission view counts down to the next game (' + (plR1.playlist && plR1.playlist.nextInSec) + 's)');
   const plPhone = await plDrv.pState(plJoin.playerToken);
-  assert(plPhone && plPhone.playlist && plPhone.playlist.active && plPhone.playlist.nextName === 'Nhanh Tay',
+  assert(plPhone && plPhone.playlist && plPhone.playlist.active && plPhone.playlist.nextName === 'Đố Vui Tốc Độ',
     'playlist: phones see the same next-game progress as the TV');
   const pts1 = Object.values(plR1.lastGame.points).reduce((a, b) => a + b, 0);
   const sum1 = plR1.players.reduce((a, p) => a + p.score, 0);
   assert(sum1 === pts1, 'playlist: cumulative scores after game 1 equal its banked points exactly');
   tick(8100); // past the 8s intermission — no host action follows, only polls
   const plAuto = await plDrv.state();
-  assert(plAuto.phase === 'playing' && plAuto.game && plAuto.game.id === 'nhanh-tay',
+  assert(plAuto.phase === 'playing' && plAuto.game && plAuto.game.id === 'do-vui',
     'playlist: the next game auto-starts after the intermission with NO host action');
   const plR2 = await pumpD(plDrv, 1000, (s) => s.phase === 'results', 'playlist game 2 results');
-  assert(plR2.lastGame && plR2.lastGame.id === 'nhanh-tay', 'playlist: game 2 is the queued Nhanh Tay');
+  assert(plR2.lastGame && plR2.lastGame.id === 'do-vui', 'playlist: game 2 is the queued Đố Vui');
   const pts2 = Object.values(plR2.lastGame.points).reduce((a, b) => a + b, 0);
   const sum2 = plR2.players.reduce((a, p) => a + p.score, 0);
   assert(sum2 === pts1 + pts2, 'playlist: cumulative scores include BOTH games exactly (' + sum1 + ' -> ' + sum2 + ')');
@@ -2584,16 +2484,16 @@ async function main() {
   assert(quitAgain && quitAgain.error, 'quit: quitToChoosing outside a running game is rejected');
   const quitByPlayer = await plDrv.pAct(plJoin.playerToken, { action: 'quitToChoosing' });
   assert(quitByPlayer && quitByPlayer.error, 'quit: a player cannot fire the host escape');
-  const fresh = await plDrv.act({ action: 'startGame', game: 'nhanh-tay' });
-  assert(fresh && fresh.ok && fresh.phase === 'playing' && fresh.game && fresh.game.id === 'nhanh-tay',
+  const fresh = await plDrv.act({ action: 'startGame', game: 'do-vui' });
+  assert(fresh && fresh.ok && fresh.phase === 'playing' && fresh.game && fresh.game.id === 'do-vui',
     'quit: a new game can be started immediately after quitting');
 
   // --- playlistStop during the intermission prevents the auto-start
   const psDrv = await newDrv();
   await psDrv.join('DungLai');
   await psDrv.act({ action: 'addBot', seat: 2 });
-  await psDrv.act({ action: 'playlistStart', games: ['dua-bam', 'nhanh-tay'] });
-  await raceToResults(psDrv, null);
+  await psDrv.act({ action: 'playlistStart', games: ['cao-boi', 'do-vui'] });
+  await duelToResults(psDrv);
   const psBefore = await psDrv.state();
   assert(psBefore.playlist && psBefore.playlist.active && psBefore.playlist.nextInSec != null,
     'playlist stop: an intermission is pending before the stop');
@@ -2605,15 +2505,15 @@ async function main() {
 
   // --- Manual navigation during a playlist cancels it (toChoosing ->
   // startGame): after the manually started game ends, nothing chains.
-  await psDrv.act({ action: 'playlistStart', games: ['dua-bam', 'nhanh-tay'] });
-  await raceToResults(psDrv, null);
+  await psDrv.act({ action: 'playlistStart', games: ['cao-boi', 'do-vui'] });
+  await duelToResults(psDrv);
   const psHop = await psDrv.act({ action: 'toChoosing' });
   assert(psHop && psHop.ok && psHop.phase === 'choosing' && psHop.playlist && !psHop.playlist.active,
     'playlist cancel: toChoosing during the intermission cancels the chain');
-  const psManual = await psDrv.act({ action: 'startGame', game: 'dua-bam' });
+  const psManual = await psDrv.act({ action: 'startGame', game: 'cao-boi' });
   assert(psManual && psManual.ok && psManual.playlist && !psManual.playlist.active,
     'playlist cancel: the manual startGame runs with no chain attached');
-  await raceToResults(psDrv, null);
+  await duelToResults(psDrv);
   tick(9000);
   const psEnd = await psDrv.state();
   assert(psEnd.phase === 'results' && !psEnd.game, 'playlist cancel: nothing auto-starts after the manual game');
@@ -2626,8 +2526,8 @@ async function main() {
   await skDrv.join('Skipper');
   await skDrv.act({ action: 'addBot', seat: 2 });
   await skDrv.act({ action: 'addBot', seat: 3 });
-  const skStart = await skDrv.act({ action: 'playlistStart', games: ['nhanh-tay', 'ke-gia-mao', 'dua-bam'] });
-  assert(skStart && skStart.ok && skStart.game && skStart.game.id === 'nhanh-tay'
+  const skStart = await skDrv.act({ action: 'playlistStart', games: ['do-vui', 'ke-gia-mao', 'cao-boi'] });
+  assert(skStart && skStart.ok && skStart.game && skStart.game.id === 'do-vui'
     && skStart.playlist && skStart.playlist.total === 3,
     'playlist skip: a 3-seat room queues all three games, Kẻ Giả Mạo included');
   await pumpD(skDrv, 1000, (s) => s.phase === 'results', 'skip: game 1 results');
@@ -2639,8 +2539,8 @@ async function main() {
   await skRec.state.storage.put('room', skEntry);
   tick(8100);
   const skAuto = await skDrv.state();
-  assert(skAuto.phase === 'playing' && skAuto.game && skAuto.game.id === 'dua-bam',
-    'playlist skip: seat-gated Kẻ Giả Mạo is skipped at runtime after the seats drop; Đua Bấm Nút starts');
+  assert(skAuto.phase === 'playing' && skAuto.game && skAuto.game.id === 'cao-boi',
+    'playlist skip: seat-gated Kẻ Giả Mạo is skipped at runtime after the seats drop; Cao Bồi starts');
   assert(skAuto.playlist && skAuto.playlist.pos === 3 && skAuto.playlist.total === 3,
     'playlist skip: progress reports the game that actually started (pos 3/3)');
   }
@@ -2780,6 +2680,209 @@ async function main() {
   const bPts = Object.values(bFin.lastGame.points).sort((x, y) => x - y);
   assert(JSON.stringify(bPts) === JSON.stringify([50, 100, 200, 300]),
     'heavy-bots: a 3xKhó-bot fight (heavies in the mix) completes with the standard placement points, got ' + JSON.stringify(bPts));
+
+  // ---------- Audit R: 12 seats + per-game [min,max] limits ----------------
+  console.log('Audit R: 12-seat rooms, per-game seat limits, 12-way placement');
+  {
+    const big = await newDrv();
+    const bJoin = await big.join('Sếp');
+    assert(bJoin.ok === true && bJoin.seat === 1, '12-seat room: the human takes P1');
+    for (let bs = 2; bs <= 12; bs++) {
+      const ab = await big.act({ action: 'addBot', seat: bs });
+      assert(ab && ab.ok === true && ab.players && ab.players.length === bs, '12-seat room: bot fills P' + bs);
+    }
+    const full12 = await big.state();
+    assert(full12.players.length === 12, '12-seat room is FULL at exactly 12 seats');
+    const j13 = await big.join('Người Thứ 13');
+    assert(j13.ok === false && j13.error === 'Phòng đã đủ 12 người.', 'the 13th join is refused with the 12-seat message');
+    const ab13 = await big.act({ action: 'addBot', seat: 13 });
+    assert(ab13.ok === false, 'addBot beyond P12 is refused');
+    const gQuiz = full12.games.find((gm) => gm.id === 'do-vui');
+    assert(gQuiz && gQuiz.min === 2 && gQuiz.max === 12, 'games list exposes min AND max per game (do-vui 2-12)');
+    const gTank = full12.games.find((gm) => gm.id === 'xe-tank');
+    assert(gTank && gTank.max === 8, 'games list exposes the xe-tank max of 8 (chooser card-lock data)');
+    const gNg = full12.games.find((gm) => gm.id === 'ca-ngua');
+    assert(gNg && gNg.min === 2 && gNg.max === 4, 'games list exposes ca-ngua 2-4');
+    const gWolf = full12.games.find((gm) => gm.id === 'ma-soi');
+    assert(gWolf && gWolf.min === 4 && gWolf.max === 12, 'games list exposes ma-soi 4-12');
+    const tooMany = await big.act({ action: 'startGame', game: 'xe-tank' });
+    assert(tooMany.ok === false && tooMany.error && tooMany.error.indexOf('tối đa 8') >= 0,
+      'an 8-max game refuses to start at 12 seats with the max error, got: ' + (tooMany && tooMany.error));
+    const qStart = await big.act({ action: 'startGame', game: 'do-vui' });
+    assert(qStart.ok === true && qStart.game.id === 'do-vui', 'the 12-seat room starts the 12-max Đố Vui');
+    const qRes = await pumpD(big, 1000, (s) => s.phase === 'results', '12p quiz results', 3000);
+    assert(qRes.lastGame && Object.keys(qRes.lastGame.points).length === 12,
+      'the 12-player quiz completes with all 12 seats scored');
+    const rp12 = await big.act({ action: 'replay' });
+    assert(rp12.ok === true && rp12.game && rp12.game.id === 'do-vui' && rp12.game.phase === 'countdown',
+      'replay restarts the same game keeping all 12 seats');
+    await pumpD(big, 1000, (s) => s.phase === 'results', '12p quiz replay results', 3000);
+  }
+  {
+    // 8-way placement through the shared table (ranks 5-8 = 40/30/20/10)
+    const oct = await newDrv();
+    await oct.join('Tám');
+    for (let os = 2; os <= 8; os++) await oct.act({ action: 'addBot', seat: os });
+    const sStart = await oct.act({ action: 'startGame', game: 'son-san' });
+    assert(sStart.ok === true, 'an 8-seat room starts Sơn Sàn (max 8)');
+    const sRes = await pumpD(oct, 250, (s) => s.phase === 'results', '8p splat results', 4000);
+    const gotPts = Object.values(sRes.lastGame.points).sort((a, b) => b - a);
+    assert(JSON.stringify(gotPts) === JSON.stringify([300, 200, 100, 50, 40, 30, 20, 10]),
+      '8-way placement uses the shared table incl. the 5-8 tail (40/30/20/10), got ' + JSON.stringify(gotPts));
+  }
+  {
+    // 5-seat bomber: the added edge-mid spawns must give 5 distinct cells
+    const five = await newDrv();
+    await five.join('Năm');
+    for (let fs = 2; fs <= 5; fs++) await five.act({ action: 'addBot', seat: fs });
+    const bStart = await five.act({ action: 'startGame', game: 'dat-bom' });
+    assert(bStart.ok === true, 'a 5-seat room starts Đặt Bom (max 6)');
+    const bView = await pumpD(five, 100, (s) => s.game && s.game.phase === 'bomber', '5p bomber live', 300);
+    const cells = Object.values(bView.game.blobs).map((b) => b.x + ',' + b.y);
+    assert(cells.length === 5 && new Set(cells).size === 5,
+      '5 bomber players spawn on 5 DISTINCT cells, got ' + cells.join(' '));
+  }
+
+  // ---------- Audit S: Ma Sói (hidden roles, full game) --------------------
+  console.log('Audit S: Ma Sói — roles never leak; a full game finishes');
+  {
+    const fewDrv = await newDrv();
+    await fewDrv.join('Ba');
+    await fewDrv.act({ action: 'addBot', seat: 2 });
+    await fewDrv.act({ action: 'addBot', seat: 3 });
+    const tooFew = await fewDrv.act({ action: 'startGame', game: 'ma-soi' });
+    assert(tooFew.ok === false && tooFew.error && tooFew.error.indexOf('ít nhất 4') >= 0,
+      'ma-soi refuses to start below its min of 4, got: ' + (tooFew && tooFew.error));
+
+    const wDrv = await newDrv();
+    const wH1 = await wDrv.join('Thám Tử');
+    const wH2 = await wDrv.join('Bạn Đồng Hành');
+    for (let ws = 3; ws <= 6; ws++) await wDrv.act({ action: 'addBot', seat: ws });
+    const wStart = await wDrv.act({ action: 'startGame', game: 'ma-soi' });
+    assert(wStart.ok === true && wStart.game.id === 'ma-soi', 'ma-soi starts with 6 seats (2 humans + 4 bots)');
+    const wNight = await pumpD(wDrv, 250, (s) => s.game && s.game.phase === 'night', 'wolf night 1', 300);
+    assert(wNight.game.wolfCount === 2, '6 players deal exactly 2 wolves (public setup info)');
+    const wRec = doFake.records.get(wDrv.code);
+    const wRoles = JSON.parse((await wRec.state.storage.get('room')).json).game.wolf.roles;
+    const wolfSeats = Object.keys(wRoles).filter((s) => wRoles[s] === 'soi').map(Number).sort();
+    assert(wolfSeats.length === 2, 'stored roles confirm exactly 2 wolves at n=6');
+    assert(['tien-tri', 'bao-ve', 'phu-thuy'].every((r) => Object.values(wRoles).filter((x) => x === r).length === 1),
+      'stored roles confirm exactly one seer + one guard + one witch at n=6');
+    const hostJson = JSON.stringify(wNight);
+    assert(hostJson.indexOf('myRole') === -1 && hostJson.indexOf('wolfTeam') === -1
+      && hostJson.indexOf('myVictim') === -1 && hostJson.indexOf('mySeerNotes') === -1 && hostJson.indexOf('"roles"') === -1,
+      'the HOST view carries no role secrets during the night');
+    for (const [tok, seat] of [[wH1.playerToken, 1], [wH2.playerToken, 2]]) {
+      const pv = await wDrv.pState(tok);
+      assert(pv.game && pv.game.myRole === wRoles[seat], 'phone of seat ' + seat + ' shows exactly its own role');
+      if (wRoles[seat] !== 'soi') {
+        assert(JSON.stringify(pv).indexOf('"soi"') === -1,
+          'phone of non-wolf seat ' + seat + ' never contains the wolf role string');
+      } else {
+        assert(JSON.stringify(pv.game.wolfTeam) === JSON.stringify(wolfSeats),
+          'the wolf phone sees exactly the wolf pack and nothing more');
+      }
+    }
+    const wEndView = await pumpD(wDrv, 1000, (s) => s.game && s.game.phase === 'wolfEnd', 'wolf end reveal', 6000);
+    const winner = wEndView.game.winner;
+    assert(winner === 'soi' || winner === 'dan', 'ma-soi ends with a declared winner (' + winner + ')');
+    assert(JSON.stringify(wEndView.game.roles) === JSON.stringify(wRoles),
+      'at wolfEnd (and only then) the host view reveals every role');
+    assert(wEndView.game.night <= 15, 'ma-soi finished within the night cap (nights played: ' + wEndView.game.night + ')');
+    const wRes = await pumpD(wDrv, 1000, (s) => s.phase === 'results', 'wolf game results', 600);
+    assert(wRes.lastGame && wRes.lastGame.id === 'ma-soi', 'the ma-soi game runs to completion with idle humans');
+    const expectPts = {};
+    Object.keys(wRoles).forEach((s) => {
+      const isW = wRoles[s] === 'soi';
+      expectPts[s] = winner === 'soi' ? (isW ? 300 : 50) : (isW ? 50 : 200);
+    });
+    assert(Object.keys(expectPts).every((s) => wRes.lastGame.points[s] === expectPts[s]),
+      'ma-soi side points are exact (winning wolves 300 / winning village 200 / losers 50), got ' + JSON.stringify(wRes.lastGame.points));
+  }
+
+  // ---------- Audit T: Cờ Cá Ngựa (Ludo rules) ------------------------------
+  console.log('Audit T: Cờ Cá Ngựa — stable gate, kicks, safe cells, 3x6 forfeit, exact home');
+  {
+    const ngDrv = await newDrv();
+    const nH1 = await ngDrv.join('Đỏ');
+    const nH2 = await ngDrv.join('Xanh');
+    // force the next randInt(1,6) to land on `val`
+    const rollAs = async (tok, val) => withRandomQueue([(val - 0.5) / 6], () => ngDrv.pAct(tok, { action: 'roll' }));
+    const ngSet = async (mutate) => {
+      const rec = doFake.records.get(ngDrv.code);
+      const entry = await rec.state.storage.get('room');
+      const room = JSON.parse(entry.json);
+      mutate(room.game.ng, room.game);
+      entry.json = JSON.stringify(room);
+      await rec.state.storage.put('room', entry);
+    };
+    const nStart = await ngDrv.act({ action: 'startGame', game: 'ca-ngua' });
+    assert(nStart.ok === true && nStart.game.id === 'ca-ngua', 'ca-ngua starts with 2 seats');
+    await pumpD(ngDrv, 250, (s) => s.game && s.game.phase === 'roll', 'ngua first roll phase', 100);
+    // (a) no 6 -> nobody leaves the stable, the turn passes on its own
+    const r3 = await rollAs(nH1.playerToken, 3);
+    assert(r3.game && r3.game.dice === 3 && (r3.game.myLegal || []).length === 0,
+      'ngua: rolling 3 with all horses stabled offers no move');
+    const after3 = await pumpD(ngDrv, 500, (s) => s.game && s.game.phase === 'roll' && s.game.turn === 2, 'ngua turn passes', 100);
+    assert(JSON.stringify(after3.game.horses) === JSON.stringify({ 1: [0, 0, 0, 0], 2: [0, 0, 0, 0] }),
+      'ngua: after a non-6 roll every horse is still in the stable');
+    // (b) a 6 leaves the stable and grants another roll
+    const r6 = await rollAs(nH2.playerToken, 6);
+    assert(r6.game && r6.game.phase === 'pick' && (r6.game.myLegal || []).length === 4,
+      'ngua: rolling 6 offers all 4 stabled horses');
+    const mv1 = await ngDrv.pAct(nH2.playerToken, { action: 'move', horse: 0 });
+    assert(mv1.game && mv1.game.horses[2][0] === 1 && mv1.game.phase === 'roll' && mv1.game.turn === 2,
+      'ngua: horse leaves the stable onto its start cell and the SAME player rolls again');
+    const r6b = await rollAs(nH2.playerToken, 6);
+    const mv2 = await ngDrv.pAct(nH2.playerToken, { action: 'move', horse: 0 });
+    assert(mv2.game && mv2.game.horses[2][0] === 7, 'ngua: the second 6 moves the horse 6 more steps (progress 1 -> 7)');
+    // (c) the THIRD consecutive 6 forfeits the move and the turn
+    const r6c = await rollAs(nH2.playerToken, 6);
+    assert(r6c.game && r6c.game.dice === 6 && (r6c.game.myLegal || []).length === 0,
+      'ngua: a third consecutive 6 forfeits the move');
+    await pumpD(ngDrv, 500, (s) => s.game && s.game.phase === 'roll' && s.game.turn === 1, 'ngua turn after forfeit', 100);
+    const afterForfeit = await ngDrv.state();
+    assert(afterForfeit.game.horses[2][0] === 7, 'ngua: the forfeited third 6 keeps the earlier moves (progress 7)');
+    // (d) kick: landing on an opponent on a normal loop cell sends it home
+    await ngSet((ng) => { ng.horses = { 1: [10, 0, 0, 0], 2: [3, 0, 0, 0] }; ng.turn = 1; ng.dice = null; ng.chain = 0; });
+    await rollAs(nH1.playerToken, 6);
+    const kick = await ngDrv.pAct(nH1.playerToken, { action: 'move', horse: 0 });
+    assert(kick.game && kick.game.horses[1][0] === 16 && kick.game.horses[2][0] === 0,
+      'ngua: landing on cell 15 kicks the opponent horse back to its stable');
+    // (e) safe cell: the opponent start cell (13) never kicks
+    await ngSet((ng, g) => { ng.horses = { 1: [8, 0, 0, 0], 2: [1, 0, 0, 0] }; ng.turn = 1; ng.dice = null; ng.chain = 0; g.phase = 'roll'; });
+    await rollAs(nH1.playerToken, 6);
+    const safe = await ngDrv.pAct(nH1.playerToken, { action: 'move', horse: 0 });
+    assert(safe.game && safe.game.horses[1][0] === 14 && safe.game.horses[2][0] === 1,
+      'ngua: landing on the safe start cell 13 shares the cell — no kick');
+    // (f) exact roll home: 57 + 6 overshoots (illegal), 57 + 1 finishes
+    await ngSet((ng, g) => { ng.horses = { 1: [57, 0, 0, 0], 2: [0, 0, 0, 0] }; ng.turn = 1; ng.dice = null; ng.chain = 0; g.phase = 'roll'; });
+    const over = await rollAs(nH1.playerToken, 6);
+    assert(over.game && !(over.game.myLegal || []).some((e) => e.horse === 0) && (over.game.myLegal || []).length === 3,
+      'ngua: 57 + 6 overshoots — that horse cannot move, the stabled three can');
+    await ngDrv.pAct(nH1.playerToken, { action: 'move', horse: 1 });
+    const exact = await rollAs(nH1.playerToken, 1);
+    assert(exact.game && (exact.game.myLegal || []).some((e) => e.horse === 0),
+      'ngua: 57 + 1 is exactly home — the horse is offered');
+    const home = await ngDrv.pAct(nH1.playerToken, { action: 'move', horse: 0 });
+    assert(home.game && home.game.horses[1][0] === 58, 'ngua: the horse finishes at exactly 58');
+  }
+  {
+    // bot smoke: an idle human + one bot still finish a whole game
+    const nb = await newDrv();
+    await nb.join('Ngựa Bot');
+    await nb.act({ action: 'addBot', seat: 2 });
+    await nb.act({ action: 'startGame', game: 'ca-ngua' });
+    const nbWin = await pumpD(nb, 500, (s) => s.game && s.game.phase === 'ngWin', 'ngua bot game win', 30000);
+    const nbWinner = nbWin.game.winner;
+    assert(nbWinner && nbWin.game.horses[nbWinner].every((p) => p === 58),
+      'ngua: the winner brought all 4 horses home');
+    const nbRes = await pumpD(nb, 500, (s) => s.phase === 'results', 'ngua bot game results', 100);
+    assert(nbRes.lastGame && nbRes.lastGame.id === 'ca-ngua', 'ngua: a bot game runs to completion');
+    const nbPts = Object.values(nbRes.lastGame.points).sort((a, b) => b - a);
+    assert(JSON.stringify(nbPts) === JSON.stringify([300, 200]),
+      'ngua: points follow the shared placement table (300/200), got ' + JSON.stringify(nbPts));
+  }
 
   // --- Storage routing: with ROOMS_DO bound, everything above must have
   console.log('Storage: Durable Object routing + expiry');
