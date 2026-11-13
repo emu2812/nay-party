@@ -123,6 +123,9 @@ export const GAMES = {
   'giai-ma-chung': { name: 'Giải Mã Chung', desc: 'Hợp tác: mỗi người giữ một phần mật mã — phối hợp bấm đúng thứ tự!', rounds: 1, cat: 'coop', min: 2, max: 12 },
   'nguoi-que': { name: 'Người Que Đại Chiến', desc: 'Gamepad: người que đấu võ — đánh đối thủ văng khỏi sàn!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'den-lua-nuoc': { name: 'Đền Lửa & Nước', desc: 'Hợp tác: Lửa và Nước cùng vượt đền — nhặt ngọc, giữ cổng cho nhau, về đúng cửa!', rounds: 1, cat: 'coop', min: 2, max: 6 },
+  'da-bong': { name: 'Đá Bóng Đầu To', desc: 'Gamepad: hai đội đầu to tranh bóng — sút vào gôn đối thủ!', rounds: 1, cat: 'versus', min: 2, max: 8 },
+  'ech-op': { name: 'Ếch Ộp Phiêu Lưu', desc: 'Hợp tác: hai chú ếch nuốt nhau vào bụng, vác nhau qua gai và hố sâu!', rounds: 1, cat: 'coop', min: 2, max: 4 },
+  'can-goc': { name: 'Đại Bác Căn Góc', desc: 'Căn góc + lực như Gunny: chỉnh nòng, tính gió, bắn phá địa hình!', rounds: 1, cat: 'versus', min: 2, max: 8 },
 };
 
 // Bot behaviour per difficulty. Bots are simulated server-side from plans
@@ -447,6 +450,107 @@ const TEMPLE_WP = {
 // Temple finish tiers: completed + every gem = Vàng, completed = Bạc,
 // at least half of all gems (even unfinished) = Đồng.
 const TEMP_GEMS_TOTAL = 10;
+
+// ---------------------------------------------------------------------------
+// Wave 5: Đá Bóng Đầu To (versus team soccer), Ếch Ộp Phiêu Lưu (co-op
+// swallow-carry platformer) and Đại Bác Căn Góc (turn-based artillery).
+// ---------------------------------------------------------------------------
+// --- Đá Bóng Đầu To -------------------------------------------------------
+// Side-view pitch in its own 32 x 18 unit space (x in [-19, 19] inside
+// the goal boxes, y in [-9, 9]); the page maps it with the .afield.wide
+// 16:9 variant. Teams by seat parity: odd seats = Đỏ (defend the LEFT
+// goal, attack right), even seats = Xanh. Players run on platStep; the
+// ball is a circle with its own integrator (gravity, restitution,
+// rolling friction, circle-vs-rect bounces off the same solids list).
+// Control map (phone + APK): disc/stick = run, U or Y = jump,
+// A = SÚT (kick), B = LƯỚT (dash). A goal pauses the match clock for a
+// 2.5s celebration, then everyone resets to the kickoff formation.
+const SOCCER_MS = 90000, SOCCER_GOAL_MS = 2500;
+const SOCCER_RUN = 0.36, SOCCER_JUMP = 1.1;
+const SOCCER_KICK_CD = 6, SOCCER_KICK_VX = 0.88, SOCCER_KICK_VY = 0.62;
+const SOCCER_DASH_CD = 16, SOCCER_DASH_TICKS = 6, SOCCER_DASH_SPEED = 0.95;
+const SOCCER_BALL_R = 0.55, SOCCER_BALL_GRAV = 0.09, SOCCER_BALL_REST = 0.62;
+const SOCCER_SOLIDS = [
+  { x: -19, y: 8, w: 38, h: 1.6 },
+  { x: -19, y: -9.6, w: 38, h: 0.6 },
+  { x: -17, y: -9, w: 1, h: 14.4 },
+  { x: 16, y: -9, w: 1, h: 14.4 },
+  { x: -19, y: 4.8, w: 3, h: 0.6 },
+  { x: 16, y: 4.8, w: 3, h: 0.6 },
+  { x: -19, y: -9, w: 1, h: 17 },
+  { x: 18, y: -9, w: 1, h: 17 },
+];
+const SOCCER_FWD_X = [-4, -7, -10.5]; // forward slots (goalie is separate)
+const SOCCER_GOALIE_X = 13.8;
+// --- Ếch Ộp Phiêu Lưu -----------------------------------------------------
+// Co-op platformer in the temple's 24 x 24 space. Solo jump V=1.05 is
+// the temple arc (apex 3.15, range ~4.55u at run 0.325, ~4.2u of safe
+// spike clearance); a carrier's jump V=1.45 is far bigger (apex ~6.3,
+// range ~6.2u, ~5.9u clearance) — the wide spike strips (5.2u) are
+// sized exactly between the two, so they can ONLY be crossed carrying
+// a teammate (or by being carried). Swallow/spit is the B or X rising
+// edge near a free teammate; the passenger rides hidden in the belly.
+// A carrier touching spikes kills BOTH frogs for ONE shared heart.
+const FROG_HEARTS = 5, FROG_PER_MS = 120000;
+const FROG_RUN = 0.325, FROG_JUMP = 1.05, FROG_JUMP_CARRY = 1.45;
+const FROG_EAT_R = 1.25;
+const FROG_WALLS = [
+  { x: -12, y: 10, w: 24, h: 2.4 },
+  { x: -12, y: -12, w: 1, h: 22.4 },
+  { x: 11, y: -12, w: 1, h: 22.4 },
+  { x: -12, y: -12, w: 24, h: 1 },
+];
+const FROG_LEVELS = [
+  { // Chamber 1 — the first spike strip: too wide to jump alone.
+    solids: [{ x: 5.6, y: 7.2, w: 3, h: 0.7, oneWay: true }],
+    spikes: [{ x: -0.6, y: 9.4, w: 5.2, h: 0.6 }],
+    crates: [],
+    flies: [{ x: -4, y: 8.2 }, { x: 1.6, y: 3.8 }, { x: 7.1, y: 5.4 }],
+    door: { x: 9.9, y: 8.2, w: 1.8, h: 1.8 },
+    starts: [{ x: -10, y: 9.1 }, { x: -8.4, y: 9.1 }, { x: -6.8, y: 9.1 }, { x: -5.2, y: 9.1 }],
+  },
+  { // Chamber 2 — push the crate against the plateau, climb it, cross.
+    solids: [{ x: 3, y: 5.9, w: 6, h: 4.1 }],
+    spikes: [{ x: -4.5, y: 9.4, w: 2, h: 0.6 }],
+    crates: [{ x: 1.2, y: 9.4 }],
+    flies: [{ x: -6.5, y: 8.2 }, { x: 0.6, y: 6.6 }, { x: 6, y: 4.1 }],
+    door: { x: 7.3, y: 4.1, w: 1.7, h: 1.8 },
+    starts: [{ x: -10, y: 9.1 }, { x: -8.4, y: 9.1 }, { x: -6.8, y: 9.1 }, { x: -5.2, y: 9.1 }],
+  },
+  { // Chamber 3 — a carrier strip (A: -6.5..-1.3), a mid safe zone with
+    // the crate, then strip B (5.2..7.5) running right up to the plateau
+    // face: push the crate across B (crates are spike-immune), hop onto
+    // it from the safe edge, then up to the plateau (rise 2.2).
+    solids: [{ x: 7.5, y: 6.6, w: 4.5, h: 3.4 }],
+    spikes: [{ x: -6.5, y: 9.4, w: 5.2, h: 0.6 }, { x: 5.2, y: 9.4, w: 2.3, h: 0.6 }],
+    crates: [{ x: 1.2, y: 9.4 }],
+    flies: [{ x: -9.3, y: 8.2 }, { x: -3.9, y: 3.8 }, { x: 9.6, y: 4.3 }],
+    door: { x: 9.8, y: 4.8, w: 1.7, h: 1.8 },
+    starts: [{ x: -10.8, y: 9.1 }, { x: -9.9, y: 9.1 }, { x: -9.0, y: 9.1 }, { x: -8.1, y: 9.1 }],
+  },
+];
+// Bot routes (shared by every frog; target = frog centre). Waypoints
+// flagged swallow park the bot until it has swallowed an adjacent free
+// teammate (or a 20s timeout lets it try alone); spit waypoints make a
+// carrying bot spit. A swallowed bot's route index is synced to its
+// carrier's on the spit, so pairs stay together.
+const FROG_WP = [
+  [{ x: -4.5 }, { x: -2.2, swallow: 1 }, { x: 5.8, spit: 1 }, { x: 10.1 }],
+  [{ x: -5.6 }, { x: 0.4 }, { x: 2.4, y: 7.9 }, { x: 4.6, y: 5.0 }, { x: 8.1 }],
+  [{ x: -7.6, swallow: 1 }, { x: -0.6, spit: 1 }, { x: 1.2 }, { x: 4.6 }, { x: 6.4, y: 7.9 }, { x: 8.6 }, { x: 10.6 }],
+];
+// --- Đại Bác Căn Góc ------------------------------------------------------
+// Turn-based artillery on a 120-column heightmap over a 24 x 16 space
+// (x in [-12, 12], y in [-8, 8], y grows DOWN: a column's height value
+// is the y of its ground surface). Shells integrate in 4 substeps per
+// tick with gravity + wind; the boom carves a circular crater and
+// damage falls off linearly from CANNON_DMG at the centre. Control
+// map: pad U/D sweeps the barrel angle (5-85 deg), pad L/R sweeps
+// power (0-100), X flips facing, A fires; the 'setAim' action sets
+// angle/power/face exactly (sliders / tests). NO trajectory preview.
+const CANNON_COLS = 120, CANNON_AIM_MS = 30000, CANNON_BOOM_MS = 800, CANNON_MATCH_MS = 360000;
+export const BALLISTICS = { grav: 0.10, sub: 4, maxV: 1.6, windK: 0.003, blastR: 2.2, dmgMax: 60 };
+const CANNON_HP = 100;
 
 // ---------------------------------------------------------------------------
 // Small utilities
@@ -845,6 +949,10 @@ function createGame(room, gameId) {
     vel: {}, dmg: {}, face: {}, jumps: {}, atkCd: {}, hitT: {}, atkT: {}, dashT: {}, dashDir: {}, hvyCd: {}, hvyT: {},
     chars: null, gems: null, gemCount: {}, gateOpen: false, elOf: {}, wpIdx: {}, wpAt: {},
     wolf: null, ng: null,
+    ball: null, score: {}, lastTouch: null, goalInfo: null, goalieSeat: {}, kickCd: {}, remainMs: 0,
+    frogs: null, chamber: 0, chambersDone: 0, fliesEaten: 0, flies: [], crates: [],
+    heights: null, cannons: null, turnSeat: null, wind: 0, shell: null, boomFx: null,
+    dmgDealt: {}, botFireAt: 0, lastImpact: null, matchEndsAt: 0, elimAt: {},
   };
   room.players.forEach((p) => { game.points[p.seat] = 0; game.streaks[p.seat] = 0; });
   if (gameId === 'do-vui') game.order = shuffle(QUIZ_BANK.map((_, i) => i)).slice(0, meta.rounds);
@@ -1235,6 +1343,56 @@ function beginRound(room) {
       g.ng.horses[p.seat] = [0, 0, 0, 0];
     });
     g.phase = 'roll'; g.endsAt = t + NGUA_TURN_MS;
+  } else if (g.id === 'da-bong') {
+    g.phase = 'soccer';
+    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + SOCCER_MS;
+    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.dashT = {}; g.dashDir = {}; g.face = {}; g.kickCd = {};
+    preservePads(room);
+    g.score = { do: 0, xanh: 0 };
+    g.lastTouch = null; g.goalInfo = null;
+    room.players.forEach((p) => {
+      g.blobs[p.seat] = { x: 0, y: 7.1, vx: 0, vy: 0, ground: true, lives: 0, alive: true };
+      g.face[p.seat] = p.seat % 2 === 1 ? 1 : -1;
+      g.dashCd[p.seat] = 0; g.dashT[p.seat] = 0; g.dashDir[p.seat] = 1; g.kickCd[p.seat] = 0;
+    });
+    soccerKickoff(room);
+  } else if (g.id === 'ech-op') {
+    g.phase = 'frog';
+    g.tickCount = 0; g.nextTickAt = t + TICK_MS;
+    g.hearts = FROG_HEARTS; preservePads(room); g.botIntent = {};
+    g.frogs = {}; g.face = {}; g.wpIdx = {}; g.wpAt = {};
+    g.chambersDone = 0; g.fliesEaten = 0;
+    room.players.forEach((p) => {
+      g.frogs[p.seat] = { x: 0, y: 9.1, vx: 0, vy: 0, ground: true, belly: null, by: null };
+      g.face[p.seat] = 1; g.wpIdx[p.seat] = 0; g.wpAt[p.seat] = 0;
+    });
+    loadFrogChamber(room, 1, t);
+  } else if (g.id === 'can-goc') {
+    // Terrain: two summed sines, surface clamped to a playable band.
+    const p1 = rand(0, Math.PI * 2), p2 = rand(0, Math.PI * 2);
+    const a1 = rand(1.2, 2.0), a2 = rand(0.5, 1.0), f1 = rand(0.22, 0.34), f2 = rand(0.55, 0.85);
+    g.heights = [];
+    for (let i = 0; i < CANNON_COLS; i++) {
+      const x = -12 + (i + 0.5) * (24 / CANNON_COLS);
+      let y = 1.6 + a1 * Math.sin(x * f1 + p1) + a2 * Math.sin(x * f2 + p2);
+      y = Math.max(-2.5, Math.min(5.5, y));
+      g.heights.push(Math.round(y * 100) / 100);
+    }
+    g.cannons = {}; g.elimOrder = []; g.elimAt = {}; g.dmgDealt = {};
+    const n = room.players.length;
+    room.players.forEach((p, i) => {
+      const col = n === 1 ? 60 : Math.max(4, Math.min(CANNON_COLS - 5, Math.round(8 + (i * 104) / (n - 1) + rand(-3, 3))));
+      g.cannons[p.seat] = {
+        col, x: Math.round((-12 + (col + 0.5) * 0.2) * 100) / 100, y: g.heights[col],
+        hp: CANNON_HP, alive: true, face: 0, angle: 45, power: 60,
+      };
+      const c = g.cannons[p.seat];
+      c.face = c.x <= 0 ? 1 : -1;
+      g.dmgDealt[p.seat] = 0;
+    });
+    g.shell = null; g.boomFx = null; g.lastImpact = null;
+    g.matchEndsAt = t + CANNON_MATCH_MS;
+    cannonNextTurn(room, t, null);
   }
 }
 
@@ -1291,6 +1449,9 @@ function step(room) {
   if (g.id === 'den-lua-nuoc') return stepTemple(room, t);
   if (g.id === 'ma-soi') return stepWolf(room, t);
   if (g.id === 'ca-ngua') return stepNgua(room, t);
+  if (g.id === 'da-bong') return stepSoccer(room, t);
+  if (g.id === 'ech-op') return stepFrog(room, t);
+  if (g.id === 'can-goc') return stepCannon(room, t);
   return false;
 }
 function humansAllIn(room, has) {
@@ -3839,6 +4000,756 @@ function finishTemple(room, completed) {
   finishCoop(room, total, tier, 'viên ngọc');
 }
 
+// --- Game 24: Đá Bóng Đầu To (versus team soccer) ------------------------
+// Odd seats = Đỏ (defend left), even seats = Xanh. The deepest player
+// of each team spawns in goal; everyone resets there after each goal
+// while the match clock is banked (remainMs), so celebrations are
+// free. Scoring is the tug-of-war team path (not placement): winners
+// 300 each, draw 150 each, losers 50 each. Own goals count — the
+// scoreboard credits the TEAM, and goalInfo.by keeps the culprit.
+function soccerTeam(seat) { return seat % 2 === 1 ? 'do' : 'xanh'; }
+function soccerKickoff(room) {
+  const g = room.game;
+  const byTeam = { do: [], xanh: [] };
+  room.players.forEach((p) => { byTeam[soccerTeam(p.seat)].push(p.seat); });
+  g.goalieSeat = {};
+  ['do', 'xanh'].forEach((tm) => {
+    const seats = byTeam[tm];
+    const flip = tm === 'do' ? 1 : -1; // SOCCER_FWD_X is written for the left side
+    g.goalieSeat[tm] = seats.length >= 2 ? seats[seats.length - 1] : null;
+    seats.forEach((seat, i) => {
+      const b = g.blobs[seat];
+      if (!b) return;
+      const isG = g.goalieSeat[tm] === seat;
+      b.x = flip * (isG ? -SOCCER_GOALIE_X : SOCCER_FWD_X[Math.min(i, SOCCER_FWD_X.length - 1)]);
+      b.y = 7.1; b.vx = 0; b.vy = 0; b.ground = true;
+      g.face[seat] = tm === 'do' ? 1 : -1;
+      g.dashT[seat] = 0; g.kickCd[seat] = 0;
+    });
+  });
+  g.ball = { x: 0, y: 8 - SOCCER_BALL_R, vx: 0, vy: 0 };
+}
+function stepSoccer(room, t) {
+  const g = room.game;
+  if (g.phase === 'goal') {
+    if (t >= g.endsAt) {
+      soccerKickoff(room);
+      g.phase = 'soccer';
+      g.endsAt = t + Math.max(1000, g.remainMs || SOCCER_MS);
+      g.nextTickAt = t + TICK_MS;
+      return true;
+    }
+    return false;
+  }
+  if (g.phase !== 'soccer') return false;
+  if (t >= g.endsAt) { finishSoccer(room); return true; }
+  if (t >= g.nextTickAt) {
+    simulateSoccerTick(room);
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    return true;
+  }
+  return false;
+}
+function soccerIntent(room, p) {
+  const g = room.game;
+  if (p.type === 'human') {
+    const pad = g.pad[p.seat] || {};
+    const prev = g.padPrev[p.seat] || {};
+    return {
+      x: (pad.r ? 1 : 0) - (pad.l ? 1 : 0),
+      jump: (!!pad.u && !prev.u) || (!!pad.y && !prev.y),
+      kick: !!pad.a && !prev.a,
+      dash: !!pad.b && !prev.b,
+    };
+  }
+  return botBrainSoccer(room, p);
+}
+function simulateSoccerTick(room) {
+  const g = room.game;
+  g.tickCount += 1;
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat];
+    if (!b) return;
+    const seat = p.seat;
+    if (g.dashCd[seat] > 0) g.dashCd[seat] -= 1;
+    if (g.kickCd[seat] > 0) g.kickCd[seat] -= 1;
+    const it = soccerIntent(room, p);
+    if (it.x !== 0) g.face[seat] = it.x;
+    if (it.dash && g.dashCd[seat] <= 0 && (g.dashT[seat] || 0) <= 0) {
+      g.dashDir[seat] = it.x !== 0 ? it.x : (g.face[seat] || 1);
+      g.dashT[seat] = SOCCER_DASH_TICKS;
+      g.dashCd[seat] = SOCCER_DASH_CD;
+    }
+    if ((g.dashT[seat] || 0) > 0) {
+      g.dashT[seat] -= 1;
+      b.vx = g.dashDir[seat] * SOCCER_DASH_SPEED;
+    } else {
+      b.vx = it.x * SOCCER_RUN;
+    }
+    if (it.jump && b.ground) { b.vy = -SOCCER_JUMP; b.ground = false; }
+    if (it.kick && g.kickCd[seat] <= 0) soccerKick(room, seat);
+    platStep(b, SOCCER_SOLIDS, PLAT_GRAV, PLAT_MAXFALL);
+  });
+  stepSoccerBall(room);
+  snapshotPad(room);
+  const ball = g.ball;
+  if (ball && ball.y > 4.6) {
+    if (ball.x < -16.6) soccerGoal(room, 'xanh');
+    else if (ball.x > 16.6) soccerGoal(room, 'do');
+  }
+}
+function soccerKick(room, seat) {
+  const g = room.game;
+  const b = g.blobs[seat]; const ball = g.ball;
+  if (!b || !ball) return;
+  if (Math.hypot(ball.x - b.x, ball.y - b.y) > 2.3) return; // out of reach: no kick, no cooldown
+  g.kickCd[seat] = SOCCER_KICK_CD;
+  const pad = g.pad[seat] || {};
+  let vx = SOCCER_KICK_VX, vy = SOCCER_KICK_VY;
+  if (pad.u) { vx *= 0.8; vy = 0.85; } // lob it
+  else if (pad.d) { vx *= 1.15; vy = 0.25; } // low drive
+  ball.vx = (g.face[seat] || 1) * vx;
+  ball.vy = -vy;
+  g.lastTouch = seat;
+}
+function stepSoccerBall(room) {
+  const g = room.game;
+  const ball = g.ball;
+  if (!ball) return;
+  ball.vy = Math.min(1.3, ball.vy + SOCCER_BALL_GRAV);
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+  for (const s of SOCCER_SOLIDS) {
+    const nx = Math.max(s.x, Math.min(ball.x, s.x + s.w));
+    const ny = Math.max(s.y, Math.min(ball.y, s.y + s.h));
+    const dx = ball.x - nx, dy = ball.y - ny;
+    const d2 = dx * dx + dy * dy;
+    if (d2 >= SOCCER_BALL_R * SOCCER_BALL_R) continue;
+    if (d2 > 0.0001) {
+      const d = Math.sqrt(d2);
+      const ux = dx / d, uy = dy / d;
+      ball.x = nx + ux * SOCCER_BALL_R;
+      ball.y = ny + uy * SOCCER_BALL_R;
+      const vn = ball.vx * ux + ball.vy * uy;
+      if (vn < 0) {
+        if (vn > -0.18) { ball.vx -= vn * ux; ball.vy -= vn * uy; } // settle, don't micro-bounce
+        else {
+          ball.vx -= (1 + SOCCER_BALL_REST) * vn * ux;
+          ball.vy -= (1 + SOCCER_BALL_REST) * vn * uy;
+          ball.vx *= 0.98; ball.vy *= 0.98;
+        }
+      }
+    } else {
+      ball.y = s.y - SOCCER_BALL_R;
+      if (ball.vy > 0) ball.vy = -ball.vy * SOCCER_BALL_REST;
+    }
+  }
+  // Player contact: dribble pushes, body blocks and jumping headers.
+  room.players.forEach((p) => {
+    const b = g.blobs[p.seat];
+    if (!b) return;
+    const nx = Math.max(b.x - PLAT_HW, Math.min(ball.x, b.x + PLAT_HW));
+    const ny = Math.max(b.y - PLAT_HH, Math.min(ball.y, b.y + PLAT_HH));
+    const dx = ball.x - nx, dy = ball.y - ny;
+    const d = Math.hypot(dx, dy);
+    if (d >= SOCCER_BALL_R) return;
+    if (d < 0.001) { ball.x = b.x + (g.face[p.seat] || 1) * (PLAT_HW + SOCCER_BALL_R); return; }
+    const ux = dx / d, uy = dy / d;
+    ball.x = nx + ux * SOCCER_BALL_R;
+    ball.y = ny + uy * SOCCER_BALL_R;
+    const vn = ball.vx * ux + ball.vy * uy;
+    if (vn < 0.4) {
+      ball.vx += (0.4 - vn) * ux + b.vx * 0.55;
+      ball.vy += (0.4 - vn) * uy + (b.vy < 0 ? b.vy * 0.35 : 0);
+    }
+    if (uy < -0.5 && b.vy < -0.2) ball.vy = Math.min(ball.vy, -0.55); // header pop
+    g.lastTouch = p.seat;
+  });
+  // Rolling friction once the ball is basically resting on the ground.
+  if (ball.y >= 8 - SOCCER_BALL_R - 0.03 && Math.abs(ball.vy) < 0.1) {
+    ball.vy = 0;
+    ball.y = 8 - SOCCER_BALL_R;
+    ball.vx *= 0.94;
+    if (Math.abs(ball.vx) < 0.02) ball.vx = 0;
+  }
+}
+function soccerGoal(room, team) {
+  const g = room.game;
+  g.score[team] = (g.score[team] || 0) + 1;
+  const scorer = g.lastTouch != null ? playerAt(room, g.lastTouch) : null;
+  g.goalInfo = { team, by: g.lastTouch, ownGoal: !!scorer && soccerTeam(scorer.seat) !== team };
+  g.remainMs = Math.max(0, g.endsAt - now());
+  g.phase = 'goal';
+  g.endsAt = now() + SOCCER_GOAL_MS;
+}
+function botBrainSoccer(room, p) {
+  const g = room.game;
+  const me = g.blobs[p.seat];
+  const intent = { x: 0, jump: false, kick: false, dash: false };
+  if (!me || !g.ball) return intent;
+  const ball = g.ball;
+  const tm = soccerTeam(p.seat);
+  const atk = tm === 'do' ? 1 : -1;
+  const isGoalie = !!(g.goalieSeat && g.goalieSeat[tm] === p.seat);
+  let tx;
+  if (isGoalie) {
+    const home = -atk * 15.0;
+    tx = home + Math.max(-2.2, Math.min(2.2, (ball.x - home) * 0.3));
+    if (Math.abs(ball.x - me.x) < 3.2 && Math.abs(ball.y - me.y) < 3) tx = ball.x; // charge a close ball
+  } else {
+    let closest = true;
+    room.players.forEach((q) => {
+      if (q.seat === p.seat || soccerTeam(q.seat) !== tm) return;
+      if (g.goalieSeat && g.goalieSeat[tm] === q.seat) return;
+      const qb = g.blobs[q.seat];
+      if (qb && Math.hypot(ball.x - qb.x, ball.y - qb.y) < Math.hypot(ball.x - me.x, ball.y - me.y)) closest = false;
+    });
+    tx = closest ? ball.x + ball.vx * (p.difficulty === 'kho' ? 4 : 0) : ball.x * 0.45 - atk * 2;
+  }
+  if (Math.abs(tx - me.x) > 0.35) intent.x = Math.sign(tx - me.x);
+  const dBall = Math.hypot(ball.x - me.x, ball.y - me.y);
+  if (dBall < 2.3 && (g.kickCd[p.seat] || 0) <= 0) {
+    const blunder = p.difficulty === 'de' && Math.random() < 0.22;
+    const wantFace = blunder ? -atk : atk;
+    if ((g.face[p.seat] || 1) === wantFace) intent.kick = true;
+    else intent.x = wantFace;
+  }
+  if (ball.y < me.y - 1.6 && dBall < 2.6 && me.ground) intent.jump = true;
+  if (!isGoalie && dBall > 7 && intent.x !== 0 && p.difficulty !== 'de' && Math.random() < 0.06) intent.dash = true;
+  return intent;
+}
+function finishSoccer(room) {
+  const g = room.game;
+  const d = g.score.do || 0, x = g.score.xanh || 0;
+  const winner = d > x ? 'do' : x > d ? 'xanh' : null;
+  const entries = room.players.map((p) => {
+    const tm = soccerTeam(p.seat);
+    return { seat: p.seat, team: tm, points: winner === null ? 150 : tm === winner ? 300 : 50 };
+  });
+  entries.forEach((e) => { g.points[e.seat] = e.points; });
+  g.lastRound = { round: 1, entries, score: { do: d, xanh: x }, winnerTeam: winner };
+  endGame(room);
+}
+
+// --- Game 25: Ếch Ộp Phiêu Lưu (co-op swallow-carry platformer) ----------
+// Frogs are temple-style AABBs in the shared 24 x 24 space. The belly
+// rules: B/X edge near a free, non-carrying teammate swallows them
+// (they freeze, glued to the carrier); B/X again spits them out ahead
+// with a hop. A carrier jumps with FROG_JUMP_CARRY — that boost is
+// the whole point: the 5.2u spike strips fit between the solo and
+// carrier clearances. Spikes use the temple feet-box test. Crates are
+// pushed by contact (they inherit the pusher's run speed) and glide
+// on with friction once released, so a crate can be shoved INTO a
+// spike strip and hopped across; frogs stand on crates (they join the
+// solids list), crates themselves ignore spikes.
+function loadFrogChamber(room, idx, t) {
+  const g = room.game;
+  const L = FROG_LEVELS[idx - 1];
+  g.chamber = idx;
+  g.flies = L.flies.map((f) => ({ x: f.x, y: f.y, taken: false }));
+  g.crates = L.crates.map((c) => ({ x: c.x, y: c.y, vx: 0, vy: 0, ground: true }));
+  room.players.forEach((p, i) => {
+    const st = L.starts[i % L.starts.length];
+    const f = g.frogs[p.seat];
+    if (!f) return;
+    f.x = st.x; f.y = st.y; f.vx = 0; f.vy = 0; f.ground = true; f.belly = null; f.by = null;
+    g.wpIdx[p.seat] = 0; g.wpAt[p.seat] = 0;
+  });
+  g.endsAt = t + FROG_PER_MS;
+}
+function frogSolids(room) {
+  const g = room.game;
+  const L = FROG_LEVELS[g.chamber - 1];
+  let solids = FROG_WALLS.concat(L.solids);
+  (g.crates || []).forEach((c) => { solids = solids.concat([{ x: c.x - 0.6, y: c.y - 0.6, w: 1.2, h: 1.2 }]); });
+  return solids;
+}
+function stepFrog(room, t) {
+  const g = room.game;
+  if (g.phase === 'frogClear') {
+    if (t >= g.endsAt) {
+      loadFrogChamber(room, g.chamber + 1, t);
+      g.phase = 'frog';
+      g.nextTickAt = t + TICK_MS;
+      return true;
+    }
+    return false;
+  }
+  if (g.phase !== 'frog') return false;
+  if (t >= g.endsAt) { finishFrog(room); return true; }
+  if (t >= g.nextTickAt) {
+    simulateFrogTick(room);
+    g.nextTickAt += TICK_MS;
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    return true;
+  }
+  return false;
+}
+function frogIntent(room, p) {
+  const g = room.game;
+  const f = g.frogs[p.seat];
+  if (f && f.by != null) return { x: 0, jump: false, gulp: false }; // a passenger has no controls
+  if (p.type === 'human') {
+    const pad = g.pad[p.seat] || {};
+    const prev = g.padPrev[p.seat] || {};
+    return {
+      x: (pad.r ? 1 : 0) - (pad.l ? 1 : 0),
+      jump: (!!pad.u && !prev.u) || (!!pad.a && !prev.a) || (!!pad.y && !prev.y),
+      gulp: (!!pad.b && !prev.b) || (!!pad.x && !prev.x),
+    };
+  }
+  return botBrainFrog(room, p);
+}
+function crateStep(c, solids) {
+  // platStep's axis-separated resolution with the crate's own 0.6 half extents.
+  const HW = 0.6, HH = 0.6;
+  c.vy = Math.min(PLAT_MAXFALL, c.vy + PLAT_GRAV);
+  c.x += c.vx;
+  for (const s of solids) {
+    if (s.oneWay) continue;
+    if (c.x - HW < s.x + s.w && c.x + HW > s.x && c.y - HH < s.y + s.h && c.y + HH > s.y) {
+      if (c.vx > 0) c.x = s.x - HW;
+      else if (c.vx < 0) c.x = s.x + s.w + HW;
+      c.vx = 0;
+    }
+  }
+  const prevFeet = c.y + HH;
+  c.y += c.vy;
+  c.ground = false;
+  for (const s of solids) {
+    if (!(c.x - HW < s.x + s.w && c.x + HW > s.x && c.y - HH < s.y + s.h && c.y + HH > s.y)) continue;
+    if (c.vy >= 0 && prevFeet <= s.y + 0.05) { c.y = s.y - HH; c.vy = 0; c.ground = true; }
+    else if (c.vy < 0 && !s.oneWay) { c.y = s.y + s.h + HH; c.vy = 0; }
+  }
+}
+function simulateFrogTick(room) {
+  const g = room.game;
+  g.tickCount += 1;
+  const L = FROG_LEVELS[g.chamber - 1];
+  const staticSolids = FROG_WALLS.concat(L.solids);
+  const intents = {};
+  room.players.forEach((p) => { intents[p.seat] = frogIntent(room, p); });
+  // Crates first: a pushing frog lends its run speed; a released crate
+  // glides with friction. Crates then join the frogs' solids list.
+  (g.crates || []).forEach((c, ci) => {
+    let push = 0;
+    room.players.forEach((p) => {
+      const f = g.frogs[p.seat]; const it = intents[p.seat];
+      if (!f || f.by != null || !it || it.x === 0) return;
+      const dx = c.x - f.x;
+      if (Math.sign(dx) === it.x && Math.abs(dx) <= 1.25 && Math.abs(f.y - c.y) < 1.1) push = it.x;
+    });
+    if (push !== 0) c.vx = push * FROG_RUN;
+    else if (c.ground) c.vx = Math.abs(c.vx) <= 0.03 ? 0 : c.vx - Math.sign(c.vx) * 0.03;
+    crateStep(c, staticSolids);
+    if (c.y > 13) { c.x = L.crates[ci].x; c.y = L.crates[ci].y; c.vx = 0; c.vy = 0; }
+  });
+  const solids = frogSolids(room);
+  room.players.forEach((p) => {
+    const f = g.frogs[p.seat];
+    if (!f) return;
+    const seat = p.seat;
+    if (f.by != null) {
+      const carrier = g.frogs[f.by];
+      if (carrier) { f.x = carrier.x; f.y = carrier.y; }
+      return;
+    }
+    const it = intents[seat];
+    if (it.x !== 0) g.face[seat] = it.x;
+    if (it.gulp) {
+      if (f.belly != null) {
+        const pas = g.frogs[f.belly];
+        if (pas) {
+          pas.by = null;
+          pas.x = f.x + (g.face[seat] || 1) * 1.15;
+          pas.y = f.y - 0.3;
+          pas.vx = (g.face[seat] || 1) * 0.5;
+          pas.vy = -1.0;
+          pas.ground = false;
+          const pasP = playerAt(room, f.belly);
+          if (pasP && pasP.type === 'bot') {
+            g.wpIdx[f.belly] = Math.max(g.wpIdx[f.belly] || 0, g.wpIdx[seat] || 0);
+          }
+        }
+        f.belly = null;
+      } else {
+        let best = null, bd = 1.7;
+        room.players.forEach((q) => {
+          if (q.seat === seat) return;
+          const qf = g.frogs[q.seat];
+          if (!qf || qf.by != null || qf.belly != null) return;
+          const d = Math.hypot(qf.x - f.x, qf.y - f.y);
+          if (d <= bd) { bd = d; best = q.seat; }
+        });
+        if (best != null) {
+          g.frogs[best].by = seat;
+          g.frogs[best].vx = 0; g.frogs[best].vy = 0;
+          f.belly = best;
+        }
+      }
+    }
+    if (it.jump && f.ground) {
+      f.vy = -(f.belly != null ? FROG_JUMP_CARRY : FROG_JUMP);
+      f.ground = false;
+    }
+    f.vx = it.x * FROG_RUN;
+    platStep(f, solids, PLAT_GRAV, PLAT_MAXFALL);
+    for (const sp of L.spikes) {
+      // Spikes kill only once the feet are essentially ON the strip
+      // (within 0.15 of the floor): a frog arcing over the far edge
+      // with its feet still high is clearing it, not landing in it.
+      // Standing in the strip (feetY = floor top) always dies.
+      const inX = f.x + 0.25 > sp.x && f.x - 0.25 < sp.x + sp.w;
+      const inFeet = f.y + PLAT_HH > sp.y + sp.h - 0.15;
+      if (inX && inFeet) { frogDie(room, seat); break; }
+    }
+    if (g.frogs[seat] === f && f.y > 13) frogDie(room, seat);
+  });
+  (g.flies || []).forEach((fl) => {
+    if (fl.taken) return;
+    room.players.forEach((p) => {
+      if (fl.taken) return;
+      const f = g.frogs[p.seat];
+      if (f && f.by == null && Math.hypot(fl.x - f.x, fl.y - f.y) < FROG_EAT_R) {
+        fl.taken = true;
+        g.fliesEaten = (g.fliesEaten || 0) + 1;
+      }
+    });
+  });
+  snapshotPad(room);
+  if (g.hearts <= 0) { finishFrog(room); return; }
+  const allHome = room.players.every((p) => {
+    const f = g.frogs[p.seat];
+    if (!f) return false;
+    if (f.by != null) return true; // a passenger is wherever its carrier is
+    return platOverlap(f, L.door);
+  });
+  if (allHome) {
+    g.chambersDone = Math.max(g.chambersDone || 0, g.chamber);
+    if (g.chamber >= FROG_LEVELS.length) { finishFrog(room); return; }
+    g.phase = 'frogClear';
+    g.endsAt = now() + 2000;
+  }
+}
+function frogDie(room, seat) {
+  const g = room.game;
+  const L = FROG_LEVELS[g.chamber - 1];
+  const idx = room.players.findIndex((p) => p.seat === seat);
+  const st = L.starts[Math.max(0, idx) % L.starts.length];
+  const f = g.frogs[seat];
+  if (!f) return;
+  // A passenger dies with its carrier: both restart for ONE heart.
+  const rider = f.belly;
+  f.x = st.x; f.y = st.y; f.vx = 0; f.vy = 0; f.belly = null;
+  if (rider != null) {
+    const rf = g.frogs[rider];
+    if (rf) { rf.by = null; rf.x = st.x + 0.8; rf.y = st.y; rf.vx = 0; rf.vy = 0; }
+    const rp = playerAt(room, rider);
+    if (rp && rp.type === 'bot') g.wpIdx[rider] = 0;
+  }
+  const me = playerAt(room, seat);
+  if (me && me.type === 'bot') g.wpIdx[seat] = 0;
+  g.hearts -= 1;
+}
+function botBrainFrog(room, p) {
+  const g = room.game;
+  const f = g.frogs[p.seat];
+  const intent = { x: 0, jump: false, gulp: false };
+  if (!f || f.by != null) return intent;
+  const L = FROG_LEVELS[g.chamber - 1];
+  const route = FROG_WP[g.chamber - 1] || [];
+  const idx = g.wpIdx[p.seat] || 0;
+  if (idx >= route.length) return intent;
+  const wp = route[idx];
+  const dx = wp.x - f.x;
+  const dy = (wp.y != null ? wp.y : f.y) - f.y;
+  if (wp.swallow && f.belly == null) {
+    // Park at the swallow point until a free teammate is in range to
+    // gulp down; a 20s timeout keeps a lone bot from freezing the run.
+    if (!g.wpAt[p.seat]) g.wpAt[p.seat] = g.tickCount;
+    let mateNear = false;
+    room.players.forEach((q) => {
+      if (q.seat === p.seat) return;
+      const qf = g.frogs[q.seat];
+      if (qf && qf.by == null && qf.belly == null && Math.hypot(qf.x - f.x, qf.y - f.y) <= 1.7) mateNear = true;
+    });
+    if (mateNear && Math.abs(dx) < 1.2) {
+      intent.gulp = true;
+      g.wpIdx[p.seat] = idx + 1;
+      g.wpAt[p.seat] = 0;
+      return intent;
+    }
+    if (g.tickCount - (g.wpAt[p.seat] || 0) > 160) { g.wpIdx[p.seat] = idx + 1; g.wpAt[p.seat] = 0; return intent; }
+    if (Math.abs(dx) >= 0.45) intent.x = Math.sign(dx);
+    return intent;
+  }
+  if (wp.spit && f.belly != null && f.ground && Math.abs(dx) < 0.6) {
+    intent.gulp = true;
+    g.wpIdx[p.seat] = idx + 1;
+    return intent;
+  }
+  if (Math.abs(dx) < 0.45 && (wp.y == null || Math.abs(dy) < 0.8)) { g.wpIdx[p.seat] = idx + 1; return intent; }
+  intent.x = Math.abs(dx) > 0.3 ? Math.sign(dx) : 0;
+  if (f.ground && intent.x !== 0) {
+    if (wp.y != null && dy < -0.8 && Math.abs(dx) < 3.0) intent.jump = true;
+    else {
+      // Hazard probe: jump as the near edge of a spike strip comes
+      // underfoot — a carrying bot leaves it later (0.5) because its
+      // boosted jump needs the latest safe takeoff.
+      const lead = f.belly != null ? 0.5 : 1.15;
+      for (const sp of L.spikes) {
+        const edge = intent.x > 0 ? sp.x : sp.x + sp.w;
+        const dist = (edge - f.x) * intent.x;
+        if (dist > 0 && dist < lead && f.y + PLAT_HH > sp.y - 1.2) { intent.jump = true; break; }
+      }
+    }
+  }
+  return intent;
+}
+function finishFrog(room) {
+  const g = room.game;
+  const done = g.chambersDone || 0;
+  const flies = g.fliesEaten || 0;
+  let tier = 'none';
+  if (done >= FROG_LEVELS.length && flies >= FROG_LEVELS.length * 3) tier = 'vang';
+  else if (done >= FROG_LEVELS.length) tier = 'bac';
+  else if (done >= 1) tier = 'dong';
+  finishCoop(room, flies, tier, 'con ruồi');
+}
+
+// --- Game 26: Đại Bác Căn Góc (turn-based artillery) ----------------------
+// One cannon takes the whole 'aim' phase (30s): its owner sweeps
+// angle/power with the pad (2.5 deg / 3 power per tick), flips with
+// X, fires with A; an idle human simply passes. Bots solve the
+// ballistic equation (ignoring wind), walk their correction from
+// their last landing offset, then add difficulty error. The boom
+// carves the heightmap in a circle and every cannon settles onto the
+// new surface; falling out of the world never happens (the carve is
+// capped), so elimination is HP-only. Placement: survivors by HP,
+// then reverse elimination order — all through placementAt().
+function cannonColAt(x) { return Math.max(0, Math.min(CANNON_COLS - 1, Math.floor((x + 12) / 0.2))); }
+function cannonNextTurn(room, t, afterSeat) {
+  const g = room.game;
+  const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
+  let next = null;
+  if (afterSeat == null) next = seats.find((s) => g.cannons[s] && g.cannons[s].alive);
+  else {
+    const i = seats.indexOf(afterSeat);
+    for (let k = 1; k <= seats.length; k++) {
+      const s = seats[(i + k) % seats.length];
+      if (g.cannons[s] && g.cannons[s].alive) { next = s; break; }
+    }
+  }
+  g.turnSeat = next;
+  g.wind = randInt(-6, 6);
+  g.phase = 'aim';
+  g.endsAt = t + CANNON_AIM_MS;
+  g.nextTickAt = t + TICK_MS;
+  const cp = next != null ? playerAt(room, next) : null;
+  g.botFireAt = cp && cp.type === 'bot' ? t + Math.round(rand(1000, 2000)) : 0;
+  snapshotPad(room);
+}
+function cannonFire(room, seat) {
+  const g = room.game;
+  const c = g.cannons[seat];
+  if (!c || !c.alive) return;
+  const rad = (c.angle * Math.PI) / 180;
+  const v = Math.max(4, c.power) / 100 * BALLISTICS.maxV;
+  const dx = c.face * Math.cos(rad), dy = -Math.sin(rad);
+  g.shell = {
+    x: Math.round((c.x + dx * 1.0) * 1000) / 1000,
+    y: Math.round((c.y - 0.4 + dy * 1.0) * 1000) / 1000,
+    vx: dx * v, vy: dy * v, by: seat, trail: [], born: now(),
+  };
+  g.phase = 'shell';
+  g.nextTickAt = now() + TICK_MS;
+}
+function stepCannon(room, t) {
+  const g = room.game;
+  if (g.phase === 'aim') {
+    if (t >= g.matchEndsAt) { finishCannon(room); return true; }
+    const seat = g.turnSeat;
+    const c = seat != null ? g.cannons[seat] : null;
+    if (!c || !c.alive) { cannonNextTurn(room, t, seat); return true; }
+    const cp = playerAt(room, seat);
+    if (cp && cp.type === 'bot') {
+      if (t >= g.botFireAt) { cannonBotAim(room, cp); cannonFire(room, seat); return true; }
+      return false;
+    }
+    if (t >= g.endsAt) { cannonNextTurn(room, t, seat); return true; } // idle: the turn passes
+    if (t >= g.nextTickAt) {
+      const pad = g.pad[seat] || {};
+      const prev = g.padPrev[seat] || {};
+      if (pad.u) c.angle = Math.min(85, c.angle + 2.5);
+      if (pad.d) c.angle = Math.max(5, c.angle - 2.5);
+      if (pad.l) c.power = Math.max(0, c.power - 3);
+      if (pad.r) c.power = Math.min(100, c.power + 3);
+      if (pad.x && !prev.x) c.face = -c.face;
+      g.padPrev[seat] = Object.assign({}, pad);
+      g.nextTickAt += TICK_MS;
+      if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+      if (pad.a && !prev.a) { cannonFire(room, seat); return true; }
+      return true;
+    }
+    return false;
+  }
+  if (g.phase === 'shell') {
+    if (t >= g.nextTickAt) {
+      simulateShellTick(room);
+      g.nextTickAt += TICK_MS;
+      if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+      return true;
+    }
+    return false;
+  }
+  if (g.phase === 'boom') {
+    if (t >= g.endsAt) {
+      const alive = room.players.filter((p) => g.cannons[p.seat] && g.cannons[p.seat].alive);
+      if (alive.length <= 1 || t >= g.matchEndsAt) { finishCannon(room); return true; }
+      cannonNextTurn(room, t, g.turnSeat);
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+function simulateShellTick(room) {
+  const g = room.game;
+  const sh = g.shell;
+  if (!sh) { g.phase = 'aim'; return; }
+  const B = BALLISTICS;
+  const dt = 1 / B.sub;
+  for (let i = 0; i < B.sub; i++) {
+    sh.vy += B.grav * dt;
+    sh.vx += g.wind * B.windK * dt;
+    sh.x += sh.vx * dt;
+    sh.y += sh.vy * dt;
+    let direct = false;
+    room.players.forEach((p) => {
+      const c = g.cannons[p.seat];
+      if (c && c.alive && Math.hypot(sh.x - c.x, sh.y - (c.y - 0.4)) < 0.85) direct = true;
+    });
+    if (direct) { resolveBoom(room, sh.x, sh.y); return; }
+    if (sh.x < -12.6 || sh.x > 12.6) { // sailed out of the world: no boom
+      g.shell = null;
+      g.boomFx = null;
+      g.phase = 'boom';
+      g.endsAt = now() + 300;
+      return;
+    }
+    if (sh.y >= g.heights[cannonColAt(sh.x)]) { resolveBoom(room, sh.x, g.heights[cannonColAt(sh.x)]); return; }
+  }
+  sh.trail.push({ x: Math.round(sh.x * 100) / 100, y: Math.round(sh.y * 100) / 100 });
+  if (sh.trail.length > 40) sh.trail = sh.trail.slice(-40);
+  if (now() - sh.born > 12000) {
+    g.shell = null;
+    g.boomFx = null;
+    g.phase = 'boom';
+    g.endsAt = now() + 300;
+  }
+}
+function resolveBoom(room, ix, iy) {
+  const g = room.game;
+  const B = BALLISTICS;
+  const by = g.shell ? g.shell.by : null;
+  const hits = {};
+  room.players.forEach((p) => {
+    const c = g.cannons[p.seat];
+    if (!c || !c.alive) return;
+    const d = Math.hypot(ix - c.x, iy - (c.y - 0.4));
+    if (d < B.blastR) {
+      const dmg = Math.round(B.dmgMax * (1 - d / B.blastR));
+      if (dmg > 0) {
+        hits[p.seat] = dmg;
+        c.hp -= dmg;
+        if (by != null && by !== p.seat) g.dmgDealt[by] = (g.dmgDealt[by] || 0) + dmg;
+      }
+    }
+  });
+  for (let i = 0; i < CANNON_COLS; i++) {
+    const cx = -12 + (i + 0.5) * 0.2;
+    const dx = Math.abs(cx - ix);
+    if (dx < B.blastR) {
+      const depth = Math.sqrt(B.blastR * B.blastR - dx * dx);
+      const target = Math.min(7.6, iy + depth);
+      if (target > g.heights[i]) g.heights[i] = Math.round(target * 100) / 100;
+    }
+  }
+  room.players.forEach((p) => {
+    const c = g.cannons[p.seat];
+    if (!c || !c.alive) return;
+    c.y = g.heights[c.col];
+    if (c.hp <= 0) {
+      c.alive = false;
+      c.hp = 0;
+      g.elimOrder.push(p.seat);
+    }
+  });
+  g.lastImpact = { x: Math.round(ix * 100) / 100, y: Math.round(iy * 100) / 100, by };
+  g.boomFx = { x: g.lastImpact.x, y: g.lastImpact.y, hits, at: now() };
+  g.shell = null;
+  g.phase = 'boom';
+  g.endsAt = now() + CANNON_BOOM_MS;
+}
+function cannonBotAim(room, p) {
+  const g = room.game;
+  const c = g.cannons[p.seat];
+  if (!c) return;
+  let tgt = null, td = 1e9;
+  room.players.forEach((q) => {
+    if (q.seat === p.seat) return;
+    const qc = g.cannons[q.seat];
+    if (qc && qc.alive && Math.abs(qc.x - c.x) < td) { td = Math.abs(qc.x - c.x); tgt = qc; }
+  });
+  if (!tgt) return;
+  const B = BALLISTICS;
+  const ox = c.x, oy = c.y - 0.4;
+  const R = Math.abs(tgt.x - ox), dy = (tgt.y - 0.4) - oy; // +dy: the target sits lower
+  let solved = null;
+  for (const deg of [45, 55, 65, 35]) {
+    const rad = (deg * Math.PI) / 180;
+    const denom = Math.cos(rad) * Math.cos(rad) * (dy + R * Math.tan(rad));
+    if (denom <= 0.01) continue;
+    const v2 = (0.5 * B.grav * R * R) / denom;
+    if (v2 <= 0) continue;
+    const v = Math.sqrt(v2);
+    if (v <= B.maxV * 1.02) { solved = { angle: deg, v }; break; }
+  }
+  if (!solved) solved = { angle: 45, v: B.maxV };
+  let angle = solved.angle;
+  let power = Math.max(4, Math.min(100, Math.round((solved.v / B.maxV) * 100)));
+  // Shot-walking: correct by my last shot's landing offset (the
+  // memory is only honoured against the same intended target area).
+  const li = g.lastImpact;
+  if (li && li.by === p.seat && p.difficulty !== 'de') {
+    const off = li.x - tgt.x;
+    const fix = p.difficulty === 'kho' ? 1 : 0.5;
+    power = Math.max(4, Math.min(100, Math.round(power - off * 2.2 * fix)));
+  }
+  const err = p.difficulty === 'kho' ? [2, 3] : p.difficulty === 'vua' ? [5, 6] : [10, 12];
+  angle = Math.max(5, Math.min(85, angle + rand(-err[0], err[0])));
+  power = Math.max(4, Math.min(100, power + rand(-err[1], err[1])));
+  c.face = tgt.x >= c.x ? 1 : -1;
+  c.angle = Math.round(angle * 10) / 10;
+  c.power = Math.round(power);
+}
+function finishCannon(room) {
+  const g = room.game;
+  const aliveRanked = room.players.filter((p) => g.cannons[p.seat] && g.cannons[p.seat].alive)
+    .sort((a, b) => (g.cannons[b.seat].hp - g.cannons[a.seat].hp)
+      || ((g.dmgDealt[b.seat] || 0) - (g.dmgDealt[a.seat] || 0)) || (a.seat - b.seat));
+  const elimRanked = g.elimOrder.slice().reverse().map((seat) => playerAt(room, seat)).filter(Boolean);
+  const ranking = aliveRanked.concat(elimRanked);
+  const entries = ranking.map((p, i) => ({
+    seat: p.seat, points: placementAt(i),
+    hp: Math.max(0, g.cannons[p.seat].hp), dmgDealt: g.dmgDealt[p.seat] || 0, alive: g.cannons[p.seat].alive,
+  }));
+  entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
+  g.lastRound = { round: 1, entries };
+  endGame(room);
+}
+
 function blobsView(room) {
   const g = room.game;
   const out = {};
@@ -4163,6 +5074,80 @@ function gameView(room, role, seat, t) {
       v.myEl = g.elOf[seat] || null;
       v.myHome = !!(g.chars && g.chars[seat] && g.chars[seat].home);
     }
+  } else if (g.id === 'da-bong') {
+    v.phaseDur = SOCCER_MS;
+    v.solids = SOCCER_SOLIDS;
+    v.teams = {};
+    v.blobs = {};
+    if (g.blobs) room.players.forEach((p) => {
+      const b = g.blobs[p.seat];
+      v.teams[p.seat] = soccerTeam(p.seat);
+      if (b) v.blobs[p.seat] = {
+        x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, alive: true,
+        face: g.face[p.seat] || 1, ground: !!b.ground, dash: (g.dashT[p.seat] || 0) > 0,
+        team: soccerTeam(p.seat),
+      };
+    });
+    v.ball = g.ball ? { x: Math.round(g.ball.x * 100) / 100, y: Math.round(g.ball.y * 100) / 100 } : null;
+    v.scoreboard = { do: (g.score && g.score.do) || 0, xanh: (g.score && g.score.xanh) || 0 };
+    v.goalInfo = g.phase === 'goal' ? g.goalInfo : null;
+    if (seat != null) v.myTeam = soccerTeam(seat);
+  } else if (g.id === 'ech-op') {
+    const L = FROG_LEVELS[(g.chamber || 1) - 1];
+    v.phaseDur = FROG_PER_MS;
+    v.chamber = g.chamber || 1;
+    v.chambersTotal = FROG_LEVELS.length;
+    v.solids = FROG_WALLS.concat(L.solids);
+    v.spikes = L.spikes;
+    v.door = L.door;
+    v.hearts = g.hearts;
+    v.fliesEaten = g.fliesEaten || 0;
+    v.fliesTotal = FROG_LEVELS.length * 3;
+    v.flies = (g.flies || []).map((fl, i) => ({ id: i, x: fl.x, y: fl.y, taken: !!fl.taken }));
+    v.crates = (g.crates || []).map((c, i) => ({ id: i, x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100 }));
+    v.frogs = {};
+    if (g.frogs) room.players.forEach((p) => {
+      const f = g.frogs[p.seat];
+      if (!f) return;
+      v.frogs[p.seat] = {
+        x: Math.round(f.x * 100) / 100, y: Math.round(f.y * 100) / 100,
+        face: g.face[p.seat] || 1, ground: !!f.ground,
+        state: f.by != null ? 'in' : f.belly != null ? 'carry' : 'free',
+        bellySeat: f.belly != null ? f.belly : null,
+        carrierSeat: f.by != null ? f.by : null,
+        atDoor: f.by == null && platOverlap(f, L.door),
+      };
+    });
+    if (seat != null && g.frogs && g.frogs[seat]) {
+      const mf = g.frogs[seat];
+      v.myState = mf.by != null ? 'in' : mf.belly != null ? 'carry' : 'free';
+      v.myCarrierSeat = mf.by != null ? mf.by : null;
+      v.myPassengerSeat = mf.belly != null ? mf.belly : null;
+      v.myDoor = v.myState !== 'in' && platOverlap(mf, L.door);
+    }
+  } else if (g.id === 'can-goc') {
+    v.phaseDur = CANNON_AIM_MS;
+    v.heights = g.heights || [];
+    v.wind = g.wind || 0;
+    v.turn = g.turnSeat;
+    v.cannons = {};
+    if (g.cannons) room.players.forEach((p) => {
+      const c = g.cannons[p.seat];
+      if (c) v.cannons[p.seat] = {
+        x: c.x, y: c.y, hp: Math.max(0, c.hp), alive: !!c.alive,
+        face: c.face, angle: Math.round(c.angle * 10) / 10, power: Math.round(c.power),
+      };
+    });
+    v.shell = g.shell ? {
+      x: Math.round(g.shell.x * 100) / 100, y: Math.round(g.shell.y * 100) / 100,
+      trail: g.shell.trail || [],
+    } : null;
+    v.boom = g.phase === 'boom' && g.boomFx ? { x: g.boomFx.x, y: g.boomFx.y, hits: g.boomFx.hits, at: g.boomFx.at } : null;
+    if (seat != null) {
+      v.myTurn = g.turnSeat === seat && g.phase === 'aim';
+      const mc = g.cannons ? g.cannons[seat] : null;
+      v.myCannon = mc ? { angle: Math.round(mc.angle * 10) / 10, power: Math.round(mc.power), face: mc.face, hp: Math.max(0, mc.hp), alive: !!mc.alive } : null;
+    }
   }
   return v;
 }
@@ -4353,7 +5338,8 @@ function playerAction(room, player, body) {
       && g.id !== 'cuop-sao' && g.id !== 'giu-vuong-mien' && g.id !== 'son-san'
       && g.id !== 'chung-mot-than' && g.id !== 'day-hop'
       && g.id !== 'xe-tank' && g.id !== 'dat-bom' && g.id !== 'thu-thanh'
-      && g.id !== 'nguoi-que' && g.id !== 'den-lua-nuoc') return null;
+      && g.id !== 'nguoi-que' && g.id !== 'den-lua-nuoc'
+      && g.id !== 'da-bong' && g.id !== 'ech-op' && g.id !== 'can-goc') return null;
     const pd = body.pad || {};
     const np = { u: !!pd.u, d: !!pd.d, l: !!pd.l, r: !!pd.r, a: !!pd.a, b: !!pd.b, x: !!pd.x, y: !!pd.y };
     const prev = g.pad[seat] || {};
@@ -4368,6 +5354,18 @@ function playerAction(room, player, body) {
       else if (np.b && !prev.b) g.inputs[seat] = { choice: 'cuop', at: t };
     }
     g.pad[seat] = np;
+    return null;
+  }
+  if (a === 'setAim') {
+    // Đại Bác Căn Góc: exact aim for slider-style clients (and tests).
+    // Only the cannon whose turn it is, only during the aim phase;
+    // the pad sweep writes the very same fields.
+    if (g.id !== 'can-goc' || g.phase !== 'aim' || g.turnSeat !== seat) return 'Chưa tới lượt bạn căn góc.';
+    const c = g.cannons[seat];
+    if (!c || !c.alive) return 'Pháo của bạn đã bị phá huỷ.';
+    if (typeof body.angle === 'number' && isFinite(body.angle)) c.angle = Math.max(5, Math.min(85, body.angle));
+    if (typeof body.power === 'number' && isFinite(body.power)) c.power = Math.max(0, Math.min(100, body.power));
+    if (body.face === 1 || body.face === -1) c.face = body.face;
     return null;
   }
   if (a === 'choose') {
@@ -4859,6 +5857,31 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .achar { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 3; pointer-events: none; }
 .achar svg { display: block; margin: 0 auto; }
 .achar.home { filter: brightness(1.5); }
+/* --- Wave 5 stages ---------------------------------------------------------
+   da-bong plays in a 32 x 18 space on the wide 16:9 field; can-goc in a
+   24 x 16 space on the 3:2 field; ech-op reuses the square temple field. */
+.afield.wide { aspect-ratio: 95 / 48; width: min(100%, max(340px, calc((100vh - 190px) * 95 / 48))); width: min(100%, max(340px, calc((100dvh - 190px) * 95 / 48))); }
+.afield.art { aspect-ratio: 3 / 2; width: min(100%, max(300px, calc((100vh - 200px) * 1.5))); width: min(100%, max(300px, calc((100dvh - 200px) * 1.5))); }
+.g-da-bong { background-color: #061A0C; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(74,222,128,.25), transparent 62%), linear-gradient(rgba(134,239,172,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(134,239,172,.05) 1px, transparent 1px), linear-gradient(165deg, #0B3D1E, #07290F 58%, #04150A); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.6), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(2,20,8,.5); }
+.g-ech-op { background-color: #170E04; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(255,190,80,.22), transparent 62%), repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 3px, transparent 3px 26px), repeating-linear-gradient(90deg, rgba(0,0,0,.12) 0 3px, transparent 3px 44px), linear-gradient(165deg, #2E1C07, #201204 58%, #0D0701); background-size: auto, auto, auto, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.64), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(14,8,1,.5); }
+.g-can-goc { background-color: #0A1420; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(125,211,252,.22), transparent 62%), linear-gradient(rgba(147,197,253,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(147,197,253,.05) 1px, transparent 1px), linear-gradient(165deg, #0E2233, #0A1826 58%, #050C14); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(2,10,18,.5); }
+.spitch { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: linear-gradient(150deg, #1E7A3C, #14532D); border: 2px solid rgba(160,255,190,.35); box-shadow: inset 0 0 0 2px rgba(0,0,0,.22), 0 3px 7px rgba(0,0,0,.5); }
+.spitch.wall { background: linear-gradient(150deg, #7A4A21, #4A2C10); border-color: rgba(255,205,130,.4); }
+.sgoalbox { position: absolute; z-index: 0; pointer-events: none; border: 3px dashed rgba(255,255,255,.65); border-radius: 8px; background: rgba(255,255,255,.08); }
+.sball { position: absolute; width: 3.4%; aspect-ratio: 1; border-radius: 50%; z-index: 3; pointer-events: none; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; background: radial-gradient(circle at 35% 32%, #FFFFFF, #E8EDF5 45%, #9AA7C2); box-shadow: 0 0 10px rgba(255,255,255,.65), 0 3px 6px rgba(0,0,0,.45); }
+.goalbanner { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%); z-index: 6; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: clamp(30px, 6.2vw, 64px); color: #FFE066; text-shadow: 0 0 22px rgba(255,190,40,.9), 0 4px 0 rgba(120,53,15,.85); animation: pop .45s ease; pointer-events: none; white-space: nowrap; }
+.fspike { position: absolute; z-index: 1; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='14'%3E%3Cpath d='M0 14 L9 0 L18 14 Z' fill='%232E2A33'/%3E%3Cpath d='M0 14 L9 0 L18 14 Z' fill='none' stroke='%23B9B3C7' stroke-width='1.4'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-position: bottom left; background-size: 18px 100%; filter: drop-shadow(0 0 5px rgba(0,0,0,.6)); }
+.fdoor { position: absolute; z-index: 1; pointer-events: none; border-radius: 9px 9px 3px 3px; border: 3px solid #3ED97E; background: radial-gradient(ellipse at 50% 100%, rgba(62,217,126,.5), rgba(3,40,20,.3) 70%); box-shadow: 0 0 20px rgba(62,217,126,.6), inset 0 0 16px rgba(62,217,126,.4); }
+.ffly { position: absolute; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; border-radius: 50%; z-index: 2; pointer-events: none; transition: left .18s linear, top .18s linear; background: radial-gradient(circle at 40% 35%, #4A4A55, #14141C 70%); box-shadow: 0 0 0 3px rgba(255,255,255,.28), 0 0 9px rgba(255,255,255,.35); animation: starBob 1.3s ease-in-out infinite; }
+.ffly.taken { opacity: 0; }
+.afrog { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 3; pointer-events: none; }
+.afrog svg { display: block; margin: 0 auto; }
+.afrog.carry svg { filter: drop-shadow(0 0 10px rgba(255,220,120,.85)); }
+.fcrate { position: absolute; width: 5%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 2; pointer-events: none; transition: left .18s linear, top .18s linear; display: flex; align-items: center; justify-content: center; font-size: 22px; background: linear-gradient(150deg, #B97B34, #8A5518); border: 3px solid #E8B96A; border-radius: 8px; box-shadow: 0 0 14px rgba(255,180,80,.4), 0 5px 10px rgba(0,0,0,.45), inset 0 0 0 3px rgba(0,0,0,.18); }
+.artwrap { position: absolute; inset: 0; }
+.artwrap svg { width: 100%; height: 100%; display: block; }
+.boomflash { position: absolute; border-radius: 50%; z-index: 5; pointer-events: none; transform: translate(-50%, -50%); background: radial-gradient(circle, rgba(255,246,200,.95), rgba(255,150,50,.75) 55%, rgba(255,80,20,.12)); animation: boomPop .5s ease-out; }
+@keyframes boomPop { from { width: 4%; padding-top: 4%; opacity: 1; } to { width: 19%; padding-top: 19%; opacity: 0; } }
 .aframe { position: absolute; border: 3px solid rgba(120,220,255,.85); border-radius: 14px; box-shadow: 0 0 24px rgba(80,200,255,.4), inset 0 0 40px rgba(80,200,255,.14); pointer-events: none; }
 .ablock { position: absolute; z-index: 1; pointer-events: none; border-radius: 6px; background: linear-gradient(150deg, #3E5A4C, #22392E); border: 2px solid rgba(140,255,200,.5); box-shadow: 0 3px 8px rgba(0,0,0,.5), inset 0 0 0 2px rgba(0,0,0,.25); }
 .orbwrap { position: relative; display: inline-block; }
@@ -4957,7 +5980,8 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
    on). Without rAF this rule never matches and transitions remain. */
 .afield.raf-on .ablob, .afield.raf-on .aball, .afield.raf-on .ashell, .afield.raf-on .aslime,
 .afield.raf-on .astar, .afield.raf-on .acrown, .afield.raf-on .acrate, .afield.raf-on .achar,
-.afield.raf-on .tgem { transition: none; }
+.afield.raf-on .tgem, .afield.raf-on .afrog, .afield.raf-on .sball, .afield.raf-on .fcrate,
+.afield.raf-on .ffly { transition: none; }
 /* Spawn pop for dynamically created field entities (shells, slimes,
    gems): the standalone scale property composes with the elements'
    own transform instead of overriding it. */
@@ -5219,6 +6243,36 @@ function charSVG(el, colorName) {
     + '<path d="M20 3 C25 12 30 18 30 26 a10 10.5 0 1 1 -20 0 C10 18 15 12 20 3 Z" fill="#3FA9F5" stroke="' + trim + '" stroke-width="2.6"/>'
     + '<ellipse cx="15.5" cy="25" rx="2.6" ry="4" fill="rgba(255,255,255,.55)"/>'
     + '<circle cx="16.5" cy="27" r="1.7" fill="#06283D"/><circle cx="23.5" cy="27" r="1.7" fill="#06283D"/></svg>';
+}
+// Đá Bóng Đầu To players: an oversized round head in the player's own
+// seat colour on a tiny team-coloured body — the head IS the hitbox star.
+function bigHeadSVG(colorName, team) {
+  var col = COLORS[colorName] || '#4FA8E8';
+  var light = LIGHT[colorName] || '#FFFFFF';
+  var shirt = team === 'do' ? '#E84F4F' : '#3FA9F5';
+  return '<svg width="52" height="56" viewBox="0 0 52 56">'
+    + '<path d="M18 46 h6 l-1.5 8 h-5 Z" fill="#26324A"/><path d="M28 46 h6 l1.5 8 h-5 Z" fill="#26324A"/>'
+    + '<rect x="14" y="36" width="24" height="11" rx="5" fill="' + shirt + '" stroke="rgba(0,0,0,.3)" stroke-width="1.6"/>'
+    + '<circle cx="26" cy="21" r="17" fill="' + col + '" stroke="rgba(0,0,0,.28)" stroke-width="2"/>'
+    + '<ellipse cx="20" cy="14" rx="6.5" ry="4" fill="' + light + '" opacity=".75"/>'
+    + '<circle cx="20.5" cy="22" r="2.2" fill="#14202E"/><circle cx="31.5" cy="22" r="2.2" fill="#14202E"/>'
+    + '<path d="M21 29 Q26 32.5 31 29" stroke="#14202E" stroke-width="2" fill="none" stroke-linecap="round"/></svg>';
+}
+// Ếch Ộp frogs: a round frog in the seat colour; a carrying frog is
+// drawn bigger with the passenger's colour glowing in its belly.
+function frogSVG(colorName, bellyColorName) {
+  var col = COLORS[colorName] || '#58C472';
+  var light = LIGHT[colorName] || '#D8F5C8';
+  var belly = bellyColorName ? (COLORS[bellyColorName] || '#FFFFFF') : 'rgba(255,255,255,.55)';
+  var size = bellyColorName ? 56 : 46;
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 48 48">'
+    + '<circle cx="15" cy="11" r="6.5" fill="' + col + '" stroke="rgba(0,0,0,.25)" stroke-width="1.6"/>'
+    + '<circle cx="33" cy="11" r="6.5" fill="' + col + '" stroke="rgba(0,0,0,.25)" stroke-width="1.6"/>'
+    + '<circle cx="15" cy="11" r="2.6" fill="#12240F"/><circle cx="33" cy="11" r="2.6" fill="#12240F"/>'
+    + '<ellipse cx="24" cy="28" rx="19" ry="16.5" fill="' + col + '" stroke="rgba(0,0,0,.25)" stroke-width="1.8"/>'
+    + '<ellipse cx="24" cy="33" rx="11.5" ry="8.5" fill="' + belly + '"/>'
+    + '<ellipse cx="17" cy="21" rx="5.5" ry="3.2" fill="' + light + '" opacity=".8"/>'
+    + '<path d="M17 27 Q24 31.5 31 27" stroke="#12240F" stroke-width="2" fill="none" stroke-linecap="round"/></svg>';
 }
 // Chung Một Thân: the shared blob is a WHITE orb wearing the neon visor,
 // ringed by four quarter arcs — one per direction, stroked in the seat
@@ -5516,10 +6570,12 @@ var GCOLORS = {
   'xe-tank': 'linear-gradient(160deg,#14532D,#22C55E)', 'dat-bom': 'linear-gradient(160deg,#7C2D12,#F97316)',
   'ke-gia-mao': 'linear-gradient(160deg,#4C1D95,#A855F7)',
   'thu-thanh': 'linear-gradient(160deg,#0E7490,#67E8F9)', 'giai-ma-chung': 'linear-gradient(160deg,#3730A3,#818CF8)',
-  'nguoi-que': 'linear-gradient(160deg,#7F1D1D,#F43F5E)', 'den-lua-nuoc': 'linear-gradient(160deg,#451A03,#B45309)'
+  'nguoi-que': 'linear-gradient(160deg,#7F1D1D,#F43F5E)', 'den-lua-nuoc': 'linear-gradient(160deg,#451A03,#B45309)',
+  'da-bong': 'linear-gradient(160deg,#14532D,#22C55E)', 'ech-op': 'linear-gradient(160deg,#713F12,#A3C14A)',
+  'can-goc': 'linear-gradient(160deg,#0C4A6E,#38BDF8)'
 };
-function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'giai-ma-chung' || id === 'nguoi-que' || id === 'den-lua-nuoc'; }
-function isActionGame(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'chia-cuop' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'nguoi-que' || id === 'den-lua-nuoc'; }
+function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'giai-ma-chung' || id === 'nguoi-que' || id === 'den-lua-nuoc' || id === 'da-bong' || id === 'ech-op' || id === 'can-goc'; }
+function isActionGame(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'chia-cuop' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'nguoi-que' || id === 'den-lua-nuoc' || id === 'da-bong' || id === 'ech-op'; }
 function topbarHTML(v, isHost) {
   var h = '<div class="topbar"><span class="baloo" style="font-size:24px">Nảy Party</span>';
   h += '<span class="chip cool">Phòng ' + esc(v.code) + '</span>';
@@ -5663,6 +6719,11 @@ function countdownHTML(g) {
 function rectStyle(r) {
   return 'left:' + ((r.x + 12) / 24 * 100) + '%;top:' + ((r.y + 12) / 24 * 100) + '%;width:' + (r.w / 24 * 100) + '%;height:' + (r.h / 24 * 100) + '%';
 }
+// Đá Bóng Đầu To maps its 38 x 19.2 space onto the wide field.
+function rectStyleS(r) {
+  return 'left:' + ((r.x + 19) / 38 * 100) + '%;top:' + ((r.y + 9.6) / 19.2 * 100) + '%;width:' + (r.w / 38 * 100) + '%;height:' + (r.h / 19.2 * 100) + '%';
+}
+function pctS(x, y) { return { l: (x + 19) / 38 * 100, t: (y + 9.6) / 19.2 * 100 }; }
 function fightPose(b) {
   if (!b.alive || b.hit) return 'hit';
   if (b.hvy) return 'atkh';
@@ -6007,6 +7068,82 @@ function hostStage(v) {
     h += '</div>';
     if (g.log) for (var lI = Math.max(0, g.log.length - 4); lI < g.log.length; lI++) h += '<div class="chatrow">🎲 ' + esc(g.log[lI]) + '</div>';
     h += '<p class="center">Ô vàng là ô an toàn — ngựa đứng đó không bị đá. Thảy 6 được đi tiếp; 6 ba lần liên tiếp thì mất lượt!</p>';
+  } else if (g.id === 'da-bong') {
+    var sb = g.scoreboard || { do: 0, xanh: 0 };
+    h += '<div class="scorebar"><span class="scorechip" style="background:#FBD5D5">🔴 Đội Đỏ: <b id="scoredo">' + sb.do + '</b></span><span class="scorechip" style="background:#CFE8FB">🔵 Đội Xanh: <b id="scorexanh">' + sb.xanh + '</b></span></div>';
+    h += '<div class="afield wide" id="afield">';
+    (g.solids || []).forEach(function (s) { h += '<div class="spitch' + (s.w > 20 ? '' : ' wall') + '" style="' + rectStyleS(s) + '"></div>'; });
+    h += '<div class="sgoalbox" style="' + rectStyleS({ x: -19, y: 5.4, w: 3, h: 2.6 }) + '"></div>';
+    h += '<div class="sgoalbox" style="' + rectStyleS({ x: 16, y: 5.4, w: 3, h: 2.6 }) + '"></div>';
+    for (var sI = 0; sI < v.players.length; sI++) {
+      var sp2 = v.players[sI]; var sb2 = g.blobs[sp2.seat];
+      if (!sb2) continue;
+      h += '<div class="ablob" id="ablob-' + sp2.seat + '" style="left:' + ((sb2.x + 19) / 38 * 100) + '%;top:' + ((sb2.y + 9.6) / 19.2 * 100) + '%">' + bigHeadSVG(sp2.color, sb2.team) + '<div class="aname">' + esc(sp2.name) + '</div></div>';
+    }
+    if (g.ball) h += '<div class="sball" id="sball" style="left:' + ((g.ball.x + 19) / 38 * 100) + '%;top:' + ((g.ball.y + 9.6) / 19.2 * 100) + '%"></div>';
+    if (g.phase === 'goal' && g.goalInfo) {
+      var gp8 = g.goalInfo.by ? playerOf(v, g.goalInfo.by) : null;
+      h += '<div class="goalbanner">GÔÔÔL! ' + (g.goalInfo.team === 'do' ? '🔴' : '🔵') + '</div>';
+      h += '<div class="center baloo" style="font-size:21px;position:relative;z-index:6">' + (gp8 ? esc(gp8.name) + (g.goalInfo.ownGoal ? ' đá phản lưới nhà! 😱' : ' ghi bàn!') : 'Vào rồi!') + '</div>';
+    }
+    h += '</div>';
+    h += '<p class="center">Đội Đỏ (ghế lẻ) tấn công sang phải, Đội Xanh (ghế chẵn) sang trái. A = SÚT (giữ ▲ = bổng, ▼ = sệt) · B = lướt · ▲/Y = nhảy đánh đầu!</p>';
+  } else if (g.id === 'ech-op') {
+    h += '<div class="scorebar"><span class="scorechip">Màn <b id="frogcham">' + (g.chamber || 1) + '</b>/' + (g.chambersTotal || 3) + '</span><span class="scorechip">Tim đội: <b id="froghearts">' + '❤'.repeat(Math.max(0, g.hearts || 0)) + '</b></span><span class="scorechip">🪰 Ruồi: <b id="frogflies">' + (g.fliesEaten || 0) + '</b>/' + (g.fliesTotal || 9) + '</span></div>';
+    if (g.phase === 'frogClear') h += '<div class="center baloo" style="font-size:29px">🎉 QUA MÀN ' + (g.chamber || 1) + '! Chuẩn bị màn tiếp theo…</div>';
+    h += '<div class="afield" id="afield">';
+    (g.solids || []).forEach(function (s) { h += '<div class="tbrick" style="' + rectStyle(s) + '"></div>'; });
+    (g.spikes || []).forEach(function (sp3) { h += '<div class="fspike" style="' + rectStyle(sp3) + '"></div>'; });
+    if (g.door) h += '<div class="fdoor" style="' + rectStyle(g.door) + '"></div>';
+    (g.flies || []).forEach(function (fl) { h += '<div class="ffly' + (fl.taken ? ' taken' : '') + '" id="ffly-' + fl.id + '" style="left:' + ((fl.x + 12) / 24 * 100) + '%;top:' + ((fl.y + 12) / 24 * 100) + '%"></div>'; });
+    (g.crates || []).forEach(function (cr) { h += '<div class="fcrate" id="fcrate-' + cr.id + '" style="left:' + ((cr.x + 12) / 24 * 100) + '%;top:' + ((cr.y + 12) / 24 * 100) + '%"></div>'; });
+    for (var fI2 = 0; fI2 < v.players.length; fI2++) {
+      var fp3 = v.players[fI2]; var ff = g.frogs[fp3.seat];
+      if (!ff) continue;
+      var bellyP = ff.bellySeat ? playerOf(v, ff.bellySeat) : null;
+      h += '<div class="afrog' + (ff.state === 'carry' ? ' carry' : '') + '" id="afrog-' + fp3.seat + '" data-st="' + ff.state + ':' + (ff.bellySeat || '') + '" style="left:' + ((ff.x + 12) / 24 * 100) + '%;top:' + ((ff.y + 12) / 24 * 100) + '%' + (ff.state === 'in' ? ';display:none' : '') + '">' + frogSVG(fp3.color, bellyP ? bellyP.color : null) + '<div class="aname">' + esc(fp3.name) + '</div></div>';
+    }
+    h += '</div>';
+    h += '<p class="center">Đứng cạnh đồng đội rồi bấm B/X để NUỐT bạn vào bụng — ếch đang vác nhảy xa và cao hơn hẳn! Sang bờ an toàn thì bấm B/X lần nữa để nhả ra. Cả đội cùng đứng vào cửa xanh là qua màn.</p>';
+  } else if (g.id === 'can-goc') {
+    var turnP3 = g.turn ? playerOf(v, g.turn) : null;
+    var windTxt = !g.wind ? 'không gió' : (g.wind > 0 ? '→ ' + g.wind : '← ' + (-g.wind));
+    h += '<div class="scorebar"><span class="scorechip">Lượt: <b>' + (turnP3 ? esc(turnP3.name) : '—') + '</b></span><span class="scorechip">🌬️ Gió: <b>' + windTxt + '</b></span>';
+    if (g.phase === 'aim' && turnP3 && g.cannons && g.cannons[g.turn]) h += '<span class="scorechip">Góc ' + g.cannons[g.turn].angle + '° · Lực ' + g.cannons[g.turn].power + '</span>';
+    h += '</div>';
+    if (g.phase === 'aim') h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    h += '<div class="afield art" id="afield"><div class="artwrap"><svg viewBox="0 0 240 160" preserveAspectRatio="none">';
+    var pts = '0,160 ';
+    for (var cI = 0; cI < (g.heights || []).length; cI++) { var hy = Math.round(((g.heights[cI] + 8) * 10) * 10) / 10; pts += (cI * 2) + ',' + hy + ' ' + ((cI + 1) * 2) + ',' + hy + ' '; }
+    pts += '240,160';
+    h += '<polygon points="' + pts + '" fill="#3E6B35" stroke="#7AC74F" stroke-width="1.6"/>';
+    if (g.shell && g.shell.trail && g.shell.trail.length > 1) {
+      var tp9 = '';
+      for (var tI9 = 0; tI9 < g.shell.trail.length; tI9++) tp9 += Math.round((g.shell.trail[tI9].x + 12) * 10) + ',' + Math.round((g.shell.trail[tI9].y + 8) * 10) + ' ';
+      h += '<polyline points="' + tp9 + '" fill="none" stroke="rgba(255,240,190,.75)" stroke-width="1.6" stroke-dasharray="3 3"/>';
+    }
+    for (var nI = 0; nI < v.players.length; nI++) {
+      var np9 = v.players[nI]; var cn = g.cannons ? g.cannons[np9.seat] : null;
+      if (!cn) continue;
+      var cx9 = Math.round((cn.x + 12) * 10), cy9 = Math.round((cn.y + 8) * 10);
+      var colr = COLORS[np9.color] || '#fff';
+      if (!cn.alive) {
+        h += '<g opacity=".55"><circle cx="' + cx9 + '" cy="' + (cy9 - 4) + '" r="6" fill="#5A6472"/><path d="M' + (cx9 - 4) + ' ' + (cy9 - 8) + ' l8 8 M' + (cx9 + 4) + ' ' + (cy9 - 8) + ' l-8 8" stroke="#FF8A7A" stroke-width="2"/></g>';
+        continue;
+      }
+      var rad9 = cn.angle * Math.PI / 180;
+      var bx9 = Math.round(cx9 + cn.face * Math.cos(rad9) * 15), by9 = Math.round((cy9 - 4) - Math.sin(rad9) * 15);
+      if (g.turn === np9.seat && g.phase !== 'boom') h += '<circle cx="' + cx9 + '" cy="' + (cy9 - 4) + '" r="12" fill="none" stroke="#FFE066" stroke-width="2" stroke-dasharray="4 3"/>';
+      h += '<line x1="' + cx9 + '" y1="' + (cy9 - 4) + '" x2="' + bx9 + '" y2="' + by9 + '" stroke="#2B3442" stroke-width="4.4" stroke-linecap="round"/>';
+      h += '<circle cx="' + cx9 + '" cy="' + (cy9 - 4) + '" r="7" fill="' + colr + '" stroke="rgba(0,0,0,.4)" stroke-width="1.6"/>';
+      h += '<rect x="' + (cx9 - 10) + '" y="' + (cy9 - 20) + '" width="20" height="3.6" fill="rgba(0,0,0,.45)"/><rect x="' + (cx9 - 10) + '" y="' + (cy9 - 20) + '" width="' + Math.round(20 * Math.max(0, cn.hp) / 100) + '" height="3.6" fill="' + (cn.hp > 40 ? '#58C472' : '#FF5A3C') + '"/>';
+      h += '<text x="' + cx9 + '" y="' + (cy9 + 13) + '" font-size="8.5" font-weight="700" fill="#fff" text-anchor="middle" style="text-shadow:0 1px 2px #000">' + esc(np9.name) + '</text>';
+    }
+    h += '</svg></div>';
+    if (g.shell) h += '<div class="ashell" id="shellpt" style="left:' + ((g.shell.x + 12) / 24 * 100) + '%;top:' + ((g.shell.y + 8) / 16 * 100) + '%"></div>';
+    if (g.boom) h += '<div class="boomflash" style="left:' + ((g.boom.x + 12) / 24 * 100) + '%;top:' + ((g.boom.y + 8) / 16 * 100) + '%"></div>';
+    h += '</div>';
+    h += '<p class="center">Căn góc như Gunny: ▲▼ chỉnh góc · ◀▶ chỉnh lực · X đổi hướng · A bắn. Không có đường đạn mẫu đâu — gió còn đổi mỗi lượt nữa!</p>';
   }
   return h;
 }
@@ -6180,6 +7317,17 @@ function viewSig(v) {
     } else if (g.id === 'ca-ngua') {
       gp = pl ? [g.id, g.phase, g.turn, g.dice, g.horses, g.last, g.winner, g.myLegal, g.myTurn]
         : [g.id, g.phase, g.turn, g.dice, g.horses, g.last, g.winner, g.log];
+    } else if (g.id === 'da-bong') {
+      gp = pl ? [g.id, g.phase, g.scoreboard, g.myTeam, g.lastRound]
+        : [g.id, g.phase, g.scoreboard, g.goalInfo, g.lastRound];
+    } else if (g.id === 'ech-op') {
+      gp = pl ? [g.id, g.phase, g.chamber, g.hearts, g.fliesEaten, g.myState, g.myPassengerSeat, g.myCarrierSeat, g.myDoor, g.lastRound]
+        : [g.id, g.phase, g.chamber, g.hearts, g.fliesEaten, g.lastRound];
+    } else if (g.id === 'can-goc') {
+      var ck = '';
+      if (g.cannons) for (var cs in g.cannons) { var cc9 = g.cannons[cs]; ck += cs + ':' + cc9.hp + (cc9.alive ? 1 : 0) + ':' + cc9.angle + ':' + cc9.power + ':' + cc9.face + ';'; }
+      gp = pl ? [g.id, g.phase, g.turn, g.wind, g.myTurn, g.myCannon, ck, g.boom, g.lastRound]
+        : [g.id, g.phase, g.turn, g.wind, ck, g.shell ? 's' : '', g.boom, g.lastRound];
     } else {
       if (pl) {
       // PLAYER signature for the tap/answer games: keep only what the
@@ -6397,6 +7545,32 @@ function arenaFX(v, g) {
       P.gems[gmNow.id] = gmNow.taken;
     }
   }
+  if (g.id === 'da-bong' && g.scoreboard) {
+    var totNow = (g.scoreboard.do || 0) + (g.scoreboard.xanh || 0);
+    if (P.goals === undefined) P.goals = totNow;
+    else if (totNow > P.goals) {
+      if (field) {
+        fxShake(field, true);
+        var gx9 = g.goalInfo && g.goalInfo.team === 'do' ? 17.5 : -17.5;
+        fxSparks(field, (gx9 + 19) / 38 * 24 - 12, (6.7 + 9.6) / 19.2 * 24 - 12, '#FFE066', 18);
+      }
+      sfxWin();
+      P.goals = totNow;
+    }
+  }
+  if (g.id === 'ech-op' && typeof g.fliesEaten === 'number') {
+    if (P.flies === undefined) P.flies = g.fliesEaten;
+    else if (g.fliesEaten > P.flies) { beep(1180, 0.07, 'sine', 0.1); P.flies = g.fliesEaten; }
+  }
+  if (g.id === 'can-goc') {
+    var boomAt = g.boom ? g.boom.at : 0;
+    if (P.boomAt === undefined) P.boomAt = boomAt;
+    else if (boomAt && boomAt !== P.boomAt) {
+      if (field) { fxShake(field, true); fxSparks(field, g.boom.x, (g.boom.y + 8) * 1.5 - 12, '#FFB35C', 14); }
+      sfxBoom();
+      P.boomAt = boomAt;
+    }
+  }
   var ring = el('aring');
   if (ring && g.id === 'day-ra' && g.arenaR) ring.classList.toggle('danger', g.arenaR <= 5.5);
   if (g.id === 'ne-dan' && g.balls) {
@@ -6608,6 +7782,61 @@ function patchPositions(v) {
     var thp = el('tempheartsp'); if (thp) thp.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
     arenaFX(v, g);
   }
+  if (g && g.id === 'da-bong') {
+    if (g.blobs) {
+      for (var sSeat in g.blobs) {
+        var sbb = g.blobs[sSeat];
+        var snn = el('ablob-' + sSeat);
+        if (snn) moveEl(snn, (sbb.x + 19) / 38 * 100, (sbb.y + 9.6) / 19.2 * 100);
+      }
+    }
+    var sbl = el('sball');
+    if (sbl && g.ball) moveEl(sbl, (g.ball.x + 19) / 38 * 100, (g.ball.y + 9.6) / 19.2 * 100);
+    var sd9 = el('scoredo'); if (sd9 && g.scoreboard) sd9.textContent = g.scoreboard.do;
+    var sx9 = el('scorexanh'); if (sx9 && g.scoreboard) sx9.textContent = g.scoreboard.xanh;
+    arenaFX(v, g);
+  }
+  if (g && g.id === 'ech-op') {
+    if (g.frogs) {
+      for (var fSeat in g.frogs) {
+        var fb9 = g.frogs[fSeat];
+        var fn9 = el('afrog-' + fSeat);
+        if (!fn9) continue;
+        if (fb9.state === 'in') { fn9.style.display = 'none'; continue; }
+        fn9.style.display = '';
+        moveEl(fn9, (fb9.x + 12) / 24 * 100, (fb9.y + 12) / 24 * 100);
+        var stKey = fb9.state + ':' + (fb9.bellySeat || '');
+        if (fn9.dataset.st !== stKey) {
+          fn9.dataset.st = stKey;
+          fn9.className = 'afrog' + (fb9.state === 'carry' ? ' carry' : '');
+          var bp9 = fb9.bellySeat ? playerOf(v, fb9.bellySeat) : null;
+          var me9 = playerOf(v, +fSeat);
+          fn9.innerHTML = frogSVG(me9 ? me9.color : 'green', bp9 ? bp9.color : null) + '<div class="aname">' + esc(me9 ? me9.name : '') + '</div>';
+        }
+      }
+    }
+    if (g.crates) syncDyn(g.crates, 'fcrate-', 'fcrate', null);
+    if (g.flies) {
+      syncDyn(g.flies, 'ffly-', 'ffly', null);
+      for (var flI = 0; flI < g.flies.length; flI++) {
+        var flN = el('ffly-' + g.flies[flI].id);
+        if (flN) flN.className = 'ffly' + (g.flies[flI].taken ? ' taken' : '');
+      }
+    }
+    var fh9 = el('froghearts'); if (fh9) fh9.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+    var ff9 = el('frogflies'); if (ff9) ff9.textContent = g.fliesEaten || 0;
+    var fc9 = el('frogcham'); if (fc9) fc9.textContent = g.chamber || 1;
+    var fhp = el('frogheartsp'); if (fhp) fhp.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+    var ffp = el('frogfliesp'); if (ffp) ffp.textContent = g.fliesEaten || 0;
+    arenaFX(v, g);
+  }
+  if (g && g.id === 'can-goc') {
+    var shp = el('shellpt');
+    if (shp && g.shell) moveEl(shp, (g.shell.x + 12) / 24 * 100, (g.shell.y + 8) / 16 * 100);
+    var aa9 = el('aimangle'); if (aa9 && g.myCannon) aa9.textContent = g.myCannon.angle;
+    var ap9 = el('aimpower'); if (ap9 && g.myCannon) ap9.textContent = g.myCannon.power;
+    arenaFX(v, g);
+  }
   if (g && (g.id === 'cuop-sao' || g.id === 'giu-vuong-mien' || g.id === 'son-san') && g.blobs) {
     for (var nSeat in g.blobs) {
       var nb2 = g.blobs[nSeat];
@@ -6746,7 +7975,7 @@ function homeHTML() {
   h += '</div>';
   h += '<p><input type="text" id="joinName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
   h += '<p><button class="btn pink" data-cmd="join" style="font-size:22px">Vào phòng</button></p></div>';
-  h += '<p class="center muted small" style="margin-top:14px">21 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Ma Sói · Cờ Cá Ngựa · Người Que Đại Chiến · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước — 15 game đấu + 6 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
+  h += '<p class="center muted small" style="margin-top:14px">24 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Ma Sói · Cờ Cá Ngựa · Người Que Đại Chiến · Đá Bóng Đầu To · Đại Bác Căn Góc · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước · Ếch Ộp Phiêu Lưu — 17 game đấu + 7 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
   return h;
 }
 function playerHTML(v) {
@@ -7108,6 +8337,49 @@ function playerGame(v) {
       h += '</div>';
       h += '<p class="center">Xem bàn cờ trên TV nhé!</p>';
     }
+  } else if (g.id === 'da-bong') {
+    var sbp = g.scoreboard || { do: 0, xanh: 0 };
+    h += '<div class="center baloo" style="font-size:21px">Bạn: ' + (g.myTeam === 'do' ? '🔴 ĐỘI ĐỎ' : '🔵 ĐỘI XANH') + ' · Đỏ ' + sbp.do + ' — ' + sbp.xanh + ' Xanh</div>';
+    if (g.phase === 'goal') {
+      h += '<div class="center baloo" style="font-size:30px">⚽ GÔÔÔL! ' + (g.goalInfo && g.goalInfo.team === 'do' ? '🔴' : '🔵') + '</div><p class="center">Đá lại từ giữa sân sau vài giây…</p>';
+    } else if (g.phase === 'soccer') {
+      h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'SÚT', 'LƯỚT') + '</div>';
+      h += '<p class="center small">Chạy theo bóng, đến gần thì A = SÚT về phía bạn đang quay mặt (giữ ▲ khi bấm A = sút bổng, ▼ = sút sệt) · ▲/Y = nhảy đánh đầu · B = lướt.</p>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 90000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    }
+  } else if (g.id === 'ech-op') {
+    h += '<div class="center baloo" style="font-size:20px">Màn ' + (g.chamber || 1) + '/' + (g.chambersTotal || 3) + ' · Tim đội: <span id="frogheartsp" style="color:#FFD7DE">' + '❤'.repeat(Math.max(0, g.hearts || 0)) + '</span> · 🪰 <span id="frogfliesp">' + (g.fliesEaten || 0) + '</span>/' + (g.fliesTotal || 9) + '</div>';
+    if (g.phase === 'frogClear') {
+      h += '<div class="center baloo" style="font-size:27px">🎉 QUA MÀN! Chuẩn bị…</div>';
+    } else if (g.myState === 'in') {
+      var carrierP = g.myCarrierSeat ? playerOf(v, g.myCarrierSeat) : null;
+      h += '<div class="center"><div class="baloo" style="font-size:25px">🫃 Bạn đang trong bụng ' + esc(carrierP ? carrierP.name : '') + '!</div><p>Đồng đội đang vác bạn qua đoạn khó — thả bạn ra ở bờ an toàn ngay thôi.</p></div>';
+    } else {
+      if (g.myState === 'carry') {
+        var pasP = g.myPassengerSeat ? playerOf(v, g.myPassengerSeat) : null;
+        h += '<div class="center baloo" style="font-size:22px">🫃 Đang vác ' + esc(pasP ? pasP.name : '') + ' trong bụng — bạn nhảy cao và xa hơn hẳn! Bấm B/X để nhả bạn ra.</div>';
+      } else if (g.myDoor) {
+        h += '<div class="center baloo" style="font-size:23px">🚪 Bạn đã vào cửa! Đợi cả đội…</div>';
+      }
+      h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'NHẢY', 'NUỐT / NHẢ') + '</div>';
+      h += '<p class="center small">Đứng cạnh đồng đội rồi bấm B/X: NUỐT bạn vào bụng (nhả ra cũng B/X). Ếch đang vác bạn nhảy qua được hàng gai dài mà một mình nhảy không tới. A/Y = nhảy.</p>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 120000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    }
+  } else if (g.id === 'can-goc') {
+    var mc = g.myCannon;
+    if (!mc || !mc.alive) {
+      h += '<div class="center"><div class="ko-big">💥</div><div class="baloo" style="font-size:26px">Pháo của bạn đã bị phá huỷ!</div><p>Xem mọi người căn góc trên TV, đợi kết quả nhé…</p></div>';
+    } else if (g.phase === 'aim' && g.myTurn) {
+      h += '<div class="center baloo" style="font-size:24px">🎯 LƯỢT CỦA BẠN! 🌬️ Gió: ' + (!g.wind ? 'không gió' : (g.wind > 0 ? '→ ' + g.wind : '← ' + (-g.wind))) + '</div>';
+      h += '<div class="center baloo" style="font-size:27px">Góc: <span id="aimangle">' + mc.angle + '</span>° · Lực: <span id="aimpower">' + mc.power + '</span> · Hướng: ' + (mc.face > 0 ? '▶' : '◀') + '</div>';
+      h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'BẮN', '') + '</div>';
+      h += '<p class="center small">Giữ ▲▼ để chỉnh GÓC · giữ ◀▶ để chỉnh LỰC · X = đổi hướng nòng · A = BẮN! Đạn bay theo vòng cung và bị gió đẩy — căn cho khéo.</p>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+    } else {
+      var turnP4 = g.turn ? playerOf(v, g.turn) : null;
+      h += '<div class="center baloo" style="font-size:23px">' + (g.phase === 'shell' || g.phase === 'boom' ? '💥 Đạn đang bay… / Vừa nổ!' : 'Lượt của ' + esc(turnP4 ? turnP4.name : '') + ' — đợi tới lượt bạn') + '</div>';
+      h += '<p class="center">Pháo của bạn: ❤️ ' + mc.hp + '/100 · Xem địa hình và gió trên TV để tính trước phát bắn của mình.</p>';
+    }
   }
   return h + '</div>';
 }
@@ -7318,7 +8590,10 @@ document.addEventListener('input', function (ev) {
 // right, B bottom, like a console pad); den-lua-nuoc a plain row.
 var PAD_SPEC = {
   'nguoi-que': { layout: 'diamond', btns: { a: 'ĐÁNH', b: 'LƯỚT', x: 'ĐÁNH MẠNH', y: 'NHẢY' } },
-  'den-lua-nuoc': { layout: 'row', order: ['y', 'a'], btns: { a: 'NHẢY', y: 'NHẢY' } }
+  'den-lua-nuoc': { layout: 'row', order: ['y', 'a'], btns: { a: 'NHẢY', y: 'NHẢY' } },
+  'da-bong': { layout: 'row', order: ['y', 'b', 'a'], btns: { y: 'NHẢY', b: 'LƯỚT', a: 'SÚT' } },
+  'ech-op': { layout: 'row', order: ['y', 'a', 'b'], btns: { y: 'NHẢY', a: 'NHẢY', b: 'NUỐT / NHẢ' } },
+  'can-goc': { layout: 'row', order: ['x', 'a'], btns: { x: 'HƯỚNG', a: 'BẮN' } }
 };
 function abtnsHTML(gid, aLabel, bLabel) {
   var spec = PAD_SPEC[gid];
@@ -7584,7 +8859,7 @@ if (!window.PointerEvent) {
   setInterval(tick, 150);
   setInterval(function () {
     var v = S.view;
-    if (v && v.game && ((v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend') || (v.game.id === 'nguoi-que' && v.game.phase === 'fight') || (v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple'))) poll();
+    if (v && v.game && ((v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend') || (v.game.id === 'nguoi-que' && v.game.phase === 'fight') || (v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple') || (v.game.id === 'da-bong' && (v.game.phase === 'soccer' || v.game.phase === 'goal')) || (v.game.id === 'ech-op' && (v.game.phase === 'frog' || v.game.phase === 'frogClear')) || (v.game.id === 'can-goc' && (v.game.phase === 'shell' || v.game.phase === 'boom')))) poll();
   }, 220);
 })();
 </script>

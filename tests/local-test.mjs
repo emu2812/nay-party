@@ -10,7 +10,7 @@
 //   -> Chia Hay Cướp (secret choices, rotating pairs, exact totals)
 //   -> podium/final, and checks cumulative totals == sum of per-game points.
 // Run: node tests/local-test.mjs
-import worker, { QUIZ_BANK, IMPOSTOR_BANK, RoomStore } from '../worker.mjs';
+import worker, { QUIZ_BANK, IMPOSTOR_BANK, RoomStore, BALLISTICS } from '../worker.mjs';
 
 let now = 1700000000000;
 Date.now = () => now;
@@ -367,7 +367,7 @@ async function main() {
   assert(home.text.indexOf('Cướp Sao') >= 0 && home.text.indexOf('Giữ Vương Miện') >= 0 && home.text.indexOf('Sơn Sàn') >= 0 && home.text.indexOf('Cao Bồi') >= 0, 'page lists the 4 newest games (Cướp Sao, Giữ Vương Miện, Sơn Sàn, Cao Bồi)');
   assert(home.text.indexOf('Đấu với nhau') >= 0 && home.text.indexOf('Hợp tác') >= 0 && home.text.indexOf('Sắp ra mắt') < 0, 'game chooser is grouped by category: Đấu với nhau + Hợp tác, placeholder tile GONE (co-op wave shipped)');
   assert(home.text.indexOf('Chung Một Thân') >= 0 && home.text.indexOf('Đẩy Hộp Về Đích') >= 0 && home.text.indexOf('Chèo Thuyền') >= 0, 'page lists the 3 co-op games (Chung Một Thân, Đẩy Hộp Về Đích, Chèo Thuyền)');
-  assert(home.text.indexOf('21 game') >= 0, 'homepage footer counts all 21 games');
+  assert(home.text.indexOf('24 game') >= 0, 'homepage footer counts all 24 games');
   assert(home.text.indexOf('astar') >= 0 && home.text.indexOf('acrown') >= 0 && home.text.indexOf('splatgrid') >= 0 && home.text.indexOf('duel-bang') >= 0, 'new-game renderers ship in the page (star / crown / splat grid / duel banner)');
   assert(home.text.indexOf('sharedblob') >= 0 && home.text.indexOf('acrate') >= 0 && home.text.indexOf('agoal') >= 0 && home.text.indexOf('aboat') >= 0 && home.text.indexOf('teambanner') >= 0 && home.text.indexOf('function sharedOrbSVG(') >= 0, 'co-op renderers ship in the page (shared orb / crate / goal / boat / team banner)');
   assert(home.text.indexOf('id="recon"') >= 0 && home.text.indexOf('Đang kết nối lại') >= 0, 'stale-view watchdog badge ships in the page (recon element + label)');
@@ -424,9 +424,9 @@ async function main() {
   P1 = { seat: joined.seat, token: joined.playerToken };
   v = await hState();
   assert(v.players.length === 3, 'room has 3 filled seats (1 human + 2 bots)');
-  assert(v.games && v.games.length === 21, 'lobby game list carries all 21 games');
-  assert(v.games.filter((gm) => gm.cat === 'versus').length === 15, 'exactly 15 games are categorized versus');
-  assert(v.games.filter((gm) => gm.cat === 'coop').map((gm) => gm.id).sort().join(',') === 'cheo-thuyen,chung-mot-than,day-hop,den-lua-nuoc,giai-ma-chung,thu-thanh', 'co-op group is exactly the 6 co-op games (chung-mot-than, day-hop, cheo-thuyen, thu-thanh, giai-ma-chung, den-lua-nuoc)');
+  assert(v.games && v.games.length === 24, 'lobby game list carries all 24 games');
+  assert(v.games.filter((gm) => gm.cat === 'versus').length === 17, 'exactly 17 games are categorized versus');
+  assert(v.games.filter((gm) => gm.cat === 'coop').map((gm) => gm.id).sort().join(',') === 'cheo-thuyen,chung-mot-than,day-hop,den-lua-nuoc,ech-op,giai-ma-chung,thu-thanh', 'co-op group is exactly the 7 co-op games (chung-mot-than, day-hop, cheo-thuyen, thu-thanh, giai-ma-chung, den-lua-nuoc, ech-op)');
   assert(v.players.every((p) => typeof p.mood === 'string' && p.mood.length > 0), 'every player blob carries a mood/expression');
 
   collect(await playQuiz());
@@ -2882,6 +2882,354 @@ async function main() {
     const nbPts = Object.values(nbRes.lastGame.points).sort((a, b) => b - a);
     assert(JSON.stringify(nbPts) === JSON.stringify([300, 200]),
       'ngua: points follow the shared placement table (300/200), got ' + JSON.stringify(nbPts));
+  }
+
+  // ---------- Audit U: wave 5 — Đá Bóng Đầu To, Ếch Ộp Phiêu Lưu, Đại Bác Căn Góc
+  // Soccer: scripted lob goal over an idling defender + kickoff reset,
+  // an idle 0-0 draw (150 each) and a bot match whose points must match
+  // its final scoreboard. Frog: the full scripted 2-human drive —
+  // swallow -> carry-jump the wide strip -> spit in chamber 1, crate
+  // climbs in 2 and 3 — finishing with all 9 flies (Vàng); a hearts-out
+  // run (Tham gia, 50); a bot that swallows and carries the human over
+  // the chamber-1 strip. Cannon: a grid-searched ballistic solution
+  // (mirror integrator over the exported BALLISTICS) hits for >= 25,
+  // carves the heightmap, and snipes P2 out of the match (300/200);
+  // a 4-bot match completes on the placement table.
+  console.log('Audit U: wave 5 — soccer teams, frog swallow-carry, artillery ballistics');
+  {
+    assert(home.text.indexOf('24 game') >= 0 && home.text.indexOf('bigHeadSVG') >= 0 && home.text.indexOf('frogSVG') >= 0
+      && home.text.indexOf('sball') >= 0 && home.text.indexOf('goalbanner') >= 0,
+      'page ships the wave-5 renderers (big heads, frogs, ball, goal banner)');
+    const lvU = await (await newDrv()).state();
+    const regU = {};
+    (lvU.games || []).forEach((gm) => { regU[gm.id] = gm; });
+    assert(regU['da-bong'] && regU['da-bong'].cat === 'versus' && regU['da-bong'].min === 2 && regU['da-bong'].max === 8,
+      'registry: Đá Bóng Đầu To is versus, 2-8 seats');
+    assert(regU['ech-op'] && regU['ech-op'].cat === 'coop' && regU['ech-op'].min === 2 && regU['ech-op'].max === 4,
+      'registry: Ếch Ộp Phiêu Lưu is co-op, 2-4 seats');
+    assert(regU['can-goc'] && regU['can-goc'].cat === 'versus' && regU['can-goc'].min === 2 && regU['can-goc'].max === 8,
+      'registry: Đại Bác Căn Góc is versus, 2-8 seats');
+    // Chooser lock: 5 seats exceed the frog game's max.
+    const lockU = await newDrv();
+    for (let i = 0; i < 5; i++) await lockU.join('Ghe' + i);
+    const lockErr = await lockU.act({ action: 'startGame', game: 'ech-op' });
+    assert(!!lockErr.error && lockErr.error.indexOf('tối đa 4') >= 0,
+      'chooser lock: 5 seats cannot start Ếch Ộp (max 4), got ' + JSON.stringify(lockErr.error));
+    const lockOk = await lockU.act({ action: 'startGame', game: 'da-bong' });
+    assert(lockOk.game && lockOk.game.id === 'da-bong' && lockOk.game.phase === 'countdown',
+      'chooser lock: the same 5 seats CAN start Đá Bóng Đầu To (max 8)');
+
+    // Shared drive helpers (250ms steps, one lazy tick per state call —
+    // the same choreography style as Audit O's platformer legs).
+    async function step2U(drv, t1, p1, t2, p2) {
+      if (t1) await drv.pAct(t1, { action: 'pad', pad: p1 || {} });
+      if (t2) await drv.pAct(t2, { action: 'pad', pad: p2 || {} });
+      tick(250);
+      return drv.state();
+    }
+    async function until2U(drv, t1, p1, t2, p2, until, label, max) {
+      for (let i = 0; i < (max || 800); i++) {
+        const v = await drv.state();
+        if (until(v)) {
+          if (t1) await drv.pAct(t1, { action: 'pad', pad: {} });
+          if (t2) await drv.pAct(t2, { action: 'pad', pad: {} });
+          return v;
+        }
+        await step2U(drv, t1, p1, t2, p2);
+      }
+      throw new Error('until2U timeout: ' + label);
+    }
+    async function pulseU(drv, tok, pad) {
+      await drv.pAct(tok, { action: 'pad', pad });
+      tick(125);
+      const v = await drv.state();
+      await drv.pAct(tok, { action: 'pad', pad: {} });
+      tick(125);
+      await drv.state();
+      return v;
+    }
+    async function jumpRunU(drv, tok, dirPad, otherTok, until, label) {
+      await drv.pAct(tok, { action: 'pad', pad: Object.assign({}, dirPad, { u: true }) });
+      tick(125);
+      await drv.state();
+      await drv.pAct(tok, { action: 'pad', pad: dirPad });
+      return until2U(drv, tok, dirPad, otherTok || null, {}, until, label);
+    }
+    const FU = (v, s) => (v.game && v.game.frogs && v.game.frogs[s]) || { x: 999, y: 999, ground: false, state: '?' };
+
+    // ---------------- Đá Bóng Đầu To: scripted lob goal ----------------
+    {
+      const drv = await newDrv();
+      const j1 = await drv.join('DoMot');
+      await drv.join('XanhHai');
+      const T1 = j1.playerToken;
+      await drv.act({ action: 'startGame', game: 'da-bong' });
+      let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'soccer', 'soccer begins');
+      assert(v.game.teams[1] === 'do' && v.game.teams[2] === 'xanh', 'soccer: odd seat is Đỏ, even seat is Xanh');
+      assert(v.game.ball.x === 0 && v.game.ball.y === 7.45 && v.game.blobs[1].x === -4 && v.game.blobs[1].team === 'do',
+        'soccer: kickoff formation — ball at (0, 7.45), Đỏ forward at -4');
+      assert(v.game.scoreboard.do === 0 && v.game.scoreboard.xanh === 0, 'soccer: scoreboard starts 0-0');
+      // P2 idles at +4 in the lane: lob the first kick over P2's head.
+      let lobbed = false, gv = null;
+      for (let i = 0; i < 1400; i++) {
+        v = await drv.state();
+        if (v.game.phase === 'goal') { gv = v; break; }
+        if (v.phase === 'results') break;
+        const me = v.game.blobs[1], ball = v.game.ball;
+        const dx = ball.x - me.x;
+        const pad = {};
+        if (dx > 0.5) pad.r = true; else if (dx < -0.5) pad.l = true;
+        if (!lobbed && dx >= 1.0 && dx <= 2.3 && ball.y >= 6.5 && me.ground) { pad.u = true; pad.a = true; lobbed = true; }
+        else if (lobbed && Math.abs(dx) < 2.2 && Math.abs(ball.y - me.y) < 2.0) pad.a = true;
+        if (ball.y < me.y - 2.2 && Math.abs(dx) < 2.6) pad.u = true;
+        await drv.pAct(T1, { action: 'pad', pad });
+        tick(125);
+      }
+      assert(!!gv, 'soccer: the scripted attack produces a goal');
+      assert(gv.game.goalInfo && gv.game.goalInfo.team === 'do' && gv.game.goalInfo.by === 1 && gv.game.goalInfo.ownGoal === false,
+        'soccer: goalInfo credits Đỏ, scored by seat 1, not an own goal — ' + JSON.stringify(gv.game.goalInfo));
+      assert(gv.game.scoreboard.do === 1 && gv.game.scoreboard.xanh === 0, 'soccer: scoreboard 1-0 after the goal');
+      v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'soccer', 'kickoff reset');
+      assert(v.game.ball.x === 0 && v.game.ball.y === 7.45 && v.game.blobs[1].x === -4 && v.game.blobs[2].x === 4,
+        'soccer: after the celebration the kickoff resets ball and formation');
+      v = await pumpD(drv, 500, (s) => s.phase === 'results', 'soccer match ends', 600);
+      assert(v.lastGame.points[1] === 300 && v.lastGame.points[2] === 50,
+        'soccer: 1-0 win pays 300 to Đỏ and 50 to Xanh, got ' + JSON.stringify(v.lastGame.points));
+    }
+    // ---------------- Đá Bóng: idle draw + bot match ----------------
+    {
+      const drv = await newDrv();
+      await drv.join('A'); await drv.join('B');
+      await drv.act({ action: 'startGame', game: 'da-bong' });
+      let lastSb = null;
+      let v = null;
+      for (let i = 0; i < 600; i++) {
+        v = await drv.state();
+        if (v.phase === 'results') break;
+        if (v.game && v.game.scoreboard) lastSb = v.game.scoreboard;
+        tick(500);
+      }
+      assert(v.phase === 'results' && lastSb && lastSb.do === 0 && lastSb.xanh === 0,
+        'soccer: two idle players draw 0-0');
+      assert(v.lastGame.points[1] === 150 && v.lastGame.points[2] === 150,
+        'soccer: a draw pays 150 each, got ' + JSON.stringify(v.lastGame.points));
+      const d2 = await newDrv();
+      await d2.join('Nguoi');
+      await d2.act({ action: 'addBot', seat: 2 });
+      await d2.act({ action: 'addBot', seat: 3 });
+      await d2.act({ action: 'addBot', seat: 4 });
+      await d2.act({ action: 'startGame', game: 'da-bong' });
+      let sb2 = null; let v2 = null;
+      for (let i = 0; i < 900; i++) {
+        v2 = await d2.state();
+        if (v2.phase === 'results') break;
+        if (v2.game && v2.game.scoreboard) sb2 = v2.game.scoreboard;
+        tick(500);
+      }
+      assert(v2.phase === 'results' && !!sb2, 'soccer: a 1-human + 3-bot match reaches results');
+      const winner2 = sb2.do > sb2.xanh ? 'do' : sb2.xanh > sb2.do ? 'xanh' : null;
+      let consistent = true;
+      [1, 2, 3, 4].forEach((seat) => {
+        const tm = seat % 2 === 1 ? 'do' : 'xanh';
+        const want = winner2 === null ? 150 : tm === winner2 ? 300 : 50;
+        if (v2.lastGame.points[seat] !== want) consistent = false;
+      });
+      assert(consistent, 'soccer: bot-match points match the final scoreboard ' + JSON.stringify(sb2) + ' -> ' + JSON.stringify(v2.lastGame.points));
+    }
+
+    // ---------------- Ếch Ộp: full scripted 3-chamber drive ----------------
+    {
+      const drv = await newDrv();
+      const j1 = await drv.join('EchMot');
+      const j2 = await drv.join('EchHai');
+      const T1 = j1.playerToken, T2 = j2.playerToken;
+      await drv.act({ action: 'startGame', game: 'ech-op' });
+      let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'frog', 'frog begins');
+      assert(v.game.chamber === 1 && v.game.hearts === 5 && v.game.fliesTotal === 9 && FU(v, 1).x === -10 && FU(v, 2).x === -8.4,
+        'frog: chamber 1 starts with 5 hearts, 9 flies across the run, frogs at their starts');
+      // Chamber 1: swallow, carry-jump the wide strip, spit.
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= FU(s, 2).x - 1.0, 'p1 beside p2');
+      await pulseU(drv, T1, { b: true });
+      v = await drv.state();
+      assert(FU(v, 1).state === 'carry' && FU(v, 1).bellySeat === 2 && FU(v, 2).state === 'in' && FU(v, 2).carrierSeat === 1,
+        'frog: B beside a teammate swallows them — carrier state carry/bellySeat 2, passenger in/carrierSeat 1');
+      const pv1 = await drv.pState(T1), pv2 = await drv.pState(T2);
+      assert(pv1.game.myState === 'carry' && pv1.game.myPassengerSeat === 2 && pv2.game.myState === 'in' && pv2.game.myCarrierSeat === 1,
+        'frog: phone views agree (myState carry/in, passenger/carrier seats)');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= -1.2, 'to strip edge');
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).x > 4.6, 'carry jump lands');
+      assert(v.game.hearts === 5 && v.game.fliesEaten >= 2,
+        'frog: the carrier jump clears the 5.2-wide strip untouched (hearts 5) and eats the mid-strip fly, flies ' + v.game.fliesEaten);
+      await pulseU(drv, T1, { b: true });
+      for (let i = 0; i < 6; i++) v = await step2U(drv, null, null, null, null);
+      assert(FU(v, 2).state === 'free' && FU(v, 2).x > 4.6,
+        'frog: B again spits the passenger out on the far side, free at x ' + FU(v, 2).x);
+      v = await until2U(drv, T1, { r: true }, T2, { r: true }, (s) => s.game && s.game.chamber === 2 && s.game.phase === 'frog', 'chamber 2');
+      assert(v.game.hearts === 5, 'frog: chamber 1 completed with all 5 hearts intact');
+      // Chamber 2: jump the small strip, push the crate to the plateau, climb.
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= -5.7, 'ch2 to strip');
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).x > -2.2, 'ch2 strip jump');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => s.game.crates[0].x >= 2.3, 'ch2 push crate');
+      assert(v.game.crates[0].x === 2.4, 'frog: the pushed crate stops against the plateau face at x 2.4, got ' + v.game.crates[0].x);
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 8.4 && FU(s, 1).y > 7.0, 'ch2 onto crate');
+      assert(FU(v, 1).y === 7.9, 'frog: P1 stands on the crate (y 7.9), got ' + FU(v, 1).y);
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 5.6, 'ch2 onto plateau');
+      assert(FU(v, 1).y === 5.0, 'frog: from the crate P1 reaches the plateau (y 5.0), got ' + FU(v, 1).y);
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= 7.2, 'ch2 p1 to door');
+      v = await until2U(drv, T2, { r: true }, null, null, (s) => FU(s, 2).x >= -5.7, 'ch2 p2 to strip');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).x > -2.2, 'ch2 p2 strip jump');
+      v = await until2U(drv, T2, { r: true }, null, null, (s) => FU(s, 2).x >= 1.0, 'ch2 p2 to crate');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).y < 8.4 && FU(s, 2).y > 7.0, 'ch2 p2 onto crate');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).y < 5.6, 'ch2 p2 onto plateau');
+      v = await until2U(drv, T2, { r: true }, T1, {}, (s) => s.game && s.game.chamber === 3 && s.game.phase === 'frog', 'chamber 3');
+      assert(v.game.hearts === 5, 'frog: chamber 2 completed with all 5 hearts intact');
+      // Chamber 3: carry strip A, glide the crate across strip B, climb.
+      await pulseU(drv, T1, { b: true });
+      v = await drv.state();
+      assert(FU(v, 1).state === 'carry' && FU(v, 2).state === 'in', 'frog: chamber 3 opens with another swallow');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= -7.0, 'ch3 to strip A edge');
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).x > -1.3, 'ch3 carry jump A');
+      assert(v.game.hearts === 5, 'frog: strip A crossed by carrier jump, hearts still 5');
+      await pulseU(drv, T1, { b: true });
+      for (let i = 0; i < 6; i++) v = await step2U(drv, null, null, null, null);
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => s.game.crates[0].x >= 5.2, 'ch3 push crate');
+      for (let i = 0; i < 10; i++) v = await step2U(drv, null, null, null, null);
+      assert(v.game.crates[0].x === 6.9, 'frog: the released crate glides across strip B to the plateau face (x 6.9), got ' + v.game.crates[0].x);
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 8.4 && FU(s, 1).y > 7.0, 'ch3 p1 onto crate');
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 6.2, 'ch3 p1 onto plateau');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= 9.4, 'ch3 p1 to door');
+      assert(FU(v, 1).atDoor === true, 'frog: P1 waits in the chamber-3 door zone');
+      v = await until2U(drv, T2, { r: true }, null, null, (s) => FU(s, 2).x >= 4.55, 'ch3 p2 to strip B');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).y < 8.4 && FU(s, 2).y > 7.0, 'ch3 p2 onto crate');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => s.phase === 'results' || (FU(s, 2).ground && FU(s, 2).y < 6.2), 'ch3 p2 onto plateau');
+      v = await pumpD(drv, 250, (s) => s.phase === 'results', 'frog results');
+      assert(v.lastGame.teamResult && v.lastGame.teamResult.tier === 'vang' && v.lastGame.teamResult.pointsEach === 300 && v.lastGame.teamResult.score === 9,
+        'frog: full run + all 9 flies = Vàng, 300 each — ' + JSON.stringify(v.lastGame.teamResult));
+      assert(v.lastGame.points[1] === 300 && v.lastGame.points[2] === 300, 'frog: Vàng points land on both players');
+    }
+    // ---------------- Ếch Ộp: hearts-out + bot carry ----------------
+    {
+      const drv = await newDrv();
+      const j1 = await drv.join('Mot');
+      await drv.join('Hai');
+      const T1 = j1.playerToken;
+      await drv.act({ action: 'startGame', game: 'ech-op' });
+      let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'frog', 'frog hearts-out begins');
+      for (let d = 0; d < 5; d++) {
+        const h0 = v.game.hearts;
+        v = await until2U(drv, T1, { r: true }, null, null, (s) => s.phase === 'results' || (s.game && s.game.hearts < h0), 'death ' + (d + 1));
+        if (v.phase === 'results') break;
+      }
+      v = await pumpD(drv, 250, (s) => s.phase === 'results', 'hearts-out results');
+      assert(v.lastGame.teamResult && v.lastGame.teamResult.tier === 'none' && v.lastGame.teamResult.pointsEach === 50
+        && v.lastGame.points[1] === 50 && v.lastGame.points[2] === 50,
+        'frog: five spike deaths end the run at Tham gia (50 each) — ' + JSON.stringify(v.lastGame.teamResult));
+      const d3 = await newDrv();
+      const j3 = await d3.join('Nguoi');
+      const T3 = j3.playerToken;
+      await d3.act({ action: 'addBot', seat: 2 });
+      await d3.act({ action: 'startGame', game: 'ech-op' });
+      let v3 = await pumpD(d3, 250, (s) => s.game && s.game.phase === 'frog', 'frog bot begins');
+      let sawCarry = false, crossed = false;
+      for (let i = 0; i < 500; i++) {
+        v3 = await d3.state();
+        if (v3.phase === 'results') break;
+        if (FU(v3, 2).state === 'carry' && FU(v3, 2).bellySeat === 1) sawCarry = true;
+        if ((v3.game && v3.game.chamber > 1) || FU(v3, 2).x > 4.6) { crossed = true; break; }
+        const me = FU(v3, 1), bot = FU(v3, 2);
+        let pad = {};
+        if (bot.state === 'carry' || me.state === 'in') pad = {};
+        else if (me.x < -3.4) pad = { r: true };
+        await d3.pAct(T3, { action: 'pad', pad });
+        tick(250);
+      }
+      assert(sawCarry && crossed,
+        'frog: the bot swallows the human at its waypoint and carries them over the chamber-1 strip (sawCarry ' + sawCarry + ', crossed ' + crossed + ')');
+    }
+
+    // ---------------- Đại Bác Căn Góc: accuracy, crater, elimination ----------------
+    {
+      function simShotU(view, seat, angle, power, face) {
+        const g = view.game;
+        const c = g.cannons[seat];
+        const rad = (angle * Math.PI) / 180;
+        const v0 = Math.max(4, power) / 100 * BALLISTICS.maxV;
+        let x = Math.round((c.x + face * Math.cos(rad)) * 1000) / 1000;
+        let y = Math.round((c.y - 0.4 - Math.sin(rad)) * 1000) / 1000;
+        let vx = face * Math.cos(rad) * v0, vy = -Math.sin(rad) * v0;
+        const dt = 1 / BALLISTICS.sub;
+        for (let i = 0; i < 6000; i++) {
+          vy += BALLISTICS.grav * dt;
+          vx += g.wind * BALLISTICS.windK * dt;
+          x += vx * dt; y += vy * dt;
+          for (const s in g.cannons) {
+            const cc = g.cannons[s];
+            if (cc.alive && Math.hypot(x - cc.x, y - (cc.y - 0.4)) < 0.85) return { x, y, hit: +s };
+          }
+          if (x < -12.6 || x > 12.6) return { x, y, hit: null };
+          const col = Math.max(0, Math.min(119, Math.floor((x + 12) / 0.2)));
+          if (y >= g.heights[col]) return { x, y: g.heights[col], hit: null };
+        }
+        return { x, y, hit: null };
+      }
+      function bestShotU(view, fromSeat, toSeat) {
+        const tgt = view.game.cannons[toSeat];
+        const face = tgt.x >= view.game.cannons[fromSeat].x ? 1 : -1;
+        let best = null;
+        for (let a = 20; a <= 80; a += 2) {
+          for (let p = 20; p <= 100; p += 2) {
+            const r = simShotU(view, fromSeat, a, p, face);
+            const d = Math.hypot(r.x - tgt.x, r.y - (tgt.y - 0.4));
+            if (!best || d < best.d) best = { angle: a, power: p, face, d };
+          }
+        }
+        return best;
+      }
+      const drv = await newDrv();
+      const j1 = await drv.join('PhaoMot');
+      await drv.join('PhaoHai');
+      const T1 = j1.playerToken;
+      await drv.act({ action: 'startGame', game: 'can-goc' });
+      let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'aim', 'cannon aim');
+      assert(v.game.turn === 1 && v.game.cannons[1].alive && v.game.cannons[2].alive
+        && v.game.cannons[1].hp === 100 && v.game.cannons[2].hp === 100 && Math.abs(v.game.wind) <= 6
+        && Array.isArray(v.game.heights) && v.game.heights.length === 120,
+        'cannon: two live 100-HP cannons on a 120-column heightmap, wind in [-6, 6], seat 1 opens');
+      const heightsBefore = v.game.heights.slice();
+      const shot = bestShotU(v, 1, 2);
+      const setRes = await drv.pAct(T1, { action: 'setAim', angle: shot.angle, power: shot.power, face: shot.face });
+      assert(setRes.game.myCannon && setRes.game.myCannon.angle === shot.angle && setRes.game.myCannon.power === shot.power && setRes.game.myCannon.face === shot.face,
+        'cannon: setAim sets angle/power/face exactly (' + shot.angle + '°/' + shot.power + ')');
+      await pulseU(drv, T1, { a: true });
+      v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'boom', 'cannon boom');
+      assert(v.game.boom && v.game.boom.hits && v.game.boom.hits[2] >= 25 && v.game.cannons[2].hp <= 75,
+        'cannon: the computed solution lands within the blast radius — P2 takes ' + (v.game.boom && v.game.boom.hits[2]) + ' damage, hp ' + v.game.cannons[2].hp);
+      const colU = Math.max(0, Math.min(119, Math.floor((v.game.boom.x + 12) / 0.2)));
+      assert(v.game.heights[colU] > heightsBefore[colU],
+        'cannon: the blast carves a crater — surface at the impact column drops ' + heightsBefore[colU] + ' -> ' + v.game.heights[colU]);
+      for (let round = 0; round < 6; round++) {
+        v = await pumpD(drv, 250, (s) => s.phase === 'results' || (s.game && s.game.phase === 'aim' && s.game.turn === 1), 'back to p1 turn', 800);
+        if (v.phase === 'results' || !v.game.cannons[2].alive) break;
+        const s2 = bestShotU(v, 1, 2);
+        await drv.pAct(T1, { action: 'setAim', angle: s2.angle, power: s2.power, face: s2.face });
+        await pulseU(drv, T1, { a: true });
+        v = await pumpD(drv, 250, (s) => s.phase === 'results' || (s.game && s.game.phase === 'boom'), 'snipe boom');
+        if (v.phase === 'results') break;
+      }
+      v = await pumpD(drv, 250, (s) => s.phase === 'results', 'cannon results', 800);
+      assert(v.lastGame.points[1] === 300 && v.lastGame.points[2] === 200 && JSON.stringify(v.lastGame.standings) === JSON.stringify([1, 2]),
+        'cannon: eliminating P2 ends the match — placement pays 300/200, got ' + JSON.stringify(v.lastGame.points));
+      const d4 = await newDrv();
+      await d4.join('Nguoi');
+      await d4.act({ action: 'addBot', seat: 2 });
+      await d4.act({ action: 'addBot', seat: 3 });
+      await d4.act({ action: 'addBot', seat: 4 });
+      await d4.act({ action: 'startGame', game: 'can-goc' });
+      const v4 = await pumpD(d4, 500, (s) => s.phase === 'results', 'bot cannon results', 4000);
+      const pts4 = Object.values(v4.lastGame.points).sort((a, b) => b - a);
+      assert(JSON.stringify(pts4) === JSON.stringify([300, 200, 100, 50]),
+        'cannon: a 4-bot match completes on the shared placement table, got ' + JSON.stringify(pts4));
+    }
   }
 
   // --- Storage routing: with ROOMS_DO bound, everything above must have
