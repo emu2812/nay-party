@@ -1,6 +1,6 @@
 // Discrimination checks for the 250ms -> 125ms tick halving.
 // Measures wall-clock outcomes against the OLD engine's expectations:
-//  1. tank driving right 2000ms -> 4.0u from spawn (0.5u x 8 old ticks), tol 0.6
+//  1. tank driving right 2000ms -> 5.33u from spawn (16 ticks x 1/3u on the wide field — the same 1/6-of-field crossing fraction as the old 4.0u), tol 0.6
 //  2. bomb placed at play start explodes 2000ms later (8 old ticks x 250ms)
 //  3. crown holder gains +40 points over 10s (old +1 per 250ms tick)
 //  4. stickman jump apex 4.4u (tol 0.3), air time 2000ms (tol 125ms)
@@ -96,7 +96,7 @@ async function step125(drv, n) {
   const x0 = v.game.blobs[1].x;
   v = await step125(drv, 2000);
   const dx = v.game.blobs[1].x - x0;
-  console.log('1. TANK 2000ms right: dx =', dx.toFixed(3), '(old expectation 4.0, tol 0.6) ->', Math.abs(dx - 4.0) <= 0.6 ? 'PASS' : 'FAIL');
+  console.log('1. TANK 2000ms right: dx =', dx.toFixed(3), '(expectation 5.33, tol 0.6) ->', Math.abs(dx - 5.33) <= 0.6 ? 'PASS' : 'FAIL');
 }
 
 // --- 2. Bomb: fuse duration in ms ---------------------------------------
@@ -129,7 +129,7 @@ async function step125(drv, n) {
   await drv.join('VuongHai');
   await drv.act({ action: 'startGame', game: 'giu-vuong-mien' });
   let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'crown', 'crown begins');
-  // walk seat 1 left onto the crown at (0,0): 5.5u at 0.25u/tick
+  // walk seat 1 left onto the crown at (0,0): 7.33u at 1/3u/tick
   await drv.pAct(p1.playerToken, { action: 'pad', pad: { l: true } });
   for (let i = 0; i < 200 && !(v.game.crown && v.game.crown.holder === 1); i++) { tick(125); v = await drv.state(); }
   await drv.pAct(p1.playerToken, { action: 'pad', pad: {} });
@@ -146,7 +146,7 @@ async function step125(drv, n) {
   const p2 = await drv.join('QueHai');
   await drv.act({ action: 'startGame', game: 'nguoi-que' });
   let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'fight', 'fight begins');
-  // Seat 2 at (-2, 5.1): no platform intersects its vertical arc (the
+  // Seat 2 at (-2.7, 3.6): no platform intersects its vertical arc (the
   // left floater ends at x -3.5; the top platform's top is above the
   // jump apex), so the jump runs the full floor-to-floor arc.
   const y0 = v.game.blobs[2].y;

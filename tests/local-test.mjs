@@ -327,11 +327,11 @@ async function playSplat() {
   console.log('Game: Sơn Sàn (paint grid, placements)');
   await toGame('son-san');
   let v = await pump(250, (s) => s.game && s.game.phase === 'splat', 'splat begins');
-  assert(Array.isArray(v.game.grid) && v.game.grid.length === 144, 'splat: the 12x12 floor grid is exposed');
+  assert(Array.isArray(v.game.grid) && v.game.grid.length === 180, 'splat: the 18x10 floor grid is exposed');
   for (let i = 0; i < 8; i++) { tick(1000); await hState(); }
   v = await hState();
   const total = Object.values(v.game.counts || {}).reduce((a, b) => a + b, 0);
-  assert(total > 0 && total <= 144, 'splat: painted cells are counted live and bounded by the grid (' + total + ')');
+  assert(total > 0 && total <= 180, 'splat: painted cells are counted live and bounded by the grid (' + total + ')');
   v = await pump(1000, (s) => s.phase === 'results', 'splat results', 300);
   const pts = Object.values(v.lastGame.points).sort((a, b) => b - a);
   assert(JSON.stringify(pts) === JSON.stringify([300, 200, 100]), 'splat placements are exactly 300/200/100, got ' + pts.join('/'));
@@ -739,23 +739,23 @@ async function main() {
     async () => {
       let v = await pumpD(stDrv, 250, (s) => s.game && s.game.phase === 'steal', 'steal begins');
       const byId = v.game.stars.slice().sort((a, b) => a.id - b.id);
-      assert(byId.length === 2 && byId[0].x === 4 && byId[0].y === 0 && byId[1].x === -4 && byId[1].y === 0 && !byId[0].gold && !byId[1].gold,
-        'steal: forced spawns land at (4,0) and (-4,0), got ' + JSON.stringify(v.game.stars));
-      // H1 at (5.5,0): one tick left puts it at (5.0,0), 1.0 from star1
-      // (pickup radius 1.3) -> banks exactly 1.
-      v = await padTicks(stDrv, st1.playerToken, { l: true }, 1);
+      assert(byId.length === 2 && byId[0].x === 5.33 && byId[0].y === 0 && byId[1].x === -5.33 && byId[1].y === 0 && !byId[0].gold && !byId[1].gold,
+        'steal: forced spawns land at (5.33,0) and (-5.33,0) (ellipse-mapped), got ' + JSON.stringify(v.game.stars));
+      // H1 at (7.33,0): three ticks left at 1/3 u/tick put it at
+      // (6.33,0), 1.0 from star1 (pickup radius 1.3) -> banks exactly 1.
+      v = await padTicks(stDrv, st1.playerToken, { l: true }, 3);
       await stDrv.pAct(st1.playerToken, { action: 'pad', pad: {} });
       assert(v.game.banked[1] === 1 && v.game.banked[2] === 0, 'steal: flying over a normal star banks exactly 1');
-      // Golden star spawns on tick 48 at (0,3).
+      // Golden star spawns on tick 48 at (0,2.25) (y scaled by 3/4).
       v = await pumpD(stDrv, 250, (s) => s.game && s.game.stars && s.game.stars.some((x) => x.gold), 'steal golden spawns', 200);
       const gold = v.game.stars.find((x) => x.gold);
-      assert(Math.abs(gold.x) <= 0.01 && Math.abs(gold.y - 3) <= 0.01, 'steal: golden star spawns at (0,3), got ' + JSON.stringify(gold));
+      assert(Math.abs(gold.x) <= 0.01 && Math.abs(gold.y - 2.25) <= 0.01, 'steal: golden star spawns at (0,2.25), got ' + JSON.stringify(gold));
       v = await driveSeat(stDrv, st1.playerToken, 1,
-        (s) => { const gs = s.game.stars.find((x) => x.gold); return gs ? { x: gs.x, y: gs.y } : { x: 0, y: 3 }; },
+        (s) => { const gs = s.game.stars.find((x) => x.gold); return gs ? { x: gs.x, y: gs.y } : { x: 0, y: 2.25 }; },
         { until: (s) => s.game.banked[1] === 4 });
       assert(v.game.banked[1] === 4, 'steal: the golden star banks exactly 3 (total 1 + 3 = 4)');
-      // H2 at (-5.5,0) steps right onto star2 at (-4,0).
-      v = await driveSeat(stDrv, stP2.playerToken, 2, () => ({ x: -4, y: 0 }), { until: (s) => s.game.banked[2] === 1 });
+      // H2 at (-7.33,0) steps right onto star2 at (-5.33,0).
+      v = await driveSeat(stDrv, stP2.playerToken, 2, () => ({ x: -5.33, y: 0 }), { until: (s) => s.game.banked[2] === 1 });
       assert(v.game.banked[2] === 1, 'steal: H2 banks star2 for exactly 1');
       // H1 closes to shove range (<= 2.4) and shoves: H2 must drop its
       // banked point as a loose star where it stood.
@@ -784,15 +784,15 @@ async function main() {
   await crDrv.act({ action: 'startGame', game: 'giu-vuong-mien' });
   let cv = await pumpD(crDrv, 250, (s) => s.game && s.game.phase === 'crown', 'crown begins');
   assert(cv.game.crown.holder === null && cv.game.crown.x === 0 && cv.game.crown.y === 0, 'crown: rests at the centre, unheld');
-  // H1 walks left 0.25/tick: at x=1.25 (tick 17) it first comes within
-  // 1.3 of the crown -> pickup, and the pickup tick itself scores +1.
-  // (At the old 250ms tick the same walk landed exactly on x=1.0.)
+  // H1 walks left 1/3 u/tick from x=7.33: at x=1.0 (tick 19) it first
+  // comes within 1.3 of the crown -> pickup, and the pickup tick
+  // itself scores +1.
   cv = await driveSeat(crDrv, cr1.playerToken, 1, () => ({ x: 0, y: 0 }), { until: (s) => s.game.crown.holder === 1 });
-  assert(Math.abs(cv.game.blobs[1].x - 1.25) <= 0.01 && cv.game.hold[1] === 1, 'crown: pickup at x=1.25 and the pickup tick scores +1 (hold == 1)');
-  // Holder speed is 0.9 x 0.25 = 0.225/tick: 20 ticks right from x=1.25.
+  assert(Math.abs(cv.game.blobs[1].x - 1.0) <= 0.01 && cv.game.hold[1] === 1, 'crown: pickup at x=1.0 and the pickup tick scores +1 (hold == 1)');
+  // Holder speed is 0.9 x 1/3 = 0.3/tick: 20 ticks right from x=1.0.
   cv = await padTicks(crDrv, cr1.playerToken, { r: true }, 20);
   await crDrv.pAct(cr1.playerToken, { action: 'pad', pad: {} });
-  assert(Math.abs(cv.game.blobs[1].x - 5.75) <= 0.02, 'crown: holder moves at 0.225/tick (x == 5.75 after 20 ticks), got ' + cv.game.blobs[1].x);
+  assert(Math.abs(cv.game.blobs[1].x - 7.0) <= 0.02, 'crown: holder moves at 0.3/tick (x == 7.0 after 20 ticks), got ' + cv.game.blobs[1].x);
   const holdBefore = cv.game.hold[1];
   cv = await padTicks(crDrv, cr1.playerToken, {}, 40);
   assert(cv.game.hold[1] - holdBefore === 20, 'crown: 40 quiet ticks (5s) as holder add exactly 20 hold points');
@@ -802,14 +802,20 @@ async function main() {
     { until: (s) => Math.hypot(s.game.blobs[1].x - s.game.blobs[2].x, s.game.blobs[1].y - s.game.blobs[2].y) <= 2.6 });
   cv = await padTicks(crDrv, cr2.playerToken, { a: true }, 1);
   await crDrv.pAct(cr2.playerToken, { action: 'pad', pad: {} });
-  // The crown drops 1.6 past the victim along the shove line: (7.35, 0).
-  assert(cv.game.crown.holder === null && Math.abs(cv.game.crown.x - 7.35) <= 0.05 && Math.abs(cv.game.crown.y) <= 0.05,
-    'crown: a shove drops the crown at (7.35, 0), got ' + JSON.stringify(cv.game.crown));
-  // Lockout is 8 ticks (1s): still unheld after 3 more ticks, re-grabbed
-  // by H1 (standing 1.1 away at x=8.45) once the lockout lapses.
+  // The crown drops 1.6 (x-scaled to 2.13) past the victim along the
+  // shove line: (9.13, 0).
+  assert(cv.game.crown.holder === null && Math.abs(cv.game.crown.x - 9.13) <= 0.05 && Math.abs(cv.game.crown.y) <= 0.05,
+    'crown: a shove drops the crown at (9.13, 0), got ' + JSON.stringify(cv.game.crown));
+  // Lockout is 8 ticks (1s): still unheld after 3 more pad steps, and
+  // H1 re-grabs once it lapses. (In the wide field the shove throws
+  // H1 3.6u, landing 1.47 from the dropped crown — just outside the
+  // 1.3 grab radius where the old field left 1.1 — so H1 steps in.)
   cv = await padTicks(crDrv, cr1.playerToken, {}, 3);
   assert(cv.game.crown.holder === null, 'crown: pickup lockout still holds 3 ticks after the drop');
-  cv = await padTicks(crDrv, cr1.playerToken, {}, 5);
+  for (let stepIn = 0; stepIn < 8 && cv.game.crown.holder !== 1; stepIn++) {
+    cv = await padTicks(crDrv, cr1.playerToken, { l: true }, 1);
+  }
+  await crDrv.pAct(cr1.playerToken, { action: 'pad', pad: {} });
   assert(cv.game.crown.holder === 1, 'crown: H1 re-grabs the crown once the lockout lapses');
   cv = await pumpD(crDrv, 250, (s) => s.phase === 'results', 'crown results', 400);
   assert(cv.lastGame.points[1] === 300 && cv.lastGame.points[2] === 200, 'crown: placements 300/200, got ' + JSON.stringify(cv.lastGame.points));
@@ -822,26 +828,27 @@ async function main() {
   await spDrv.act({ action: 'startGame', game: 'son-san' });
   let sv2 = await pumpD(spDrv, 250, (s) => s.game && s.game.phase === 'splat', 'splat begins');
   tick(250); sv2 = await spDrv.state(); // tick 1: spawn cells paint
-  assert(sv2.game.grid[69] === 1 && sv2.game.grid[62] === 2, 'splat: tick 1 paints the spawn cells (69 for H1, 62 for H2)');
+  assert(sv2.game.grid[103] === 1 && sv2.game.grid[94] === 2, 'splat: tick 1 paints the spawn cells (103 for H1, 94 for H2)');
   assert(sv2.game.counts[1] === 1 && sv2.game.counts[2] === 1, 'splat: counts start at 1 cell each');
-  // Right x8 ticks at 0.25/tick = 2.0 units (the old 4-tick walk):
-  // x = 5.75..6.0 (cell 69), 6.25..7.5 (cell 70) -> 2 cells.
+  // Right x8 ticks at 1/3 u/tick = 2.67 units: x crosses the cell-14
+  // and cell-15 boundaries (cells are 1.6 wide) -> 3 cells owned.
   sv2 = await padTicks(spDrv, sp1.playerToken, { r: true }, 8);
-  assert(sv2.game.counts[1] === 2, 'splat: walking right 8 ticks owns exactly 2 cells, got ' + sv2.game.counts[1]);
-  // Down x8 ticks = 2.0 units: y = 0.25..1.5 (cell 82), 1.75/2.0 (cell 94) -> 4 cells.
-  sv2 = await padTicks(spDrv, sp1.playerToken, { d: true }, 8);
-  assert(sv2.game.counts[1] === 4, 'splat: walking down 8 ticks owns exactly 4 cells, got ' + sv2.game.counts[1]);
-  // Burst at cell 94 (row 7, col 10): 3x3 = rows 6-8 x cols 9-11; two
-  // already owned (82, 94) -> +7 = 11 cells.
+  assert(sv2.game.counts[1] === 3, 'splat: walking right 8 ticks owns exactly 3 cells, got ' + sv2.game.counts[1]);
+  // Down x16 ticks at 3/16 u/tick = 3.0 units: y crosses into row 6
+  // (rows are 1.6 tall) exactly once -> 4 cells.
+  sv2 = await padTicks(spDrv, sp1.playerToken, { d: true }, 16);
+  assert(sv2.game.counts[1] === 4, 'splat: walking down 16 ticks owns exactly 4 cells, got ' + sv2.game.counts[1]);
+  // Burst at cell (row 6, col 15): 3x3 = rows 5-7 x cols 14-16; three
+  // already owned ((14,5), (15,5), (15,6)) -> +6 = 10 cells.
   sv2 = await padTicks(spDrv, sp1.playerToken, { a: true }, 1);
   await spDrv.pAct(sp1.playerToken, { action: 'pad', pad: {} });
-  assert(sv2.game.counts[1] === 11, 'splat: the 3x3 burst brings H1 to exactly 11 cells, got ' + sv2.game.counts[1]);
+  assert(sv2.game.counts[1] === 10, 'splat: the 3x3 burst brings H1 to exactly 10 cells, got ' + sv2.game.counts[1]);
   // A second burst inside the 2s cooldown paints nothing.
   sv2 = await padTicks(spDrv, sp1.playerToken, { a: true }, 1);
   await spDrv.pAct(sp1.playerToken, { action: 'pad', pad: {} });
-  assert(sv2.game.counts[1] === 11 && sv2.game.counts[2] === 1, 'splat: burst is blocked during its cooldown; idle H2 still owns 1');
+  assert(sv2.game.counts[1] === 10 && sv2.game.counts[2] === 1, 'splat: burst is blocked during its cooldown; idle H2 still owns 1');
   sv2 = await pumpD(spDrv, 250, (s) => s.phase === 'results', 'splat results', 400);
-  assert(sv2.lastGame.points[1] === 300 && sv2.lastGame.points[2] === 200, 'splat: placements 300/200 for 11 vs 1 cells, got ' + JSON.stringify(sv2.lastGame.points));
+  assert(sv2.lastGame.points[1] === 300 && sv2.lastGame.points[2] === 200, 'splat: placements 300/200 for 10 vs 1 cells, got ' + JSON.stringify(sv2.lastGame.points));
 
   // --- Cao Bồi: foul / receipt order / silent player / final x2 -------
   // Hand totals: r1 P2 200, P1 foul -100; r2 P2 200, P1 100; r3 P1 200
@@ -1013,17 +1020,17 @@ async function main() {
   jv = await padTicks(shDrv, sh1.playerToken, { r: true }, 4);
   assert(jv.game.shared.x === 0 && jv.game.shared.y === 0, 'shared filter: P1 holding RIGHT (not owned) moves nothing');
   jv = await padTicks(shDrv, sh1.playerToken, { u: true }, 8);
-  assert(jv.game.shared.x === 0 && jv.game.shared.y === -2, 'shared filter: P1 UP x8 ticks (2s) moves the blob to y == -2 exactly, got ' + JSON.stringify(jv.game.shared));
+  assert(jv.game.shared.x === 0 && Math.abs(jv.game.shared.y - -1.5) <= 0.05, 'shared filter: P1 UP x8 ticks moves the blob to y == -1.5 (8 x 3/16), got ' + JSON.stringify(jv.game.shared));
   await shDrv.pAct(sh1.playerToken, { action: 'pad', pad: {} }); // release P1's held pad before P2's turn
   jv = await padTicks(shDrv, sh2.playerToken, { l: true }, 8);
-  assert(jv.game.shared.x === -2 && jv.game.shared.y === -2, 'shared filter: P2 LEFT x8 ticks (2s) moves the blob to x == -2 exactly, got ' + JSON.stringify(jv.game.shared));
+  assert(Math.abs(jv.game.shared.x - -2.67) <= 0.05 && Math.abs(jv.game.shared.y - -1.5) <= 0.05, 'shared filter: P2 LEFT x8 ticks moves the blob to x == -2.67 (8 x 1/3), got ' + JSON.stringify(jv.game.shared));
   await shDrv.pAct(sh1.playerToken, { action: 'pad', pad: {} });
   await shDrv.pAct(sh2.playerToken, { action: 'pad', pad: {} });
 
   // --- J3: scripted checkpoint + hearts end the game ------------------
-  // Queue 0.5: every star spawns at (-5.5, 0); every cannonball spawns
-  // at (0,-12) flying straight at (0,0) at 0.4/tick (27 ticks to reach
-  // the parked blob). Drive out, touch the star once (checks == 1),
+  // Queue 0.5: every star spawns at (-7, 0) (ellipse-mapped); every
+  // cannonball spawns at (0,10.5) on the bottom edge flying straight
+  // at (0,0). Drive out, touch the star once (checks == 1),
   // drive home to (0,0), release: balls land at ~ticks 37/53/69, the
   // third empties the 3 shared hearts long before the 60s timeout.
   const cpDrv = await newDrv();
@@ -1047,9 +1054,10 @@ async function main() {
   });
 
   // --- J4: checkpoint tiers 3/5/8 -> Đồng/Bạc/Vàng ---------------------
-  // Queue 0.999: the star always (re)spawns at ~(8.49,-0.05) — right
-  // where the blob parks against it, so checks tick up exactly 1/tick;
-  // cannonballs fly a path that misses the parked blob by ~5 units.
+  // Queue 0.999: the star always (re)spawns at ~(11.32,-0.04) — right
+  // where the blob parks against it (drive target (12,0)), so checks
+  // tick up exactly 1/tick; cannonballs fly a path that misses the
+  // parked blob by ~5 units.
   // The moment checks hit N the clock jumps past endsAt: stepShared
   // finishes on time BEFORE any further sim tick, freezing checks at N.
   for (const [need, tier, pts] of [[3, 'dong', 100], [5, 'bac', 200], [8, 'vang', 300]]) {
@@ -1082,7 +1090,7 @@ async function main() {
   const bx2 = await bxDrv.join('Hai');
   await bxDrv.act({ action: 'startGame', game: 'day-hop' });
   let bv = await pumpD(bxDrv, 250, (s) => s.game && s.game.phase === 'box', 'box begins');
-  assert(bv.game.crate.x === -6 && bv.game.crate.y === 0 && bv.game.layout === 0, 'box: layout 0 opens with the crate at (-6,0)');
+  assert(bv.game.crate.x === -8.6 && bv.game.crate.y === 0 && bv.game.layout === 0, 'box: layout 0 opens with the crate at (-8.6,0)');
   // Solo: P1 dives UNDER the crate on a fixed {l} slide (inside the
   // contact band its intent is a pure axis push of magnitude 1, and
   // P2 idles in right-side contact with intent 0, so the crossing
@@ -1091,7 +1099,7 @@ async function main() {
   // the sum is still only magnitude 1.
   await padTicks(bxDrv, bx1.playerToken, { d: true }, 6);
   await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: {} });
-  await slideX(bxDrv, bx1.playerToken, 1, -8.7, { l: true });
+  await slideX(bxDrv, bx1.playerToken, 1, -11.3, { l: true });
   await padTicks(bxDrv, bx1.playerToken, { u: true }, 8);
   await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: {} });
   await boxHome(bxDrv, bx1.playerToken, 1);
@@ -1109,42 +1117,56 @@ async function main() {
   await bothTicks(bxDrv, bx1.playerToken, {}, bx2.playerToken, {}, 0);
   assert(bv.game.crate.x === crateC.x && bv.game.crate.y === crateC.y,
     'box: two players pushing against each other cancel — crate byte-identical, got ' + JSON.stringify(bv.game.crate));
-  // Aligned + delivery: both pushers are placed at ~±23° around the
-  // crate's left point. The angle matters: a pressing player's angle
-  // steepens ~x1.26/tick (in tan) as its steps shorten the radial
-  // gap while the tangential offset persists, so from ±23° it stays
-  // in contact for ~20 ticks, and the two spots are ~46° apart so
-  // blob separation never fires. P1 (which the opposed hold orbited
-  // over the top) walks back along the top lane, drops to the y=-0.9
-  // lane and steps in; P2 comes under the crate and steps in from
-  // the y=+0.9 lane. Every crossing/entry intent here is a pure axis
-  // push with the other player idle in contact (sum 1), so the
-  // crate is still at (-6,0) when the aligned push starts.
-  await slideX(bxDrv, bx1.playerToken, 1, -8.6, { l: true });
-  await padTicks(bxDrv, bx1.playerToken, { d: true }, 6);
-  await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: {} });
-  await padTicks(bxDrv, bx1.playerToken, { r: true }, 2);
-  await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: {} });
-  await padTicks(bxDrv, bx2.playerToken, { d: true }, 6);
-  await bxDrv.pAct(bx2.playerToken, { action: 'pad', pad: {} });
-  await slideX(bxDrv, bx2.playerToken, 2, -8.6, { l: true });
-  await padTicks(bxDrv, bx2.playerToken, { u: true }, 6);
-  await bxDrv.pAct(bx2.playerToken, { action: 'pad', pad: {} });
-  await padTicks(bxDrv, bx2.playerToken, { r: true }, 2);
-  await bxDrv.pAct(bx2.playerToken, { action: 'pad', pad: {} });
+  // Aligned + delivery: both pushers are steered to spots at ~±23°
+  // around the crate's left point (the lanes the delivery loop below
+  // uses). Steering is crate-relative and closed-loop: the fixed
+  // pad-count choreography used before the 16:9 wave depended on the
+  // old 0.25 step and on wherever the opposed hold happened to orbit
+  // each player; the spots are what the assertions actually care
+  // about. Every crossing/entry intent here is a pure axis push with
+  // the other player idle in contact (sum 1 < 1.2), so the crate is
+  // still at (-8.6,0) when the aligned push starts.
+  // Single-step steering toward a pusher spot glued to the crate's
+  // left flank ( lanes at +/-0.71 ): leave the block-disc band
+  // vertically, cross at a safe height, then home. Used by boxSpot
+  // (formation) and by the delivery loop (moving spots).
+  function boxSteerPad(s, seat, dySign) {
+    const b = s.game.blobs[seat]; const c = s.game.crate;
+    const spot = { x: c.x - 2.22, y: c.y + dySign * 0.71 };
+    const dx = spot.x - b.x, dy = spot.y - b.y;
+    if (Math.hypot(dx, dy) <= 0.32) return { r: true }; // at the spot: press in
+    const rx = b.x - c.x, ry = b.y - c.y;
+    if (rx > -1.8 && Math.abs(ry) < 2.3) return ry <= 0 ? { u: true } : { d: true };
+    if (rx > -1.8) return { l: true };
+    const pad = {};
+    if (Math.abs(dx) >= Math.abs(dy)) { if (dx > 0.05) pad.r = true; else if (dx < -0.05) pad.l = true; }
+    else { if (dy > 0.05) pad.d = true; else if (dy < -0.05) pad.u = true; }
+    return pad;
+  }
+  async function boxSpot(tok, seat, dySign) {
+    for (let i = 0; i < 120; i++) {
+      const s = await bxDrv.state();
+      const b = s.game.blobs[seat]; const c = s.game.crate;
+      const spot = { x: c.x - 2.22, y: c.y + dySign * 0.71 };
+      if (Math.hypot(spot.x - b.x, spot.y - b.y) <= 0.32) { await bxDrv.pAct(tok, { action: 'pad', pad: {} }); return; }
+      await bxDrv.pAct(tok, { action: 'pad', pad: boxSteerPad(s, seat, dySign) });
+      tick(125);
+    }
+    throw new Error('boxSpot timeout seat ' + seat);
+  }
+  await boxSpot(bx1.playerToken, 1, -1);
+  await boxSpot(bx2.playerToken, 2, 1);
   const crateB = (await bxDrv.state()).game.crate;
   bv = await bothTicks(bxDrv, bx1.playerToken, { r: true }, bx2.playerToken, { r: true }, 10);
-  assert(Math.abs(bv.game.crate.x - (crateB.x + 3.0)) <= 0.05 && Math.abs(bv.game.crate.y - crateB.y) <= 0.05,
-    'box: two players aligned move the crate +3.0 in 10 beats (0.3/250ms), got ' + JSON.stringify(bv.game.crate));
-  // Delivery: keep pushing with STEERED pads. A pusher holding a
-  // fixed direction orbits the crate and falls out of contact, so
-  // each tick every in-contact player pushes right plus a vertical
-  // correction toward the crate's centre line (the two corrections
-  // cancel in the push sum when the formation is symmetric), and an
-  // out-of-contact player re-homes axis-aligned to the crate's left
-  // point, so a re-entry tick carries a single-axis intent.
+  assert(Math.abs(bv.game.crate.x - (crateB.x + 2.8)) <= 0.05 && Math.abs(bv.game.crate.y - crateB.y) <= 0.05,
+    'box: two players aligned move the crate +2.8 in 10 beats (7 full push-ticks at 0.4 while the formation closes into the band), got ' + JSON.stringify(bv.game.crate));
+  // Delivery: keep pushing with STEERED pads glued to spots on the
+  // crate's left flank (boxSteerPad): a pusher holding a fixed
+  // direction orbits the crate and falls out of contact, so every
+  // beat re-homes each player to its moving spot; at the spot the
+  // steer presses straight in ({r}), which is the push itself.
   let delivered = null;
-  for (let i = 0; i < 100 && !delivered; i++) {
+  for (let i = 0; i < 300 && !delivered; i++) {
     const s = await bxDrv.state();
     if (!s.game) break; // the 75s clock ran out mid-push: delivered stays null and the assert below reports it
     if (s.game.deliveries >= 1) { delivered = s; break; }
@@ -1153,35 +1175,10 @@ async function main() {
     // point (P1 above, P2 below — the aligned formation). Homing both
     // to the SAME left point deadlocks: the first arrival occupies
     // it and blob separation keeps the second player out of the band.
-    const mkPad = (seat) => {
-      const b = s.game.blobs[seat];
-      const rx = b.x - c.x, ry = b.y - c.y;
-      const dist = Math.hypot(rx, ry);
-      const spot = { x: c.x - 2.22, y: c.y + (seat === 1 ? -0.95 : 0.95) };
-      if (dist <= 2.45 && rx <= 0.3) {
-        // In contact on the pushing side: push right, correcting
-        // toward my own spot's lane (the two corrections cancel in
-        // the push sum when both players ride their lanes).
-        const pad = { r: true };
-        if (b.y < spot.y - 0.3) pad.d = true;
-        else if (b.y > spot.y + 0.3) pad.u = true;
-        return pad;
-      }
-      if (dist <= 2.45) return ry <= 0 ? { u: true } : { d: true }; // wrong side: escape tangentially
-      if (rx > 0.3 && Math.abs(ry) < 3.0) return ry <= 0 ? { u: true } : { d: true }; // clear the flank before crossing
-      // Home to my spot (tight deadband — a 0.25 one strands the
-      // player just outside the band); if already at the spot but
-      // still out of the band, press straight in.
-      const dx = spot.x - b.x, dy = spot.y - b.y;
-      if (Math.hypot(dx, dy) <= 0.3) return { r: true };
-      const pad = {};
-      if (Math.abs(dx) >= Math.abs(dy)) { if (dx > 0.05) pad.r = true; else if (dx < -0.05) pad.l = true; }
-      else { if (dy > 0.05) pad.d = true; else if (dy < -0.05) pad.u = true; }
-      return pad;
-    };
+    const mkPad = (seat) => boxSteerPad(s, seat, seat === 1 ? -1 : 1);
     await bxDrv.pAct(bx1.playerToken, { action: 'pad', pad: mkPad(1) });
     await bxDrv.pAct(bx2.playerToken, { action: 'pad', pad: mkPad(2) });
-    tick(250);
+    tick(125);
   }
   if (!delivered) {
     const s = await bxDrv.state();
@@ -1190,9 +1187,9 @@ async function main() {
   await bothTicks(bxDrv, bx1.playerToken, {}, bx2.playerToken, {}, 0);
   assert(!!delivered && delivered.game.deliveries === 1 && delivered.game.layout === 1,
     'box: the push delivers the crate (deliveries == 1) and rotates to layout 1');
-  assert(delivered.game.crate.x === -6.5 && delivered.game.crate.y === -5
-    && delivered.game.goal.x === 6 && delivered.game.goal.y === 3.5,
-    'box: layout 1 loads its own crate (-6.5,-5) and goal (6,3.5), got crate ' + JSON.stringify(delivered.game.crate));
+  assert(delivered.game.crate.x === -8.7 && delivered.game.crate.y === -3.75
+    && delivered.game.goal.x === 8 && delivered.game.goal.y === 2.6,
+    'box: layout 1 loads its own crate (-8.7,-3.75) and goal (8,2.6), got crate ' + JSON.stringify(delivered.game.crate));
   await bothTicks(bxDrv, bx1.playerToken, {}, bx2.playerToken, {}, 0);
   tick(76000);
   const bres = await bxDrv.state();
@@ -1337,12 +1334,13 @@ async function main() {
   const tk2 = await tkDrv.join('Hai');
   await tkDrv.act({ action: 'startGame', game: 'xe-tank' });
   let tv = await pumpD(tkDrv, 250, (s) => s.game && s.game.phase === 'tank', 'tank begins');
-  assert(tv.game.blobs[1].x === 5.5 && tv.game.blobs[1].y === 0 && tv.game.blobs[2].x === -5.5 && tv.game.blobs[2].y === 0,
+  assert(tv.game.blobs[1].x === 7.33 && tv.game.blobs[1].y === 0 && tv.game.blobs[2].x === -7.33 && tv.game.blobs[2].y === 0,
     'tank: spawns face each other across the arena');
   assert(tv.game.facing[1].x === -1 && tv.game.facing[1].y === 0, 'tank: seat 1 starts aimed at the centre');
   assert(tv.game.blocks.length === 4, 'tank: four cover blocks stand on the field');
-  // Fire once down the clear spawn lane: spawn (4.4,0), 1.2/tick, the
-  // target at -5.5 is first within the 1.0 hit radius on tick 8.
+  // Fire once down the clear spawn lane: the shell leaves at
+  // (6.13,0), flies 1.2/tick, and the target at -7.33 is first
+  // within the 1.0 hit radius on tick ~11.
   tv = await padTicks(tkDrv, tk1.playerToken, { a: true }, 1);
   await tkDrv.pAct(tk1.playerToken, { action: 'pad', pad: {} });
   assert(tv.game.shells.length === 1, 'tank: one shell in flight after firing');
@@ -1352,9 +1350,14 @@ async function main() {
   assert(tv.game.shells.length === 1, 'tank: the 1s cooldown swallows a re-press — still exactly 1 shell');
   tv = await pumpD(tkDrv, 250, (s) => s.game.blobs[2].lives === 2, 'tank first hit lands', 40);
   assert(tv.game.blobs[1].lives === 3, 'tank: the shooter keeps all 3 lives');
-  // Cover: drive above the upper-right block, aim down, fire into it.
-  await driveSeat(tkDrv, tk1.playerToken, 1, () => ({ x: 5.5, y: -5.5 }));
-  tv = await driveSeat(tkDrv, tk1.playerToken, 1, () => ({ x: 3.2, y: -5.5 }));
+  // Cover: drive above the upper-right block (x 2.9..5.6, top edge
+  // y=-2.4 in the wide field), aim down, fire into it.
+  // Two axis legs: up the clear spawn column first, then left along
+  // the lane above the block - a single diagonal drive wedges the
+  // tank into the block's expanded corner (slideCircle resolves one
+  // axis at a time and both end up blocked).
+  await driveSeat(tkDrv, tk1.playerToken, 1, () => ({ x: 7.33, y: -4.4 }));
+  tv = await driveSeat(tkDrv, tk1.playerToken, 1, () => ({ x: 4.25, y: -4.4 }));
   tv = await padTicks(tkDrv, tk1.playerToken, { d: true }, 1);
   await tkDrv.pAct(tk1.playerToken, { action: 'pad', pad: {} });
   assert(tv.game.facing[1].y === 1, 'tank: facing follows the last movement direction (down)');
@@ -1364,11 +1367,9 @@ async function main() {
   assert(tv.game.shells.length === 0 && tv.game.blobs[2].lives === 2,
     'tank: the cover block eats the shell — no shell survives, no damage dealt');
   // Elimination: back to the lane, two more hits end the match. (The
-  // 0.36 tolerance covers the 0.25-step grid: a blob can park at a
-  // (0.25, 0.25) offset, inside driveSeat's per-axis deadband but
-  // outside the old 0.3 stop radius.)
-  await driveSeat(tkDrv, tk1.playerToken, 1, () => ({ x: 5.5, y: -5.5 }), { tol: 0.36 });
-  tv = await driveSeat(tkDrv, tk1.playerToken, 1, () => ({ x: 5.5, y: 0 }), { tol: 0.36 });
+  // 0.36 tolerance covers the step grid: a blob can park at a small
+  // offset inside driveSeat's per-axis deadband.)
+  tv = await driveSeat(tkDrv, tk1.playerToken, 1, () => ({ x: 7.33, y: 0 }), { tol: 0.36 });
   tv = await padTicks(tkDrv, tk1.playerToken, { l: true }, 1);
   await tkDrv.pAct(tk1.playerToken, { action: 'pad', pad: {} });
   assert(tv.game.facing[1].x === -1, 'tank: facing turns left with the last move');
@@ -1394,7 +1395,7 @@ async function main() {
 
   // --- Đặt Bom A: queued layout, corner spawns, CHAIN REACTION --------
   // Soft generation draws once per candidate cell in row-major order
-  // (99 cells - 20 hard - 12 spawn-safe = 67 draws); the queue below
+  // (135 cells - 28 hard - 14 spawn-safe = 93 draws); the queue below
   // deals exactly one soft block, at (4,0).
   const bmDrv = await newDrv();
   const bm1 = await bmDrv.join('Mot');
@@ -1402,24 +1403,25 @@ async function main() {
   const bm3 = await bmDrv.join('Ba');
   {
     const q = [];
-    for (let r = 0; r < 9; r++) for (let c = 0; c < 11; c++) {
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 15; c++) {
       const hard = c % 2 === 1 && r % 2 === 1;
-      const safe = (c <= 1 && r <= 1) || (c >= 9 && r >= 7) || (c >= 9 && r <= 1) || (c <= 1 && r >= 7);
+      const safe = (c <= 1 && r <= 1) || (c >= 13 && r >= 7) || (c >= 13 && r <= 1) || (c <= 1 && r >= 7)
+        || (c === 7 && (r <= 1 || r >= 7));
       if (hard || safe) continue;
       q.push(c === 4 && r === 0 ? 0.1 : 0.99);
     }
     await withRandomQueue(q, async () => {
       await bmDrv.act({ action: 'startGame', game: 'dat-bom' });
       let bv = await pumpD(bmDrv, 250, (s) => s.game && s.game.phase === 'bomber', 'bomber begins');
-      assert(bv.game.hard.length === 20, 'bomber: 20 hard pillars on the odd/odd cells');
+      assert(bv.game.hard.length === 28, 'bomber: 28 hard pillars on the odd/odd cells of the 15x9 grid');
       assert(JSON.stringify(bv.game.soft) === JSON.stringify([[4, 0]]),
         'bomber: the queued layout deals exactly one soft block at (4,0), got ' + JSON.stringify(bv.game.soft));
-      assert(bv.game.blobs[1].x === -10 && bv.game.blobs[1].y === -8 && bv.game.blobs[3].x === 10 && bv.game.blobs[3].y === -8,
+      assert(bv.game.blobs[1].x === -14 && bv.game.blobs[1].y === -8 && bv.game.blobs[3].x === 14 && bv.game.blobs[3].y === -8,
         'bomber: players spawn in the corner cells');
       // H3 walks the open corridors (right column, middle row, top row).
-      await driveSeat(bmDrv, bm3.playerToken, 3, () => ({ x: 10, y: -4 }));
-      await driveSeat(bmDrv, bm3.playerToken, 3, () => ({ x: -6, y: -4 }));
-      bv = await driveSeat(bmDrv, bm3.playerToken, 3, () => ({ x: -6, y: -8 }));
+      await driveSeat(bmDrv, bm3.playerToken, 3, () => ({ x: 14, y: -4 }));
+      await driveSeat(bmDrv, bm3.playerToken, 3, () => ({ x: -10, y: -4 }));
+      bv = await driveSeat(bmDrv, bm3.playerToken, 3, () => ({ x: -10, y: -8 }));
       bv = await padTicks(bmDrv, bm3.playerToken, { a: true }, 1);
       await bmDrv.pAct(bm3.playerToken, { action: 'pad', pad: {} });
       assert(bv.game.bombs.length === 1 && bv.game.bombs[0].left >= 1750,
@@ -1453,12 +1455,12 @@ async function main() {
     const hbDrv = await newDrv();
     const hb1 = await hbDrv.join('Mot');
     await hbDrv.join('Hai');
-    await withRandomQueue(new Array(67).fill(0.99), async () => {
+    await withRandomQueue(new Array(93).fill(0.99), async () => {
       await hbDrv.act({ action: 'startGame', game: 'dat-bom' });
       let hv = await pumpD(hbDrv, 250, (s) => s.game && s.game.phase === 'bomber', 'bomber B begins');
-      assert(hv.game.soft.length === 0 && hv.game.hard.length === 20, 'bomber B: the queued layout deals no soft blocks');
-      await driveSeat(hbDrv, hb1.playerToken, 1, () => ({ x: -6, y: -8 }));
-      hv = await driveSeat(hbDrv, hb1.playerToken, 1, () => ({ x: -6, y: -6 }));
+      assert(hv.game.soft.length === 0 && hv.game.hard.length === 28, 'bomber B: the queued layout deals no soft blocks');
+      await driveSeat(hbDrv, hb1.playerToken, 1, () => ({ x: -10, y: -8 }));
+      hv = await driveSeat(hbDrv, hb1.playerToken, 1, () => ({ x: -10, y: -6 }));
       hv = await padTicks(hbDrv, hb1.playerToken, { a: true }, 1);
       await hbDrv.pAct(hb1.playerToken, { action: 'pad', pad: {} });
       assert(hv.game.bombs.length === 1, 'bomber B: bomb planted at (2,1)');
@@ -1771,9 +1773,9 @@ async function main() {
   // frozen until they re-touched. Setup now preserves g.pad (pruned to
   // the seats at the table) and clears padPrev, so a held button also
   // reads as a fresh rising edge on tick 1. Expectations are computed
-  // from the engine constants: spawn ring 5.5 (seat 1 at (5.5,0), seat
-  // 2 at (-5.5,0)), MOVE_STEP 0.25/tick at the 125ms tick (so each
-  // 250ms step below runs two sim ticks), dash = 2 ticks at x3 speed.
+  // from the engine constants: spawn ring 5.5 ellipse-mapped (seat 1
+  // at (7.33,0), seat 2 at (-7.33,0)), STEP_X 1/3 per 125ms tick (so
+  // each 250ms step below runs two sim ticks), dash = 2 ticks at x3.
   console.log('Audit L: countdown-held gamepad input survives round setup');
   {
     // Xe Tăng: RIGHT + A grabbed during the countdown, never re-sent.
@@ -1784,23 +1786,23 @@ async function main() {
     assert(cdStart.game && cdStart.game.phase === 'countdown', 'countdown-hold tank: game opens with the 3-2-1 countdown');
     await cdDrv.pAct(cd1.playerToken, { action: 'pad', pad: { r: true, a: true } });
     let cv = await pumpD(cdDrv, 250, (s) => s.game && s.game.phase === 'tank', 'countdown-hold tank begins');
-    assert(cv.game.blobs[1].x === 5.5 && cv.game.blobs[1].y === 0, 'countdown-hold tank: seat 1 spawns at (5.5,0)');
+    assert(cv.game.blobs[1].x === 7.33 && cv.game.blobs[1].y === 0, 'countdown-hold tank: seat 1 spawns at (7.33,0)');
     tick(125); cv = await cdDrv.state(); tick(125); cv = await cdDrv.state(); // 250ms: two sim ticks
-    assert(cv.game.blobs[1].x === 6, 'countdown-hold tank: the direction held since the countdown moves the tank from tick 1 (x=' + cv.game.blobs[1].x + ')');
+    assert(cv.game.blobs[1].x === 8, 'countdown-hold tank: the direction held since the countdown moves the tank from tick 1 (x=' + cv.game.blobs[1].x + ')');
     assert(cv.game.facing[1].x === 1 && cv.game.facing[1].y === 0, 'countdown-hold tank: facing follows the preserved direction');
     assert(cv.game.shells.length === 1, 'countdown-hold tank: the A held since the countdown fires exactly one shell on tick 1');
-    assert(cv.game.blobs[2].x === -5.5, 'countdown-hold tank: the idle tank has not moved');
+    assert(cv.game.blobs[2].x === -7.33, 'countdown-hold tank: the idle tank has not moved');
     tick(125); cv = await cdDrv.state(); tick(125); cv = await cdDrv.state(); tick(125); cv = await cdDrv.state(); tick(125); cv = await cdDrv.state(); // 500ms more, pad still merely held, never re-sent
-    assert(cv.game.blobs[1].x === 7, 'countdown-hold tank: the held direction keeps moving the tank (x=' + cv.game.blobs[1].x + ' after 6 ticks)');
+    assert(cv.game.blobs[1].x === 9.33, 'countdown-hold tank: the held direction keeps moving the tank (x=' + cv.game.blobs[1].x + ' after 6 ticks)');
     assert(cv.game.shells.length === 1, 'countdown-hold tank: merely holding A does not re-fire — the rising edge was consumed once');
     await cdDrv.pAct(cd1.playerToken, { action: 'pad', pad: {} });
   }
   {
     // Đẩy Ra Khỏi Sàn: LEFT + B grabbed during the countdown. Dash is
     // a B rising edge; padPrev was cleared at setup, so the dash boost
-    // (2 ticks at 3 x 0.25 = 1.5) runs from tick 1: 5.5 to exactly 4.0
+    // (2 ticks at 3 x 1/3 = 2.0) runs from tick 1: 7.33 to exactly 5.33
     // over the first 250ms. Continuing to hold B must not dash again —
-    // the next 500ms walk at normal speed to 3.0.
+    // the next 500ms walk at normal speed to 4.0.
     const ddDrv = await newDrv();
     const dd1 = await ddDrv.join('Mot');
     await ddDrv.join('Hai');
@@ -1808,11 +1810,11 @@ async function main() {
     assert(ddStart.game && ddStart.game.phase === 'countdown', 'countdown-hold arena: game opens with the 3-2-1 countdown');
     await ddDrv.pAct(dd1.playerToken, { action: 'pad', pad: { l: true, b: true } });
     let dv = await pumpD(ddDrv, 250, (s) => s.game && s.game.phase === 'arena', 'countdown-hold arena begins');
-    assert(dv.game.blobs[1].x === 5.5 && dv.game.blobs[1].y === 0, 'countdown-hold arena: seat 1 spawns at (5.5,0)');
+    assert(dv.game.blobs[1].x === 7.33 && dv.game.blobs[1].y === 0, 'countdown-hold arena: seat 1 spawns at (7.33,0)');
     tick(125); dv = await ddDrv.state(); tick(125); dv = await ddDrv.state(); // 250ms: the two dash-boost ticks
-    assert(dv.game.blobs[1].x === 4, 'countdown-hold arena: held LEFT+B dashes from tick 1 (x=' + dv.game.blobs[1].x + ', dash = 2 ticks at 3 x 0.25)');
+    assert(dv.game.blobs[1].x === 5.33, 'countdown-hold arena: held LEFT+B dashes from tick 1 (x=' + dv.game.blobs[1].x + ', dash = 2 ticks at 3 x 1/3)');
     tick(125); dv = await ddDrv.state(); tick(125); dv = await ddDrv.state(); tick(125); dv = await ddDrv.state(); tick(125); dv = await ddDrv.state(); // 500ms more, B still merely held
-    assert(dv.game.blobs[1].x === 3, 'countdown-hold arena: still holding B does not re-dash — the next 500ms walk at normal speed (x=' + dv.game.blobs[1].x + ')');
+    assert(dv.game.blobs[1].x === 4, 'countdown-hold arena: still holding B does not re-dash — the next 500ms walk at normal speed (x=' + dv.game.blobs[1].x + ')');
     await ddDrv.pAct(dd1.playerToken, { action: 'pad', pad: {} });
   }
   {
@@ -1876,10 +1878,10 @@ async function main() {
       'pad ack: the ack body is tiny (' + Buffer.byteLength(ack.text, 'utf8') + ' bytes < 120)');
     // The pad itself still landed: the /state poll (the single source
     // of view updates) shows the held direction steering the blob left
-    // from its (5.5, 0) spawn after two 250ms ticks.
+    // from its (7.33, 0) spawn after two 250ms ticks.
     tick(250); tick(250);
     const pv = await paDrv.state();
-    assert(pv.game && pv.game.blobs[pa1.seat] && pv.game.blobs[pa1.seat].x < 5.5,
+    assert(pv.game && pv.game.blobs[pa1.seat] && pv.game.blobs[pa1.seat].x < 7.33,
       'pad ack: the acked pad still applies — blob steered left from spawn');
     await paDrv.pAct(pa1.playerToken, { action: 'pad', pad: {} });
   }
@@ -1993,23 +1995,23 @@ async function main() {
   const fq2 = await fqDrv.join('QueHai');
   await fqDrv.act({ action: 'startGame', game: 'nguoi-que' });
   let fv = await pumpD(fqDrv, 250, (s) => s.game && s.game.phase === 'fight', 'fight begins');
-  assert(fv.game.blobs[1].x === -6 && fv.game.blobs[1].y === 5.1 && fv.game.blobs[1].lives === 3 && fv.game.blobs[1].dmg === 0,
-    'fight: seat 1 spawns on the main floor at (-6, 5.1) with 3 lives and 0% damage');
-  assert(fv.game.blobs[2].x === -2 && fv.game.blobs[2].y === 5.1 && fv.game.platforms.length === 4,
-    'fight: seat 2 spawns at (-2, 5.1); the stage carries 4 platforms');
+  assert(fv.game.blobs[1].x === -8 && fv.game.blobs[1].y === 3.6 && fv.game.blobs[1].lives === 3 && fv.game.blobs[1].dmg === 0,
+    'fight: seat 1 spawns on the main floor at (-8, 3.6) with 3 lives and 0% damage');
+  assert(fv.game.blobs[2].x === -2.7 && fv.game.blobs[2].y === 3.6 && fv.game.platforms.length === 4,
+    'fight: seat 2 spawns at (-2.7, 3.6); the stage carries 4 platforms');
   fv = await padTicksO(fqDrv, fq1.playerToken, { u: true }, 1);
   await fqDrv.pAct(fq1.playerToken, { action: 'pad', pad: {} });
-  assert(fv.game.blobs[1].y === 3.15 && fv.game.blobs[1].ground === false,
-    'fight: 250ms into a jump the fighter is airborne at y 3.15 (two 125ms ticks: vy -1.05 then -0.90), got ' + JSON.stringify(fv.game.blobs[1]));
+  assert(fv.game.blobs[1].y === 1.65 && fv.game.blobs[1].ground === false,
+    'fight: 250ms into a jump the fighter is airborne at y 1.65 (two 125ms ticks: vy -1.05 then -0.90), got ' + JSON.stringify(fv.game.blobs[1]));
   fv = await padTicksO(fqDrv, fq1.playerToken, {}, 12);
-  assert(fv.game.blobs[1].y === 1.1 && fv.game.blobs[1].ground === true,
-    'fight: the floater is one-way — the jump passes through it going up and lands on top (y 1.1), got y ' + fv.game.blobs[1].y);
+  assert(fv.game.blobs[1].y === 0.6 && fv.game.blobs[1].ground === true,
+    'fight: the floater is one-way — the jump passes through it going up and lands on top (y 0.6), got y ' + fv.game.blobs[1].y);
   fv = await padTicksO(fqDrv, fq1.playerToken, { r: true }, 9);
   await fqDrv.pAct(fq1.playerToken, { action: 'pad', pad: {} });
-  assert(fv.game.blobs[1].y === 5.1 && fv.game.blobs[1].ground === true,
-    'fight: walking off the floater drops the fighter back to the main floor (y 5.1), got y ' + fv.game.blobs[1].y);
+  assert(fv.game.blobs[1].y === 3.6 && fv.game.blobs[1].ground === true,
+    'fight: walking off the floater drops the fighter back to the main floor (y 3.6), got y ' + fv.game.blobs[1].y);
   // Double jump: press, release, press again mid-air — the second
-  // jump peaks far above the single-jump apex (centre y 0.9).
+  // jump peaks far above the single-jump apex (centre y -0.6).
   await padTicksO(fqDrv, fq2.playerToken, { u: true }, 1);
   await padTicksO(fqDrv, fq2.playerToken, {}, 1);
   await padTicksO(fqDrv, fq2.playerToken, { u: true }, 1);
@@ -2021,7 +2023,7 @@ async function main() {
     if (i > 6 && sv.game.blobs[2].ground) break;
     tick(250);
   }
-  assert(minY <= -1.0, 'fight: double jump apex reaches y ' + minY + ' (a single jump only reaches 0.9)');
+  assert(minY <= -1.0, 'fight: double jump apex reaches y ' + minY + ' (a single jump only reaches -0.6)');
 
   // --- Người Que: attack damage and knockback that scales with % ---
   const faDrv = await newDrv();
@@ -2117,39 +2119,39 @@ async function main() {
   assert(tpv1.game.myEl === 'lua' && tv.game.hearts === 5 && tv.game.gems.length === 10 && tv.game.gateOpen === false,
     'temple: phone view carries myEl; the team starts with 5 hearts, 10 gems, gates closed');
   // The pool lethality matrix, walked out on the bottom floor.
-  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.chars[1].x > -3.2, 'lua crosses the red pool');
+  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.chars[1].x > -9.0, 'lua crosses the red pool');
   assert(tv.game.hearts === 5 && tv.game.gemCount.lua === 1,
     'temple: the red pool is SAFE for Lửa (and the red gem inside it is collected)');
   tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.hearts === 4, 'the green pool kills lua');
-  assert(tv.game.chars[1].x === -9.5 && tv.game.chars[1].y === 9.1,
+  assert(tv.game.chars[1].x === -13.5 && tv.game.chars[1].y === 6.6,
     'temple: death costs a team heart and respawns Lửa at its own start pad');
-  tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.chars[2].x < 3.2, 'nuoc crosses the blue pool');
+  tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.chars[2].x < 9.0, 'nuoc crosses the blue pool');
   assert(tv.game.hearts === 4 && tv.game.gemCount.nuoc === 1,
     'temple: the blue pool is SAFE for Nước (inverse of red)');
   tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.hearts === 3, 'the green pool kills nuoc');
-  assert(tv.game.chars[2].x === 9.5, 'temple: the green pool kills BOTH elements — Nước respawns too');
-  tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 1.7, 'nuoc approaches the green pool');
+  assert(tv.game.chars[2].x === 13.5, 'temple: the green pool kills BOTH elements — Nước respawns too');
+  tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 2.2, 'nuoc approaches the green pool');
   await padTicksO(tpDrv, tp2.playerToken, { l: true, u: true }, 1);
   tv = await padTicksO(tpDrv, tp2.playerToken, { l: true }, 6);
   assert(tv.game.hearts === 3 && tv.game.chars[2].ground === true,
     'temple: a clean jump clears a pool (feet-box test), landed at x ' + tv.game.chars[2].x);
   tv = await leg(tpDrv, tp2.playerToken, { l: true }, (s) => s.game.hearts === 2, 'the red pool kills nuoc');
-  assert(tv.game.chars[2].x === 9.5, 'temple: the red pool kills Nước — respawned');
-  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -1.7, 'lua approaches the green pool');
+  assert(tv.game.chars[2].x === 13.5, 'temple: the red pool kills Nước — respawned');
+  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -2.2, 'lua approaches the green pool');
   await padTicksO(tpDrv, tp1.playerToken, { r: true, u: true }, 1);
   tv = await padTicksO(tpDrv, tp1.playerToken, { r: true }, 6);
   assert(tv.game.hearts === 2 && tv.game.gemCount.lua === 2,
     'temple: Lửa jumps the green pool and grabs the gem floating over it');
   tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.hearts === 1, 'the blue pool kills lua');
-  assert(tv.game.chars[1].x === -9.5, 'temple: the blue pool kills Lửa — respawned (matrix complete)');
+  assert(tv.game.chars[1].x === -13.5, 'temple: the blue pool kills Lửa — respawned (matrix complete)');
   // Gem colour gating: Lửa climbs to the mid floor's left end and
   // stands right on the BLUE gem there — nothing is collected.
   await padTicksO(tpDrv, tp1.playerToken, { u: true }, 1);
   await tpDrv.pAct(tp1.playerToken, { action: 'pad', pad: {} });
-  tv = await leg(tpDrv, tp1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'lua lands on the left step');
+  tv = await leg(tpDrv, tp1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5.5, 'lua lands on the left step');
   await padTicksO(tpDrv, tp1.playerToken, { r: true, u: true }, 1);
-  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'lua lands on the mid floor');
-  tv = await leg(tpDrv, tp1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -7.7, 'lua stands on the blue gem');
+  tv = await leg(tpDrv, tp1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 2.6, 'lua lands on the mid floor');
+  tv = await leg(tpDrv, tp1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -11.3, 'lua stands on the blue gem');
   await padTicksO(tpDrv, tp1.playerToken, {}, 3);
   tv = await tpDrv.state();
   assert(tv.game.gemCount.nuoc === 2 && tv.game.gemCount.lua === 2,
@@ -2165,18 +2167,18 @@ async function main() {
   // Lửa climbs to the mid floor's stair foot first.
   await padTicksO(gtDrv, gt1.playerToken, { u: true }, 1);
   await gtDrv.pAct(gt1.playerToken, { action: 'pad', pad: {} });
-  gv2 = await leg(gtDrv, gt1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'gate room: lua lands on the left step');
+  gv2 = await leg(gtDrv, gt1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5.5, 'gate room: lua lands on the left step');
   await padTicksO(gtDrv, gt1.playerToken, { r: true, u: true }, 1);
-  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'gate room: lua lands on the mid floor');
+  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 2.6, 'gate room: lua lands on the mid floor');
   // The closed gate blocks the balcony stair: repeated jump attempts
   // from the stair never get Lửa's feet onto the balcony (grounded
-  // y would be -0.5 there; the stair itself is 2.2).
-  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -6.45, 'lua to the stair foot');
+  // y would be -3.0 there; the stair itself is -0.3).
+  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -11.5, 'lua to the stair foot');
   let gateMinGroundY = 99;
   // Climb onto the stair (jump up-left, settle), then jump at the
   // closed gate from the stair's right edge — twice. The grounded y
-  // is sampled after every batch: the balcony would read -0.5, the
-  // stair reads 2.2, the mid floor 4.3.
+  // is sampled after every batch: the balcony would read -3.0, the
+  // stair reads -0.3, the mid floor 1.8.
   await padTicksO(gtDrv, gt1.playerToken, { u: true }, 1);
   await padTicksO(gtDrv, gt1.playerToken, { l: true }, 3);
   gv2 = await padTicksO(gtDrv, gt1.playerToken, { r: true }, 1);
@@ -2193,35 +2195,35 @@ async function main() {
     gv2 = await padTicksO(gtDrv, gt1.playerToken, { r: true }, 5);
     if (gv2.game.chars[1].ground) gateMinGroundY = Math.min(gateMinGroundY, gv2.game.chars[1].y);
   }
-  assert(gateMinGroundY >= 2.2 && gv2.game.gateOpen === false,
+  assert(gateMinGroundY >= -0.35 && gv2.game.gateOpen === false,
     'temple: with the gate closed, jump attempts from the stair never land on the balcony (best grounded y ' + gateMinGroundY + ')');
   await gtDrv.pAct(gt1.playerToken, { action: 'pad', pad: {} }); // park Lửa (its pad was left holding right)
   // Nước climbs to the button ledge: the gate opens; Lửa gets through.
   await padTicksO(gtDrv, gt2.playerToken, { u: true }, 1);
   await gtDrv.pAct(gt2.playerToken, { action: 'pad', pad: {} });
-  gv2 = await leg(gtDrv, gt2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 7, 'nuoc lands on the right step');
+  gv2 = await leg(gtDrv, gt2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5.5, 'nuoc lands on the right step');
   await padTicksO(gtDrv, gt2.playerToken, { l: true, u: true }, 1);
   await padTicksO(gtDrv, gt2.playerToken, { l: true }, 1);
-  gv2 = await leg(gtDrv, gt2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5, 'nuoc lands on the mid floor');
-  gv2 = await leg(gtDrv, gt2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 8.1, 'nuoc to the ledge jump point');
+  gv2 = await leg(gtDrv, gt2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.6, 'nuoc lands on the mid floor');
+  gv2 = await leg(gtDrv, gt2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 12.3, 'nuoc to the ledge jump point');
   await padTicksO(gtDrv, gt2.playerToken, { r: true, u: true }, 1);
-  gv2 = await leg(gtDrv, gt2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.5, 'nuoc lands on the button ledge');
+  gv2 = await leg(gtDrv, gt2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 1.7, 'nuoc lands on the button ledge');
   assert(gv2.game.gateOpen === true, 'temple: standing on the pressure button holds the gate open');
   // Lửa re-climbs from the bottom floor to the stair foot first
   // (the blocked attempts above left it down there), then goes
   // through the now-open gate.
-  gv2 = await leg(gtDrv, gt1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -10.4 && s.game.chars[1].ground, 'lua back to its start corner');
+  gv2 = await leg(gtDrv, gt1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -12.9 && s.game.chars[1].ground, 'lua back to its start corner');
   await padTicksO(gtDrv, gt1.playerToken, { u: true }, 1);
   await gtDrv.pAct(gt1.playerToken, { action: 'pad', pad: {} });
-  gv2 = await leg(gtDrv, gt1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'lua lands on the left step again');
+  gv2 = await leg(gtDrv, gt1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5.5, 'lua lands on the left step again');
   await padTicksO(gtDrv, gt1.playerToken, { r: true, u: true }, 1);
-  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'lua lands on the mid floor again');
+  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 2.6, 'lua lands on the mid floor again');
   await padTicksO(gtDrv, gt1.playerToken, { u: true }, 1);
   await padTicksO(gtDrv, gt1.playerToken, { l: true }, 3);
   await padTicksO(gtDrv, gt1.playerToken, { r: true }, 3);
   await padTicksO(gtDrv, gt1.playerToken, { r: true, u: true }, 1);
-  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 0, 'lua reaches the balcony');
-  assert(gv2.game.chars[1].y === -0.5 && gv2.game.gateOpen === true,
+  gv2 = await leg(gtDrv, gt1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < -1.5, 'lua reaches the balcony');
+  assert(gv2.game.chars[1].y === -3.0 && gv2.game.gateOpen === true,
     'temple: with a partner holding the button, Lửa climbs through the gate onto the balcony');
   gv2 = await leg(gtDrv, gt2.playerToken, { l: true }, (s) => s.game.gateOpen === false, 'the gate closes on release');
   assert(gv2.game.gateOpen === false, 'temple: the gate closes the moment the button is released');
@@ -2239,46 +2241,47 @@ async function main() {
   // Nước -> button ledge.
   await padTicksO(tcDrv, tc2.playerToken, { u: true }, 1);
   await tcDrv.pAct(tc2.playerToken, { action: 'pad', pad: {} });
-  cv = await leg(tcDrv, tc2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 7, 'C: nuoc lands on the right step');
+  cv = await leg(tcDrv, tc2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5.5, 'C: nuoc lands on the right step');
   await padTicksO(tcDrv, tc2.playerToken, { l: true, u: true }, 1);
   await padTicksO(tcDrv, tc2.playerToken, { l: true }, 1);
-  cv = await leg(tcDrv, tc2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5, 'C: nuoc lands on the mid floor');
-  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 8.1, 'C: nuoc to the ledge jump point');
+  cv = await leg(tcDrv, tc2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.6, 'C: nuoc lands on the mid floor');
+  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 12.3, 'C: nuoc to the ledge jump point');
   await padTicksO(tcDrv, tc2.playerToken, { r: true, u: true }, 1);
-  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.5, 'C: nuoc lands on the button ledge');
+  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 1.7, 'C: nuoc lands on the button ledge');
   assert(cv.game.gateOpen === true, 'temple completion: Nước holds button 1 open');
   // Lửa -> balcony -> button 2.
   await padTicksO(tcDrv, tc1.playerToken, { u: true }, 1);
   await tcDrv.pAct(tc1.playerToken, { action: 'pad', pad: {} });
-  cv = await leg(tcDrv, tc1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'C: lua lands on the left step');
+  cv = await leg(tcDrv, tc1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5.5, 'C: lua lands on the left step');
   await padTicksO(tcDrv, tc1.playerToken, { r: true, u: true }, 1);
-  cv = await leg(tcDrv, tc1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'C: lua lands on the mid floor');
+  cv = await leg(tcDrv, tc1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 2.6, 'C: lua lands on the mid floor');
   await padTicksO(tcDrv, tc1.playerToken, { u: true }, 1);
   await padTicksO(tcDrv, tc1.playerToken, { l: true }, 3);
   await padTicksO(tcDrv, tc1.playerToken, { r: true }, 2);
   await padTicksO(tcDrv, tc1.playerToken, { r: true, u: true }, 1);
-  cv = await leg(tcDrv, tc1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 0, 'C: lua reaches the balcony');
+  cv = await leg(tcDrv, tc1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < -1.5, 'C: lua reaches the balcony');
   cv = await leg(tcDrv, tc1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -0.5, 'C: lua onto button 2');
-  assert(cv.game.chars[1].y === -0.5 && cv.game.gateOpen === true,
+  assert(cv.game.chars[1].y === -3.0 && cv.game.gateOpen === true,
     'temple completion: Lửa is on the balcony holding button 2');
   // Nước crosses the mid floor (jumping its two lethal pools) and
   // climbs the left stair through the gate Lửa now holds open.
-  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 1.9 && s.game.chars[2].y < 3 && s.game.chars[2].x <= 8.3, 'C: nuoc steps down to the right stair');
+  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > -0.65 && s.game.chars[2].y < -0.05 && s.game.chars[2].x <= 12.4, 'C: nuoc steps down to the right stair');
   await padTicksO(tcDrv, tc2.playerToken, { l: true, u: true }, 1);
-  await padTicksO(tcDrv, tc2.playerToken, { l: true }, 2);
-  cv = await leg(tcDrv, tc2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y > 4, 'C: nuoc drops to the mid floor');
-  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 6.6, 'C: nuoc approaches the red pool');
-  await padTicksO(tcDrv, tc2.playerToken, { l: true, u: true }, 1);
-  await padTicksO(tcDrv, tc2.playerToken, { l: true }, 6);
+  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 10.3, 'C: nuoc to the drop point');
+  cv = await leg(tcDrv, tc2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y > 0.6, 'C: nuoc drops to the mid floor');
+  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 9.9, 'C: nuoc approaches the red pool');
   await padTicksO(tcDrv, tc2.playerToken, { l: true, u: true }, 1);
   await padTicksO(tcDrv, tc2.playerToken, { l: true }, 6);
-  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].x <= -6.45, 'C: nuoc to the left stair foot');
+  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 2.2, 'C: nuoc approaches the green pool');
+  await padTicksO(tcDrv, tc2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tcDrv, tc2.playerToken, { l: true }, 6);
+  cv = await leg(tcDrv, tc2.playerToken, { l: true }, (s) => s.game.chars[2].x <= -11.5, 'C: nuoc to the left stair foot');
   await padTicksO(tcDrv, tc2.playerToken, { u: true }, 1);
   await padTicksO(tcDrv, tc2.playerToken, { l: true }, 3);
   await padTicksO(tcDrv, tc2.playerToken, { r: true }, 2);
   await padTicksO(tcDrv, tc2.playerToken, { r: true, u: true }, 1);
-  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 0, 'C: nuoc reaches the balcony');
-  assert(cv.game.chars[2].y === -0.5, 'temple completion: Nước climbed through the gate Lửa held open');
+  cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < -1.5, 'C: nuoc reaches the balcony');
+  assert(cv.game.chars[2].y === -3.0, 'temple completion: Nước climbed through the gate Lửa held open');
   // Both into their own doors -> the level completes.
   cv = await leg(tcDrv, tc2.playerToken, { r: true }, (s) => !s.game || s.game.chars[2].home, 'C: nuoc walks into the water door');
   cv = await leg(tcDrv, tc1.playerToken, { l: true }, (s) => s.phase === 'results', 'C: lua walks into the fire door');
@@ -2296,70 +2299,71 @@ async function main() {
   let gv = await pumpD(tgDrv, 250, (s) => s.game && s.game.phase === 'temple', 'vang temple begins');
   // Nước gem run (5 blue gems), ending on the button ledge.
   gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.gemCount.nuoc === 1, 'V: nuoc takes the bottom blue gem');
-  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 1.7, 'V: nuoc approaches the green pool');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 1.9, 'V: nuoc approaches the green pool');
   await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
   gv = await padTicksO(tgDrv, tg2.playerToken, { l: true }, 6);
   assert(gv.game.gemCount.nuoc === 2, 'temple Vàng run: Nước jumps the green pool and takes its floating gem (2/5)');
   gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= -2.2, 'V: nuoc back toward the green pool');
   await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
   await padTicksO(tgDrv, tg2.playerToken, { r: true }, 6);
-  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 9.3, 'V: nuoc to its start corner');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 12.9, 'V: nuoc to its start corner');
   await padTicksO(tgDrv, tg2.playerToken, { u: true }, 1);
   await tgDrv.pAct(tg2.playerToken, { action: 'pad', pad: {} });
-  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 7, 'V: nuoc lands on the right step');
+  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5.5, 'V: nuoc lands on the right step');
   await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
   await padTicksO(tgDrv, tg2.playerToken, { l: true }, 1);
-  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5, 'V: nuoc lands on the mid floor');
-  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 5.6, 'V: nuoc approaches the red pool');
+  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.6, 'V: nuoc lands on the mid floor');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 9.9, 'V: nuoc approaches the red pool');
   await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
   gv = await padTicksO(tgDrv, tg2.playerToken, { l: true }, 5);
   assert(gv.game.gemCount.nuoc === 3, 'temple Vàng run: Nước jumps the red pool and takes its gem (3/5)');
   gv = await padTicksO(tgDrv, tg2.playerToken, {}, 2);
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 1.9, 'V: nuoc approaches the green pool on the mid floor');
   await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
   await padTicksO(tgDrv, tg2.playerToken, { l: true }, 6);
   gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.gemCount.nuoc === 4, 'V: nuoc takes the far-end gem');
   // Return along the BOTTOM floor: the closed gate 2 slab blocks
   // every mid-floor jump across its band, so Nước drops down, jumps
   // the bottom red and green pools, and climbs back up at its corner.
-  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 6, 'V: nuoc drops toward the bottom floor');
-  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 8, 'V: nuoc reaches the bottom floor');
-  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= -6.85, 'V: nuoc to the bottom red pool');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 3, 'V: nuoc drops toward the bottom floor');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 6, 'V: nuoc reaches the bottom floor');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= -10.9, 'V: nuoc to the bottom red pool');
   await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
   await padTicksO(tgDrv, tg2.playerToken, { r: true }, 6);
-  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= -2.1, 'V: nuoc to the bottom green pool');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= -1.9, 'V: nuoc to the bottom green pool');
   await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
   await padTicksO(tgDrv, tg2.playerToken, { r: true }, 6);
-  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 9.3, 'V: nuoc back to its start corner');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 12.9, 'V: nuoc back to its start corner');
   await padTicksO(tgDrv, tg2.playerToken, { u: true }, 1);
   await tgDrv.pAct(tg2.playerToken, { action: 'pad', pad: {} });
-  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 7, 'V: nuoc lands on the right step again');
+  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5.5, 'V: nuoc lands on the right step again');
   await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
-  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 5, 'V: nuoc lands on the mid floor again');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.6, 'V: nuoc lands on the mid floor again');
   gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].x >= 8.1, 'V: nuoc to the ledge jump point');
   await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
-  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 2.5, 'V: nuoc lands on the button ledge');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 1.7, 'V: nuoc lands on the button ledge');
   assert(gv.game.gemCount.nuoc === 5 && gv.game.gateOpen === true,
     'temple Vàng run: Nước holds all 5 blue gems and the gate open (5/5)');
   // Lửa gem run (5 red gems), ending on button 2.
   gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.gemCount.lua === 1, 'V: lua takes the bottom red gem');
-  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -1.7, 'V: lua approaches the green pool');
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -2.2, 'V: lua approaches the green pool');
   await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
   gv = await padTicksO(tgDrv, tg1.playerToken, { r: true }, 6);
   assert(gv.game.gemCount.lua === 2, 'temple Vàng run: Lửa jumps the green pool and takes its floating gem (2/5)');
   gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].x <= 2.2, 'V: lua back toward the green pool');
   await padTicksO(tgDrv, tg1.playerToken, { l: true, u: true }, 1);
   await padTicksO(tgDrv, tg1.playerToken, { l: true }, 6);
-  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -9.3, 'V: lua to its start corner');
+  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -12.9, 'V: lua to its start corner');
   await padTicksO(tgDrv, tg1.playerToken, { u: true }, 1);
   await tgDrv.pAct(tg1.playerToken, { action: 'pad', pad: {} });
-  gv = await leg(tgDrv, tg1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 7, 'V: lua lands on the left step');
+  gv = await leg(tgDrv, tg1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5.5, 'V: lua lands on the left step');
   await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
-  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'V: lua lands on the mid floor');
-  await padTicksO(tgDrv, tg1.playerToken, { r: true }, 1);
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 2.6, 'V: lua lands on the mid floor');
   await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
-  gv = await padTicksO(tgDrv, tg1.playerToken, { r: true }, 5);
+  gv = await padTicksO(tgDrv, tg1.playerToken, { r: true }, 6);
   assert(gv.game.gemCount.lua === 4, 'temple Vàng run: one jump over the blue pool takes both mid-floor red gems (4/5)');
   gv = await padTicksO(tgDrv, tg1.playerToken, {}, 2);
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -2.9, 'V: lua approaches the green pool on the mid floor');
   await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
   await padTicksO(tgDrv, tg1.playerToken, { r: true }, 6);
   gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.gemCount.lua === 5, 'V: lua takes the far-end gem');
@@ -2367,30 +2371,32 @@ async function main() {
   await padTicksO(tgDrv, tg1.playerToken, { l: true, u: true }, 1);
   await padTicksO(tgDrv, tg1.playerToken, { l: true }, 6);
   await padTicksO(tgDrv, tg1.playerToken, { l: true, u: true }, 1);
-  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 5, 'V: lua lands back on the mid floor');
+  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 2.6, 'V: lua lands back on the mid floor');
+  await padTicksO(tgDrv, tg1.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tgDrv, tg1.playerToken, { l: true }, 6);
+  gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.game.chars[1].x <= -11.9, 'V: lua to below the left stair');
   await padTicksO(tgDrv, tg1.playerToken, { u: true }, 1);
-  await padTicksO(tgDrv, tg1.playerToken, { l: true }, 1);
-  gv = await leg(tgDrv, tg1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 3, 'V: lua lands on the balcony stair');
-  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].x >= -6.9, 'V: lua to the gate foot');
+  gv = await leg(tgDrv, tg1.playerToken, {}, (s) => s.game.chars[1].ground && s.game.chars[1].y < 0.6, 'V: lua lands on the balcony stair');
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].x >= -11.2, 'V: lua to the gate foot');
   await padTicksO(tgDrv, tg1.playerToken, { r: true, u: true }, 1);
-  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < 0, 'V: lua reaches the balcony');
+  gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].ground && s.game.chars[1].y < -1.5, 'V: lua reaches the balcony');
   gv = await leg(tgDrv, tg1.playerToken, { r: true }, (s) => s.game.chars[1].x >= -0.5, 'V: lua onto button 2');
   // Nước crosses and climbs, then both take their doors.
-  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > 1.9 && s.game.chars[2].y < 3 && s.game.chars[2].x <= 8.3, 'V: nuoc steps down to the right stair');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y > -0.65 && s.game.chars[2].y < -0.05 && s.game.chars[2].x <= 12.4, 'V: nuoc steps down to the right stair');
   await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
-  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 2);
-  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y > 4, 'V: nuoc drops to the mid floor');
-  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 6.6, 'V: nuoc approaches the red pool');
-  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
-  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 6);
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 10.3, 'V: nuoc to the drop point');
+  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y > 0.6, 'V: nuoc drops to the mid floor');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 9.9, 'V: nuoc approaches the red pool');
   await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
   await padTicksO(tgDrv, tg2.playerToken, { l: true }, 6);
-  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= -6.45, 'V: nuoc to the left stair foot');
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= 2.2, 'V: nuoc approaches the green pool');
+  await padTicksO(tgDrv, tg2.playerToken, { l: true, u: true }, 1);
+  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 6);
+  gv = await leg(tgDrv, tg2.playerToken, { l: true }, (s) => s.game.chars[2].x <= -11.5, 'V: nuoc to the left stair foot');
   await padTicksO(tgDrv, tg2.playerToken, { u: true }, 1);
-  await padTicksO(tgDrv, tg2.playerToken, { l: true }, 3);
-  await padTicksO(tgDrv, tg2.playerToken, { r: true }, 2);
+  gv = await leg(tgDrv, tg2.playerToken, {}, (s) => s.game.chars[2].ground && s.game.chars[2].y < 0.6, 'V: nuoc lands on the left stair');
   await padTicksO(tgDrv, tg2.playerToken, { r: true, u: true }, 1);
-  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < 0, 'V: nuoc reaches the balcony');
+  gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => s.game.chars[2].ground && s.game.chars[2].y < -1.5, 'V: nuoc reaches the balcony');
   gv = await leg(tgDrv, tg2.playerToken, { r: true }, (s) => !s.game || s.game.chars[2].home, 'V: nuoc walks into the water door');
   gv = await leg(tgDrv, tg1.playerToken, { l: true }, (s) => s.phase === 'results', 'V: lua walks into the fire door');
   assert(gv.lastGame.teamResult && gv.lastGame.teamResult.tier === 'vang' && gv.lastGame.teamResult.score === 10 && gv.lastGame.teamResult.pointsEach === 300,
@@ -2578,7 +2584,7 @@ async function main() {
 
   // --- X/Y accepted + preserved through the countdown --------------
   // X+Y grabbed during the 3-2-1 (never re-sent): on tick 1 of the
-  // fight the preserved Y edge jumps (250ms in: y 3.15, the Audit O
+  // fight the preserved Y edge jumps (250ms in: y 1.65, the Audit O
   // single-jump numbers) and the preserved X edge fires the heavy
   // swing (a whiff at spawn range — hvy flag up, no damage).
   const qDrv = await newDrv();
@@ -2589,8 +2595,8 @@ async function main() {
   assert(qAck && qAck.ok === true && !qAck.game, 'pad carrying x/y is accepted (tiny ack, no rejection)');
   let qv = await pumpD(qDrv, 250, (s) => s.game && s.game.phase === 'fight', 'xy fight begins');
   tick(125); qv = await qDrv.state(); tick(125); qv = await qDrv.state(); // exactly 2 fight ticks
-  assert(qv.game.blobs[1].y === 3.15 && qv.game.blobs[1].ground === false,
-    'xy: the Y held since the countdown jumps on tick 1 (y 3.15 after 250ms), got y ' + qv.game.blobs[1].y);
+  assert(qv.game.blobs[1].y === 1.65 && qv.game.blobs[1].ground === false,
+    'xy: the Y held since the countdown jumps on tick 1 (y 1.65 after 250ms), got y ' + qv.game.blobs[1].y);
   assert(qv.game.blobs[1].hvy === true && qv.game.blobs[2].dmg === 0,
     'xy: the X held since the countdown fires the heavy swing on tick 1 (hvy flag up, whiff at spawn range)');
   await qDrv.pAct(q1.playerToken, { action: 'pad', pad: {} });
@@ -2606,7 +2612,7 @@ async function main() {
     if (i > 6 && sv.game.blobs[2].ground) break;
     tick(250);
   }
-  assert(qMinY <= -1.0, 'xy: Y also double-jumps (apex y ' + qMinY + ', single jump only reaches 0.9)');
+  assert(qMinY <= -1.0, 'xy: Y also double-jumps (apex y ' + qMinY + ', single jump only reaches -0.6)');
 
   // --- Heavy attack numbers: +16% and 1.5x knockback ---------------
   // Baseline first: a normal A hit at 0% in a fresh room.
@@ -2663,8 +2669,8 @@ async function main() {
   let yv = await pumpD(yDrv, 250, (s) => s.game && s.game.phase === 'temple', 'y-temple begins');
   yv = await padTicksQ(yDrv, y1.playerToken, { y: true }, 1);
   await yDrv.pAct(y1.playerToken, { action: 'pad', pad: {} });
-  assert(yv.game.chars[1].ground === false && yv.game.chars[1].y >= 7.3 && yv.game.chars[1].y <= 7.6,
-    'xy: Y jumps in the temple (250ms in: airborne at y ' + yv.game.chars[1].y + ', jump rise 1.65 from 9.1)');
+  assert(yv.game.chars[1].ground === false && yv.game.chars[1].y >= 4.8 && yv.game.chars[1].y <= 5.1,
+    'xy: Y jumps in the temple (250ms in: airborne at y ' + yv.game.chars[1].y + ', jump rise 1.65 from 6.6)');
 
   // --- Bot heavies do not break match completion --------------------
   const bDrv = await newDrv();
@@ -3045,7 +3051,7 @@ async function main() {
       const T1 = j1.playerToken, T2 = j2.playerToken;
       await drv.act({ action: 'startGame', game: 'ech-op' });
       let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'frog', 'frog begins');
-      assert(v.game.chamber === 1 && v.game.hearts === 5 && v.game.fliesTotal === 9 && FU(v, 1).x === -10 && FU(v, 2).x === -8.4,
+      assert(v.game.chamber === 1 && v.game.hearts === 5 && v.game.fliesTotal === 9 && FU(v, 1).x === -13.5 && FU(v, 2).x === -11.9,
         'frog: chamber 1 starts with 5 hearts, 9 flies across the run, frogs at their starts');
       // Chamber 1: swallow, carry-jump the wide strip, spit.
       v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= FU(s, 2).x - 1.0, 'p1 beside p2');
@@ -3056,52 +3062,52 @@ async function main() {
       const pv1 = await drv.pState(T1), pv2 = await drv.pState(T2);
       assert(pv1.game.myState === 'carry' && pv1.game.myPassengerSeat === 2 && pv2.game.myState === 'in' && pv2.game.myCarrierSeat === 1,
         'frog: phone views agree (myState carry/in, passenger/carrier seats)');
-      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= -1.2, 'to strip edge');
-      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).x > 4.6, 'carry jump lands');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= -3.2, 'to strip edge');
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).x > 2.6, 'carry jump lands');
       assert(v.game.hearts === 5 && v.game.fliesEaten >= 2,
         'frog: the carrier jump clears the 5.2-wide strip untouched (hearts 5) and eats the mid-strip fly, flies ' + v.game.fliesEaten);
       await pulseU(drv, T1, { b: true });
       for (let i = 0; i < 6; i++) v = await step2U(drv, null, null, null, null);
-      assert(FU(v, 2).state === 'free' && FU(v, 2).x > 4.6,
+      assert(FU(v, 2).state === 'free' && FU(v, 2).x > 3.2,
         'frog: B again spits the passenger out on the far side, free at x ' + FU(v, 2).x);
       v = await until2U(drv, T1, { r: true }, T2, { r: true }, (s) => s.game && s.game.chamber === 2 && s.game.phase === 'frog', 'chamber 2');
       assert(v.game.hearts === 5, 'frog: chamber 1 completed with all 5 hearts intact');
       // Chamber 2: jump the small strip, push the crate to the plateau, climb.
-      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= -5.7, 'ch2 to strip');
-      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).x > -2.2, 'ch2 strip jump');
-      v = await until2U(drv, T1, { r: true }, null, null, (s) => s.game.crates[0].x >= 2.3, 'ch2 push crate');
-      assert(v.game.crates[0].x === 2.4, 'frog: the pushed crate stops against the plateau face at x 2.4, got ' + v.game.crates[0].x);
-      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 8.4 && FU(s, 1).y > 7.0, 'ch2 onto crate');
-      assert(FU(v, 1).y === 7.9, 'frog: P1 stands on the crate (y 7.9), got ' + FU(v, 1).y);
-      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 5.6, 'ch2 onto plateau');
-      assert(FU(v, 1).y === 5.0, 'frog: from the crate P1 reaches the plateau (y 5.0), got ' + FU(v, 1).y);
-      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= 7.2, 'ch2 p1 to door');
-      v = await until2U(drv, T2, { r: true }, null, null, (s) => FU(s, 2).x >= -5.7, 'ch2 p2 to strip');
-      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).x > -2.2, 'ch2 p2 strip jump');
-      v = await until2U(drv, T2, { r: true }, null, null, (s) => FU(s, 2).x >= 1.0, 'ch2 p2 to crate');
-      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).y < 8.4 && FU(s, 2).y > 7.0, 'ch2 p2 onto crate');
-      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).y < 5.6, 'ch2 p2 onto plateau');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= -7.1, 'ch2 to strip');
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).x > -4.2, 'ch2 strip jump');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => s.game.crates[0].x >= 4.3, 'ch2 push crate');
+      assert(v.game.crates[0].x === 4.4, 'frog: the pushed crate stops against the plateau face at x 4.4, got ' + v.game.crates[0].x);
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 6.0 && FU(s, 1).y > 4.9, 'ch2 onto crate');
+      assert(FU(v, 1).y === 5.4, 'frog: P1 stands on the crate (y 5.4), got ' + FU(v, 1).y);
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 3.9, 'ch2 onto plateau');
+      assert(FU(v, 1).y === 2.4, 'frog: from the crate P1 reaches the plateau (y 2.4), got ' + FU(v, 1).y);
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= 9.2, 'ch2 p1 to door');
+      v = await until2U(drv, T2, { r: true }, null, null, (s) => FU(s, 2).x >= -7.1, 'ch2 p2 to strip');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).x > -4.2, 'ch2 p2 strip jump');
+      v = await until2U(drv, T2, { r: true }, null, null, (s) => FU(s, 2).x >= 3.0, 'ch2 p2 to crate');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).y < 6.0 && FU(s, 2).y > 4.9, 'ch2 p2 onto crate');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).y < 3.9, 'ch2 p2 onto plateau');
       v = await until2U(drv, T2, { r: true }, T1, {}, (s) => s.game && s.game.chamber === 3 && s.game.phase === 'frog', 'chamber 3');
       assert(v.game.hearts === 5, 'frog: chamber 2 completed with all 5 hearts intact');
       // Chamber 3: carry strip A, glide the crate across strip B, climb.
       await pulseU(drv, T1, { b: true });
       v = await drv.state();
       assert(FU(v, 1).state === 'carry' && FU(v, 2).state === 'in', 'frog: chamber 3 opens with another swallow');
-      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= -7.0, 'ch3 to strip A edge');
-      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).x > -1.3, 'ch3 carry jump A');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= -10.1, 'ch3 to strip A edge');
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).x > -4.3, 'ch3 carry jump A');
       assert(v.game.hearts === 5, 'frog: strip A crossed by carrier jump, hearts still 5');
       await pulseU(drv, T1, { b: true });
       for (let i = 0; i < 6; i++) v = await step2U(drv, null, null, null, null);
-      v = await until2U(drv, T1, { r: true }, null, null, (s) => s.game.crates[0].x >= 5.2, 'ch3 push crate');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => s.game.crates[0].x >= 8.2, 'ch3 push crate');
       for (let i = 0; i < 10; i++) v = await step2U(drv, null, null, null, null);
-      assert(v.game.crates[0].x === 6.9, 'frog: the released crate glides across strip B to the plateau face (x 6.9), got ' + v.game.crates[0].x);
-      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 8.4 && FU(s, 1).y > 7.0, 'ch3 p1 onto crate');
-      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 6.2, 'ch3 p1 onto plateau');
-      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= 9.4, 'ch3 p1 to door');
+      assert(v.game.crates[0].x === 9.9, 'frog: the released crate glides across strip B to the plateau face (x 9.9), got ' + v.game.crates[0].x);
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 6.0 && FU(s, 1).y > 4.9, 'ch3 p1 onto crate');
+      v = await jumpRunU(drv, T1, { r: true }, null, (s) => FU(s, 1).ground && FU(s, 1).y < 4.3, 'ch3 p1 onto plateau');
+      v = await until2U(drv, T1, { r: true }, null, null, (s) => FU(s, 1).x >= 12.6, 'ch3 p1 to door');
       assert(FU(v, 1).atDoor === true, 'frog: P1 waits in the chamber-3 door zone');
-      v = await until2U(drv, T2, { r: true }, null, null, (s) => FU(s, 2).x >= 4.55, 'ch3 p2 to strip B');
-      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).y < 8.4 && FU(s, 2).y > 7.0, 'ch3 p2 onto crate');
-      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => s.phase === 'results' || (FU(s, 2).ground && FU(s, 2).y < 6.2), 'ch3 p2 onto plateau');
+      v = await until2U(drv, T2, { r: true }, null, null, (s) => FU(s, 2).x >= 7.55, 'ch3 p2 to strip B');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => FU(s, 2).ground && FU(s, 2).y < 6.0 && FU(s, 2).y > 4.9, 'ch3 p2 onto crate');
+      v = await jumpRunU(drv, T2, { r: true }, T1, (s) => s.phase === 'results' || (FU(s, 2).ground && FU(s, 2).y < 4.3), 'ch3 p2 onto plateau');
       v = await pumpD(drv, 250, (s) => s.phase === 'results', 'frog results');
       assert(v.lastGame.teamResult && v.lastGame.teamResult.tier === 'vang' && v.lastGame.teamResult.pointsEach === 300 && v.lastGame.teamResult.score === 9,
         'frog: full run + all 9 flies = Vàng, 300 each — ' + JSON.stringify(v.lastGame.teamResult));
@@ -3135,7 +3141,7 @@ async function main() {
         v3 = await d3.state();
         if (v3.phase === 'results') break;
         if (FU(v3, 2).state === 'carry' && FU(v3, 2).bellySeat === 1) sawCarry = true;
-        if ((v3.game && v3.game.chamber > 1) || FU(v3, 2).x > 4.6) { crossed = true; break; }
+        if ((v3.game && v3.game.chamber > 1) || FU(v3, 2).x > 2.6) { crossed = true; break; }
         const me = FU(v3, 1), bot = FU(v3, 2);
         let pad = {};
         if (bot.state === 'carry' || me.state === 'in') pad = {};
@@ -3166,8 +3172,8 @@ async function main() {
             const cc = g.cannons[s];
             if (cc.alive && Math.hypot(x - cc.x, y - (cc.y - 0.4)) < 0.85) return { x, y, hit: +s };
           }
-          if (x < -12.6 || x > 12.6) return { x, y, hit: null };
-          const col = Math.max(0, Math.min(119, Math.floor((x + 12) / 0.2)));
+          if (x < -16.6 || x > 16.6) return { x, y, hit: null };
+          const col = Math.max(0, Math.min(159, Math.floor((x + 16) / 0.2)));
           if (y >= g.heights[col]) return { x, y: g.heights[col], hit: null };
         }
         return { x, y, hit: null };
@@ -3193,8 +3199,8 @@ async function main() {
       let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'aim', 'cannon aim');
       assert(v.game.turn === 1 && v.game.cannons[1].alive && v.game.cannons[2].alive
         && v.game.cannons[1].hp === 100 && v.game.cannons[2].hp === 100 && Math.abs(v.game.wind) <= 6
-        && Array.isArray(v.game.heights) && v.game.heights.length === 120,
-        'cannon: two live 100-HP cannons on a 120-column heightmap, wind in [-6, 6], seat 1 opens');
+        && Array.isArray(v.game.heights) && v.game.heights.length === 160,
+        'cannon: two live 100-HP cannons on a 160-column heightmap, wind in [-6, 6], seat 1 opens');
       const heightsBefore = v.game.heights.slice();
       const shot = bestShotU(v, 1, 2);
       const setRes = await drv.pAct(T1, { action: 'setAim', angle: shot.angle, power: shot.power, face: shot.face });
@@ -3204,7 +3210,7 @@ async function main() {
       v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'boom', 'cannon boom');
       assert(v.game.boom && v.game.boom.hits && v.game.boom.hits[2] >= 25 && v.game.cannons[2].hp <= 75,
         'cannon: the computed solution lands within the blast radius — P2 takes ' + (v.game.boom && v.game.boom.hits[2]) + ' damage, hp ' + v.game.cannons[2].hp);
-      const colU = Math.max(0, Math.min(119, Math.floor((v.game.boom.x + 12) / 0.2)));
+      const colU = Math.max(0, Math.min(159, Math.floor((v.game.boom.x + 16) / 0.2)));
       assert(v.game.heights[colU] > heightsBefore[colU],
         'cannon: the blast carves a crater — surface at the impact column drops ' + heightsBefore[colU] + ' -> ' + v.game.heights[colU]);
       for (let round = 0; round < 6; round++) {

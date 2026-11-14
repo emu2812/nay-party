@@ -160,6 +160,14 @@ const PLAYLIST_GAP_MS = 8000; // results intermission before a playlist auto-sta
 // TEMPLE_LEVEL); it has since joined the shared 125ms tick too.
 const ARENA_R0 = 10, ARENA_RMIN = 4, ARENA_MS = 90000, ARENA_LIVES = 3, TICK_MS = 125;
 const MOVE_STEP = 0.25, DASH_CD_TICKS = 24, SHOVE_CD_TICKS = 12;
+// 16:9 WAVE: the arena family plays in a 32x18 space (x in [-16,16],
+// y in [-9,9]) so the TV stage fills a 16:9 screen edge to edge. The
+// map from the old 24x24 space scales x by 4/3 and y by 3/4, and the
+// per-axis move steps scale identically, so every crossing TIME (the
+// tuned feel of every arena game) is bit-identical to before.
+const FIELD_HW = 16, FIELD_HH = 9;
+const STEP_X = MOVE_STEP * 4 / 3, STEP_Y = MOVE_STEP * 3 / 4;
+const CLAMP_X = FIELD_HW - 0.8, CLAMP_Y = FIELD_HH - 0.8; // blob rect clamp (0.8 margin)
 // A dash is a x3 speed boost lasting DASH_BOOST_TICKS ticks: 2 ticks
 // at 125ms reproduces the old single-tick 1.5-unit lunge (3 x 0.5)
 // over the same 250ms.
@@ -185,9 +193,10 @@ const STEAL_MS = 45000, STEAL_SHOVE_FORCE = 4.5, GOLD_EVERY_TICKS = 96, DROP_LOC
 // at HOLDER_SPEED of normal speed; a shove drops the crown, which then
 // cannot be picked up for CROWN_LOCK_TICKS ticks (1s).
 const CROWN_MS = 45000, HOLDER_SPEED = 0.9, CROWN_LOCK_TICKS = 8;
-// Sơn Sàn: 12x12 grid over the square [-9.6, 9.6]^2 (cell 1.6). Entering
+// Sơn Sàn: 18x10 grid of 1.6u cells over [-14.4,14.4]x[-8,8] (the old
+// 12x12 over [-9.6,9.6]^2, widened with the 16:9 field). Entering
 // a cell paints it; A triggers a 3x3 paint burst on PAINT_CD_TICKS (2s).
-const SPLAT_MS = 40000, SPLAT_N = 12, SPLAT_MIN = -9.6, SPLAT_CELL = 1.6, PAINT_CD_TICKS = 16;
+const SPLAT_MS = 40000, SPLAT_COLS = 18, SPLAT_ROWS = 10, SPLAT_MIN_X = -14.4, SPLAT_MIN_Y = -8, SPLAT_CELL = 1.6, PAINT_CD_TICKS = 16;
 // Cao Bồi: after a random hidden delay the BẮN! window opens for
 // DUEL_WINDOW_MS; round points by server receipt order, foul = -100.
 // Tail extended past 4 shooters (25/10/0/…) so 5-8-player duels still
@@ -229,13 +238,13 @@ const ROW_ERR = { kho: 120, vua: 220, de: 380 };
 // form, kept off the spawn axes so every spawn lane starts clear.
 const TANK_MS = 75000, TANK_LIVES = 3, SHELL_SPEED = 0.6, SHELL_CD_TICKS = 8, SHELL_HIT_DIST = 1.0;
 const TANK_BLOCKS = [
-  { x: 2.2, y: -3.2, w: 2, h: 1.4 }, { x: -4.2, y: 1.8, w: 2, h: 1.4 },
-  { x: -4.2, y: -3.2, w: 2, h: 1.4 }, { x: 2.2, y: 1.8, w: 2, h: 1.4 },
+  { x: 2.9, y: -2.4, w: 2.7, h: 1.1 }, { x: -5.6, y: 1.35, w: 2.7, h: 1.1 },
+  { x: -5.6, y: -2.4, w: 2.7, h: 1.1 }, { x: 2.9, y: 1.35, w: 2.7, h: 1.1 },
 ];
-// Đặt Bom: 11x9 grid of 2-unit cells over the arena; hard pillars sit
+// Đặt Bom: 15x9 grid of 2-unit cells over the wide arena; hard pillars sit
 // on odd/odd cells (classic bomber layout), soft blocks are dealt per
 // match with Math.random so tests can queue the exact layout.
-const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 11, BOM_ROWS = 9, BOM_FUSE_TICKS = 16, BOM_SOFT_P = 0.62;
+const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 15, BOM_ROWS = 9, BOM_FUSE_TICKS = 16, BOM_SOFT_P = 0.62;
 // Kẻ Giả Mạo: one secret impostor per round secretly gets the variant
 // question; catching pays every other player, escaping pays the
 // impostor (doubled in the final round).
@@ -348,16 +357,20 @@ const FIGHT_ATK_CD = 6, FIGHT_DMG = 10, FIGHT_HITSTUN = 6;
 // recovery (hvyT, the big-swing pose) runs 6 ticks.
 const FIGHT_HVY_CD = 10, FIGHT_HVY_DMG = 16, FIGHT_HVY_ATK_T = 6;
 const FIGHT_DASH_CD = 16, FIGHT_DASH_TICKS = 6, FIGHT_DASH_SPEED = 0.95;
+// 16:9 WAVE: platforms are the old layout under the arena map
+// (x*4/3, y*3/4). Vertical gaps SHRINK (4.0 -> 3.0 < jump apex 4.2)
+// and horizontal gaps grow by 4/3 (still far inside the ~5.4u jump
+// range), so every proven route keeps working; physics untouched.
 const FIGHT_PLATFORMS = [
-  { x: -8.5, y: 6, w: 17, h: 2.5 },
-  { x: -8, y: 2, w: 4.5, h: 0.7, oneWay: true },
-  { x: 3.5, y: 2, w: 4.5, h: 0.7, oneWay: true },
-  { x: -2.5, y: -1.5, w: 5, h: 0.7, oneWay: true },
+  { x: -11.33, y: 4.5, w: 22.67, h: 1.9 },
+  { x: -10.67, y: 1.5, w: 6, h: 0.5, oneWay: true },
+  { x: 4.67, y: 1.5, w: 6, h: 0.5, oneWay: true },
+  { x: -3.33, y: -1.13, w: 6.67, h: 0.5, oneWay: true },
 ];
-// First four are the original 4-player spawns; players 5-8 fill the
-// gaps so an 8-fighter match never stacks two fighters on one spot
-// (sorted: -8,-6,-4,-2,2,4,6,8 — a clean 2-unit spacing on the stage).
-const FIGHT_SPAWN_X = [-6, -2, 2, 6, -8, -4, 4, 8];
+// First four are the original 4-player spawns (x*4/3); players 5-8
+// fill the gaps so an 8-fighter match never stacks two fighters on
+// one spot.
+const FIGHT_SPAWN_X = [-8, -2.7, 2.7, 8, -10.7, -5.3, 5.3, 10.7];
 // Đền Lửa & Nước: co-op temple. Seats alternate elements by seat order
 // (odd seat = Lửa 'lua', even = Nước 'nuoc'). One handcrafted enclosed
 // level: three floors, element pools, colour-locked gems, and one
@@ -367,7 +380,7 @@ const FIGHT_SPAWN_X = [-6, -2, 2, 6, -8, -4, 4, 8];
 // the first climber is held up by a partner and then holds the gate
 // for them in turn. Wrong-element (or green) pool = death: respawn at
 // the element start, the team loses one of TEMP_HEARTS hearts.
-const TEMP_MS = 150000, TEMP_HEARTS = 5;
+const TEMP_MS = 200000, TEMP_HEARTS = 5; // 150s at the old 24-wide level, scaled by the 32/24 width so the wide temple keeps the same time budget per unit of travel
 // Temple runs on the shared 125ms tick with the shared platform
 // physics (PLAT_GRAV / PLAT_MAXFALL via platStep), rescaled like the
 // fighter's: TEMP_RUN is the old 0.65 per 250ms tick halved, and
@@ -385,47 +398,53 @@ const TEMP_MS = 150000, TEMP_HEARTS = 5;
 // gap to the balcony edge is narrower than a character's 0.9 body,
 // and a stair jump's apex never rises past the slab tops).
 const TEMP_RUN = 0.325, TEMP_JUMP = 1.05;
+// 16:9 WAVE: the temple is re-laid for the 32x18 field WITHOUT
+// touching physics: every feature keeps its local relationships —
+// left-side features shift -4, right-side +4, centre-spanning solids
+// stretch, and all y coordinates scale by 3/4 (steps get SHORTER, so
+// every proven jump keeps working; pool widths and the gate-slab /
+// pool-end gaps are preserved to the centimetre).
 const TEMPLE_LEVEL = {
   solids: [
-    { x: -12, y: 10, w: 24, h: 2.4 },
-    { x: -12, y: -12, w: 1, h: 22.4 },
-    { x: 11, y: -12, w: 1, h: 22.4 },
-    { x: -12, y: -12, w: 24, h: 1 },
-    { x: -10.9, y: 7.6, w: 2.2, h: 0.7, oneWay: true },
-    { x: 8.7, y: 7.6, w: 2.2, h: 0.7, oneWay: true },
-    { x: -8.5, y: 5.2, w: 17, h: 1, oneWay: true },
-    { x: -8.9, y: 3.1, w: 2, h: 0.7, oneWay: true },
-    { x: 6.9, y: 3.1, w: 2, h: 0.7, oneWay: true },
-    { x: -5.5, y: 0.4, w: 11, h: 1, oneWay: true },
-    { x: 8.6, y: 2.9, w: 2.3, h: 0.7, oneWay: true },
+    { x: -16, y: 7.5, w: 32, h: 1.8 },
+    { x: -16, y: -9, w: 1, h: 16.5 },
+    { x: 15, y: -9, w: 1, h: 16.5 },
+    { x: -16, y: -9, w: 32, h: 0.75 },
+    { x: -14.9, y: 5.1, w: 2.2, h: 0.53, oneWay: true },
+    { x: 12.7, y: 5.1, w: 2.2, h: 0.53, oneWay: true },
+    { x: -12.5, y: 2.7, w: 25, h: 0.75, oneWay: true },
+    { x: -12.9, y: 0.6, w: 2, h: 0.53, oneWay: true },
+    { x: 10.9, y: 0.6, w: 2, h: 0.53, oneWay: true },
+    { x: -9.5, y: -2.1, w: 19, h: 0.75, oneWay: true },
+    { x: 12.6, y: 0.4, w: 2.3, h: 0.53, oneWay: true },
   ],
   gates: [
-    { x: -6.6, y: -1.4, w: 0.7, h: 4.5 },
-    { x: 5.9, y: -1.4, w: 0.7, h: 4.5 },
+    { x: -10.6, y: -3.9, w: 0.7, h: 4.5 },
+    { x: 9.9, y: -3.9, w: 0.7, h: 4.5 },
   ],
   buttons: [
-    { x: 9.2, y: 2.3, w: 1.1, h: 0.6 },
-    { x: -0.55, y: -0.2, w: 1.1, h: 0.6 },
+    { x: 13.2, y: -0.05, w: 1.1, h: 0.45 },
+    { x: -0.55, y: -2.55, w: 1.1, h: 0.45 },
   ],
   pools: [
-    { x: -6.2, y: 9.4, w: 2.8, h: 0.6, kind: 'red' },
-    { x: -1.4, y: 9.4, w: 2.8, h: 0.6, kind: 'green' },
-    { x: 3.4, y: 9.4, w: 2.8, h: 0.6, kind: 'blue' },
-    { x: -5.3, y: 4.6, w: 2.4, h: 0.6, kind: 'blue' },
-    { x: -1.1, y: 4.6, w: 2.2, h: 0.6, kind: 'green' },
-    { x: 2.9, y: 4.6, w: 2.4, h: 0.6, kind: 'red' },
+    { x: -10.2, y: 7.05, w: 2.8, h: 0.45, kind: 'red' },
+    { x: -1.4, y: 7.05, w: 2.8, h: 0.45, kind: 'green' },
+    { x: 7.4, y: 7.05, w: 2.8, h: 0.45, kind: 'blue' },
+    { x: -9.3, y: 2.25, w: 2.4, h: 0.45, kind: 'blue' },
+    { x: -1.1, y: 2.25, w: 2.2, h: 0.45, kind: 'green' },
+    { x: 6.9, y: 2.25, w: 2.4, h: 0.45, kind: 'red' },
   ],
   gems: [
-    { x: -4.8, y: 8.9, el: 'lua' }, { x: -0.7, y: 8.3, el: 'lua' }, { x: -4.2, y: 2.2, el: 'lua' },
-    { x: 7.8, y: 4.5, el: 'lua' }, { x: -3.9, y: 1.9, el: 'lua' },
-    { x: 4.8, y: 8.9, el: 'nuoc' }, { x: 0.7, y: 8.3, el: 'nuoc' }, { x: 4.2, y: 2.2, el: 'nuoc' },
-    { x: -7.8, y: 4.5, el: 'nuoc' }, { x: 9.7, y: 2.2, el: 'nuoc' },
+    { x: -8.8, y: 6.4, el: 'lua' }, { x: -0.7, y: 5.8, el: 'lua' }, { x: -8.1, y: -0.3, el: 'lua' },
+    { x: 11.8, y: 2.0, el: 'lua' }, { x: -7.9, y: -0.6, el: 'lua' },
+    { x: 8.8, y: 6.4, el: 'nuoc' }, { x: 0.7, y: 5.8, el: 'nuoc' }, { x: 8.1, y: -0.3, el: 'nuoc' },
+    { x: -11.8, y: 2.0, el: 'nuoc' }, { x: 13.7, y: -0.3, el: 'nuoc' },
   ],
   doors: {
-    lua: { x: -5.4, y: -1.4, w: 1.7, h: 1.8 },
-    nuoc: { x: 3.7, y: -1.4, w: 1.7, h: 1.8 },
+    lua: { x: -9.4, y: -3.45, w: 1.7, h: 1.35 },
+    nuoc: { x: 7.7, y: -3.45, w: 1.7, h: 1.35 },
   },
-  starts: { lua: { x: -9.5, y: 9.1 }, nuoc: { x: 9.5, y: 9.1 } },
+  starts: { lua: { x: -13.5, y: 6.6 }, nuoc: { x: 13.5, y: 6.6 } },
 };
 // Bot waypoint routes through the temple (target = character centre).
 // The bot brain adds two generic rules on top of plain steering: jump
@@ -436,15 +455,15 @@ const TEMPLE_LEVEL = {
 // stuck partner can never freeze the bot forever.
 const TEMPLE_WP = {
   lua: [
-    { x: -9.8, y: 6.7 }, { x: -2.6, y: 4.3 }, { x: 0.5, y: 4.3 },
-    { x: -7.3, y: 2.2 }, { x: -4.9, y: -0.5 },
-    { x: -0.45, y: -0.5, holdBtn: true }, { x: -4.55, y: -0.5 },
+    { x: -13.8, y: 4.2 }, { x: -2.6, y: 1.8 }, { x: 0.5, y: 1.8 },
+    { x: -11.9, y: -0.3 }, { x: -8.9, y: -3.0 },
+    { x: -0.45, y: -3.0, holdBtn: true }, { x: -8.55, y: -3.0 },
   ],
   nuoc: [
-    { x: 9.8, y: 6.7 }, { x: 2.6, y: 4.3 },
-    { x: 9.7, y: 2.0, holdBtn: true },
-    { x: 0.5, y: 4.3 }, { x: 7.3, y: 2.2 }, { x: 4.9, y: -0.5 },
-    { x: 0.45, y: -0.5, holdBtn: true }, { x: 4.55, y: -0.5 },
+    { x: 13.8, y: 4.2 }, { x: 2.6, y: 1.8 },
+    { x: 13.7, y: -0.5, holdBtn: true },
+    { x: 0.5, y: 1.8 }, { x: 11.9, y: -0.3 }, { x: 8.55, y: -3.0 },
+    { x: 0.45, y: -3.0, holdBtn: true }, { x: 8.55, y: -3.0 },
   ],
 };
 // Temple finish tiers: completed + every gem = Vàng, completed = Bạc,
@@ -494,51 +513,53 @@ const SOCCER_GOALIE_X = 13.8;
 const FROG_HEARTS = 5, FROG_PER_MS = 120000;
 const FROG_RUN = 0.325, FROG_JUMP = 1.05, FROG_JUMP_CARRY = 1.45;
 const FROG_EAT_R = 1.25;
+// 16:9 WAVE: chambers re-laid for the 32x18 field with physics
+// untouched: spike strips keep their exact widths (5.2u still fits
+// between the solo jump range 4.55 and the carrier range 6.2), all
+// vertical rises scale by 3/4 (easier, never harder), and every
+// proven route - swallow-carry, crate climb, crate glide - keeps
+// the same shape with wider margins.
 const FROG_WALLS = [
-  { x: -12, y: 10, w: 24, h: 2.4 },
-  { x: -12, y: -12, w: 1, h: 22.4 },
-  { x: 11, y: -12, w: 1, h: 22.4 },
-  { x: -12, y: -12, w: 24, h: 1 },
+  { x: -16, y: 7.5, w: 32, h: 1.8 },
+  { x: -16, y: -9, w: 1, h: 16.5 },
+  { x: 15, y: -9, w: 1, h: 16.5 },
+  { x: -16, y: -9, w: 32, h: 0.75 },
 ];
 const FROG_LEVELS = [
-  { // Chamber 1 — the first spike strip: too wide to jump alone.
-    solids: [{ x: 5.6, y: 7.2, w: 3, h: 0.7, oneWay: true }],
-    spikes: [{ x: -0.6, y: 9.4, w: 5.2, h: 0.6 }],
+  { // Chamber 1 - the first spike strip: too wide to jump alone.
+    solids: [{ x: 3.6, y: 5.4, w: 3, h: 0.53, oneWay: true }],
+    spikes: [{ x: -2.6, y: 7.05, w: 4.9, h: 0.45 }],
     crates: [],
-    flies: [{ x: -4, y: 8.2 }, { x: 1.6, y: 3.8 }, { x: 7.1, y: 5.4 }],
-    door: { x: 9.9, y: 8.2, w: 1.8, h: 1.8 },
-    starts: [{ x: -10, y: 9.1 }, { x: -8.4, y: 9.1 }, { x: -6.8, y: 9.1 }, { x: -5.2, y: 9.1 }],
+    flies: [{ x: -6, y: 5.7 }, { x: 0, y: 1.3 }, { x: 5.1, y: 2.9 }],
+    door: { x: 13.9, y: 6.15, w: 1.8, h: 1.35 },
+    starts: [{ x: -13.5, y: 6.6 }, { x: -11.9, y: 6.6 }, { x: -10.3, y: 6.6 }, { x: -8.7, y: 6.6 }],
   },
-  { // Chamber 2 — push the crate against the plateau, climb it, cross.
-    solids: [{ x: 3, y: 5.9, w: 6, h: 4.1 }],
-    spikes: [{ x: -4.5, y: 9.4, w: 2, h: 0.6 }],
-    crates: [{ x: 1.2, y: 9.4 }],
-    flies: [{ x: -6.5, y: 8.2 }, { x: 0.6, y: 6.6 }, { x: 6, y: 4.1 }],
-    door: { x: 7.3, y: 4.1, w: 1.7, h: 1.8 },
-    starts: [{ x: -10, y: 9.1 }, { x: -8.4, y: 9.1 }, { x: -6.8, y: 9.1 }, { x: -5.2, y: 9.1 }],
+  { // Chamber 2 - push the crate against the plateau, climb it, cross.
+    solids: [{ x: 5, y: 3.3, w: 8, h: 4.2 }],
+    spikes: [{ x: -6.5, y: 7.05, w: 2, h: 0.45 }],
+    crates: [{ x: 0.2, y: 6.9 }],
+    flies: [{ x: -8.5, y: 5.7 }, { x: -4.8, y: 4.35 }, { x: 8, y: 1.5 }],
+    door: { x: 9.3, y: 1.95, w: 1.7, h: 1.35 },
+    starts: [{ x: -13.5, y: 6.6 }, { x: -11.9, y: 6.6 }, { x: -10.3, y: 6.6 }, { x: -8.7, y: 6.6 }],
   },
-  { // Chamber 3 — a carrier strip (A: -6.5..-1.3), a mid safe zone with
-    // the crate, then strip B (5.2..7.5) running right up to the plateau
+  { // Chamber 3 - a carrier strip (A: -9.5..-4.3), a mid safe zone with
+    // the crate, then strip B (8.2..10.5) running right up to the plateau
     // face: push the crate across B (crates are spike-immune), hop onto
-    // it from the safe edge, then up to the plateau (rise 2.2).
-    solids: [{ x: 7.5, y: 6.6, w: 4.5, h: 3.4 }],
-    spikes: [{ x: -6.5, y: 9.4, w: 5.2, h: 0.6 }, { x: 5.2, y: 9.4, w: 2.3, h: 0.6 }],
-    crates: [{ x: 1.2, y: 9.4 }],
-    flies: [{ x: -9.3, y: 8.2 }, { x: -3.9, y: 3.8 }, { x: 9.6, y: 4.3 }],
-    door: { x: 9.8, y: 4.8, w: 1.7, h: 1.8 },
-    starts: [{ x: -10.8, y: 9.1 }, { x: -9.9, y: 9.1 }, { x: -9.0, y: 9.1 }, { x: -8.1, y: 9.1 }],
+    // it from the safe edge, then up to the plateau.
+    solids: [{ x: 10.5, y: 4.2, w: 4.5, h: 3.3 }],
+    spikes: [{ x: -9.5, y: 7.05, w: 5.2, h: 0.45 }, { x: 8.2, y: 7.05, w: 2.3, h: 0.45 }],
+    crates: [{ x: 1.2, y: 6.9 }],
+    flies: [{ x: -11.3, y: 5.7 }, { x: -7.85, y: 1.2 }, { x: 12.6, y: 2.4 }],
+    door: { x: 12.8, y: 2.85, w: 1.7, h: 1.35 },
+    starts: [{ x: -13.8, y: 6.6 }, { x: -12.9, y: 6.6 }, { x: -12.0, y: 6.6 }, { x: -11.1, y: 6.6 }],
   },
 ];
-// Bot routes (shared by every frog; target = frog centre). Waypoints
-// flagged swallow park the bot until it has swallowed an adjacent free
-// teammate (or a 20s timeout lets it try alone); spit waypoints make a
-// carrying bot spit. A swallowed bot's route index is synced to its
-// carrier's on the spit, so pairs stay together.
 const FROG_WP = [
-  [{ x: -4.5 }, { x: -2.2, swallow: 1 }, { x: 5.8, spit: 1 }, { x: 10.1 }],
-  [{ x: -5.6 }, { x: 0.4 }, { x: 2.4, y: 7.9 }, { x: 4.6, y: 5.0 }, { x: 8.1 }],
-  [{ x: -7.6, swallow: 1 }, { x: -0.6, spit: 1 }, { x: 1.2 }, { x: 4.6 }, { x: 6.4, y: 7.9 }, { x: 8.6 }, { x: 10.6 }],
+  [{ x: -7.0 }, { x: -4.2, swallow: 1 }, { x: 3.8, spit: 1 }, { x: 14.8 }],
+  [{ x: -7.6 }, { x: 0.2 }, { x: 4.4, y: 5.4 }, { x: 6.0, y: 3.53 }, { x: 10.15 }],
+  [{ x: -10.6, swallow: 1 }, { x: -3.6, spit: 1 }, { x: 1.2 }, { x: 8.6 }, { x: 9.9, y: 5.4 }, { x: 11.6, y: 4.05 }, { x: 13.65 }],
 ];
+
 // --- Đại Bác Căn Góc ------------------------------------------------------
 // Turn-based artillery on a 120-column heightmap over a 24 x 16 space
 // (x in [-12, 12], y in [-8, 8], y grows DOWN: a column's height value
@@ -548,7 +569,7 @@ const FROG_WP = [
 // map: pad U/D sweeps the barrel angle (5-85 deg), pad L/R sweeps
 // power (0-100), X flips facing, A fires; the 'setAim' action sets
 // angle/power/face exactly (sliders / tests). NO trajectory preview.
-const CANNON_COLS = 120, CANNON_AIM_MS = 30000, CANNON_BOOM_MS = 800, CANNON_MATCH_MS = 360000;
+const CANNON_COLS = 160, CANNON_AIM_MS = 30000, CANNON_BOOM_MS = 800, CANNON_MATCH_MS = 360000;
 export const BALLISTICS = { grav: 0.10, sub: 4, maxV: 1.6, windK: 0.003, blastR: 2.2, dmgMax: 60 };
 const CANNON_HP = 100;
 
@@ -1051,8 +1072,8 @@ function spawnArenaBlobs(room, lives) {
   room.players.forEach((p, i) => {
     const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
     g.blobs[p.seat] = {
-      x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * 100) / 100,
-      y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * 100) / 100,
+      x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * (4 / 3) * 100) / 100,
+      y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * (3 / 4) * 100) / 100,
       lives, alive: true,
     };
     g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0; g.invuln[p.seat] = 0;
@@ -1093,8 +1114,8 @@ function beginRound(room) {
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
-        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * 100) / 100,
-        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * 100) / 100,
+        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * (4 / 3) * 100) / 100,
+        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * (3 / 4) * 100) / 100,
         lives: ARENA_LIVES, alive: true,
       };
       g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0;
@@ -1107,8 +1128,8 @@ function beginRound(room) {
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
-        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * 100) / 100,
-        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * 100) / 100,
+        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * (4 / 3) * 100) / 100,
+        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * (3 / 4) * 100) / 100,
         lives: DODGE_LIVES, alive: true,
       };
       g.dashCd[p.seat] = 0; g.invuln[p.seat] = 0;
@@ -1145,8 +1166,8 @@ function beginRound(room) {
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
-        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * 100) / 100,
-        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * 100) / 100,
+        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * (4 / 3) * 100) / 100,
+        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * (3 / 4) * 100) / 100,
         lives: 0, alive: true,
       };
       g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0; g.banked[p.seat] = 0;
@@ -1160,8 +1181,8 @@ function beginRound(room) {
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
-        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * 100) / 100,
-        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * 100) / 100,
+        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * (4 / 3) * 100) / 100,
+        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * (3 / 4) * 100) / 100,
         lives: 0, alive: true,
       };
       g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0; g.hold[p.seat] = 0;
@@ -1170,12 +1191,12 @@ function beginRound(room) {
     g.phase = 'splat';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + SPLAT_MS;
     g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.paintCd = {}; preservePads(room);
-    g.grid = new Array(SPLAT_N * SPLAT_N).fill(0);
+    g.grid = new Array(SPLAT_COLS * SPLAT_ROWS).fill(0);
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
-        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * 100) / 100,
-        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * 100) / 100,
+        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * (4 / 3) * 100) / 100,
+        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * (3 / 4) * 100) / 100,
         lives: 0, alive: true,
       };
       g.dashCd[p.seat] = 0; g.paintCd[p.seat] = 0;
@@ -1212,8 +1233,8 @@ function beginRound(room) {
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
-        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * 100) / 100,
-        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * 100) / 100,
+        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * (4 / 3) * 100) / 100,
+        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * (3 / 4) * 100) / 100,
         lives: 0, alive: true,
       };
       g.dashCd[p.seat] = 0;
@@ -1287,7 +1308,7 @@ function beginRound(room) {
     g.hvyCd = {}; g.hvyT = {};
     room.players.forEach((p, i) => {
       const sx = FIGHT_SPAWN_X[i % FIGHT_SPAWN_X.length];
-      g.blobs[p.seat] = { x: sx, y: 6 - PLAT_HH, vx: 0, vy: 0, ground: true, lives: FIGHT_LIVES, alive: true };
+      g.blobs[p.seat] = { x: sx, y: FIGHT_PLATFORMS[0].y - PLAT_HH, vx: 0, vy: 0, ground: true, lives: FIGHT_LIVES, alive: true };
       g.dmg[p.seat] = 0; g.face[p.seat] = sx < 0 ? 1 : -1; g.jumps[p.seat] = 0;
       g.atkCd[p.seat] = 0; g.hitT[p.seat] = 0; g.atkT[p.seat] = 0; g.dashT[p.seat] = 0; g.dashDir[p.seat] = 1;
       g.hvyCd[p.seat] = 0; g.hvyT[p.seat] = 0;
@@ -1369,11 +1390,13 @@ function beginRound(room) {
     loadFrogChamber(room, 1, t);
   } else if (g.id === 'can-goc') {
     // Terrain: two summed sines, surface clamped to a playable band.
+    // 16:9 wave: 160 columns of 0.2u span the 32-wide field; the sine
+    // frequencies scale by 24/32 so the hills keep their old shape.
     const p1 = rand(0, Math.PI * 2), p2 = rand(0, Math.PI * 2);
-    const a1 = rand(1.2, 2.0), a2 = rand(0.5, 1.0), f1 = rand(0.22, 0.34), f2 = rand(0.55, 0.85);
+    const a1 = rand(1.2, 2.0), a2 = rand(0.5, 1.0), f1 = rand(0.165, 0.255), f2 = rand(0.41, 0.64);
     g.heights = [];
     for (let i = 0; i < CANNON_COLS; i++) {
-      const x = -12 + (i + 0.5) * (24 / CANNON_COLS);
+      const x = -16 + (i + 0.5) * (32 / CANNON_COLS);
       let y = 1.6 + a1 * Math.sin(x * f1 + p1) + a2 * Math.sin(x * f2 + p2);
       y = Math.max(-2.5, Math.min(5.5, y));
       g.heights.push(Math.round(y * 100) / 100);
@@ -1381,9 +1404,9 @@ function beginRound(room) {
     g.cannons = {}; g.elimOrder = []; g.elimAt = {}; g.dmgDealt = {};
     const n = room.players.length;
     room.players.forEach((p, i) => {
-      const col = n === 1 ? 60 : Math.max(4, Math.min(CANNON_COLS - 5, Math.round(8 + (i * 104) / (n - 1) + rand(-3, 3))));
+      const col = n === 1 ? 80 : Math.max(4, Math.min(CANNON_COLS - 5, Math.round(26 + (i * 108) / (n - 1) + rand(-4, 4))));
       g.cannons[p.seat] = {
-        col, x: Math.round((-12 + (col + 0.5) * 0.2) * 100) / 100, y: g.heights[col],
+        col, x: Math.round((-16 + (col + 0.5) * 0.2) * 100) / 100, y: g.heights[col],
         hp: CANNON_HP, alive: true, face: 0, angle: 45, power: 60,
       };
       const c = g.cannons[p.seat];
@@ -1546,9 +1569,42 @@ function botBrain(room, p) {
   g.botIntent[p.seat] = intent;
   return intent;
 }
+// --- 16:9 wave: velocity tracking for client extrapolation ----------
+// Arena blobs are positional (x += step each tick), so a blob's
+// velocity IS the displacement its sim just applied. Arena sims call
+// trackStart() before moving and trackEnd() after; the views expose
+// the result as b.vx/b.vy (units per tick) and the TV client leads
+// its render target by v * elapsed ticks (capped), so motion reads
+// ahead of the 125ms tick instead of trailing it.
+function trackStart(room) {
+  const g = room.game; const s = {};
+  room.players.forEach((p) => { const b = g.blobs && g.blobs[p.seat]; if (b) s[p.seat] = { x: b.x, y: b.y }; });
+  return s;
+}
+function trackEnd(room, s) {
+  const g = room.game;
+  room.players.forEach((p) => {
+    const b = g.blobs && g.blobs[p.seat]; const o = s[p.seat];
+    if (!b || !o) return;
+    b.vx = Math.round((b.x - o.x) * 100) / 100;
+    b.vy = Math.round((b.y - o.y) * 100) / 100;
+  });
+}
+// The wide field's rectangle clamp (0.8u margin inside [-16,16]x[-9,9]).
+function clampRect(b) {
+  b.x = Math.max(-CLAMP_X, Math.min(CLAMP_X, b.x));
+  b.y = Math.max(-CLAMP_Y, Math.min(CLAMP_Y, b.y));
+}
+// Normalised squared distance from the day-ra ellipse centre (1 = on
+// the ring): the ring-out test and the finish tie-break share it.
+function ellipseDist(b, R) {
+  const ex = b.x / (R * (4 / 3)), ey = b.y / (R * (3 / 4));
+  return ex * ex + ey * ey;
+}
 function simulateTick(room) {
   const g = room.game;
   g.tickCount += 1;
+  const trk = trackStart(room);
   if (g.tickCount % 16 === 0 && g.arenaR > ARENA_RMIN) g.arenaR = Math.max(ARENA_RMIN, g.arenaR - 0.5);
   const moves = {};
   room.players.forEach((p) => {
@@ -1575,7 +1631,7 @@ function simulateTick(room) {
     let stepMul = 1;
     if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
     if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
-    b.x += mv.x * MOVE_STEP * stepMul; b.y += mv.y * MOVE_STEP * stepMul;
+    b.x += mv.x * STEP_X * stepMul; b.y += mv.y * STEP_Y * stepMul;
   });
   const alive = room.players.filter((p) => g.blobs[p.seat] && g.blobs[p.seat].alive);
   for (let i = 0; i < alive.length; i++) {
@@ -1604,19 +1660,23 @@ function simulateTick(room) {
       }
     });
     if (foe && foeD <= SHOVE_RANGE && foeD > 0.01) {
-      foe.x += ((foe.x - b.x) / foeD) * SHOVE_FORCE;
-      foe.y += ((foe.y - b.y) / foeD) * SHOVE_FORCE;
+      foe.x += ((foe.x - b.x) / foeD) * SHOVE_FORCE * (4 / 3);
+      foe.y += ((foe.y - b.y) / foeD) * SHOVE_FORCE * (3 / 4);
       g.shoveCd[p.seat] = SHOVE_CD_TICKS;
     }
   });
+  trackEnd(room, trk);
   room.players.forEach((p) => {
     const b = g.blobs[p.seat];
     if (!b || !b.alive) return;
-    if (Math.hypot(b.x, b.y) > g.arenaR) {
+    // The shrinking ring is an ELLIPSE in the wide field: radii
+    // (arenaR*4/3, arenaR*3/4); outside it costs a life.
+    if (ellipseDist(b, g.arenaR) > 1) {
       b.lives -= 1;
+      b.vx = 0; b.vy = 0;
       if (b.lives > 0) {
         const ang = rand(0, Math.PI * 2); const rr = g.arenaR * 0.3 * Math.random();
-        b.x = Math.cos(ang) * rr; b.y = Math.sin(ang) * rr;
+        b.x = Math.cos(ang) * rr * (4 / 3); b.y = Math.sin(ang) * rr * (3 / 4);
       } else { b.alive = false; g.elimOrder.push(p.seat); }
     }
   });
@@ -1630,7 +1690,7 @@ function finishArena(room) {
   const g = room.game;
   const aliveRanked = room.players.filter((p) => g.blobs[p.seat] && g.blobs[p.seat].alive)
     .sort((a, b) => (g.blobs[b.seat].lives - g.blobs[a.seat].lives)
-      || (Math.hypot(g.blobs[a.seat].x, g.blobs[a.seat].y) - Math.hypot(g.blobs[b.seat].x, g.blobs[b.seat].y))
+      || (ellipseDist(g.blobs[a.seat], g.arenaR) - ellipseDist(g.blobs[b.seat], g.arenaR))
       || (a.seat - b.seat));
   const elimRanked = g.elimOrder.slice().reverse().map((seat) => playerAt(room, seat)).filter(Boolean);
   const ranking = aliveRanked.concat(elimRanked);
@@ -1680,6 +1740,7 @@ function botBrainDodge(room, p) {
 function simulateDodgeTick(room) {
   const g = room.game;
   g.tickCount += 1;
+  const trk = trackStart(room);
   const moves = {};
   room.players.forEach((p) => {
     const b = g.blobs[p.seat];
@@ -1704,27 +1765,28 @@ function simulateDodgeTick(room) {
     let stepMul = 1;
     if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
     if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
-    b.x += mv.x * MOVE_STEP * stepMul; b.y += mv.y * MOVE_STEP * stepMul;
-    const d = Math.hypot(b.x, b.y); const maxR = ARENA_R0 - 0.8;
-    if (d > maxR) { b.x *= maxR / d; b.y *= maxR / d; } // the wall stops you
+    b.x += mv.x * STEP_X * stepMul; b.y += mv.y * STEP_Y * stepMul;
+    clampRect(b); // the wide field's walls stop you
   });
+  trackEnd(room, trk);
   // Cannonballs: spawn on a cadence that tightens as the match goes on
   // (same wall-clock cadence as before the retune: gap starts at 3.5s,
-  // shrinks 0.25s every 12s, floor 1.5s).
+  // shrinks 0.25s every 12s, floor 1.5s). 16:9 wave: they enter from
+  // the wide field's four edges and their velocity components scale
+  // with the field map, so crossing times are unchanged.
   g.spawnIn -= 1;
   if (g.spawnIn <= 0) {
-    const R = ARENA_R0 + 2;
-    const side = randInt(0, 3); const along = rand(-8, 8);
+    const side = randInt(0, 3);
     let x = 0, y = 0;
-    if (side === 0) { x = -R; y = along; } else if (side === 1) { x = R; y = along; }
-    else if (side === 2) { x = along; y = -R; } else { x = along; y = R; }
-    const tx = rand(-5, 5), ty = rand(-5, 5);
+    if (side === 0) { x = -17.5; y = rand(-8.5, 8.5); } else if (side === 1) { x = 17.5; y = rand(-8.5, 8.5); }
+    else if (side === 2) { x = rand(-15.5, 15.5); y = -10.5; } else { x = rand(-15.5, 15.5); y = 10.5; }
+    const tx = rand(-8, 8), ty = rand(-4.5, 4.5);
     const dx = tx - x, dy = ty - y; const dd = Math.hypot(dx, dy) || 1;
-    g.balls.push({ x, y, vx: (dx / dd) * BALL_SPEED, vy: (dy / dd) * BALL_SPEED });
+    g.balls.push({ x, y, vx: (dx / dd) * BALL_SPEED * (4 / 3), vy: (dy / dd) * BALL_SPEED * (3 / 4) });
     g.spawnIn = Math.max(12, 28 - Math.floor(g.tickCount / 96));
   }
   g.balls.forEach((b) => { b.x += b.vx; b.y += b.vy; });
-  g.balls = g.balls.filter((b) => Math.hypot(b.x, b.y) <= 15);
+  g.balls = g.balls.filter((b) => Math.abs(b.x) <= 19 && Math.abs(b.y) <= 12);
   // Hits.
   room.players.forEach((p) => {
     const b = g.blobs[p.seat];
@@ -1902,13 +1964,15 @@ function applyMoves(room, moves, opts) {
     if (opts.holderSeat === p.seat) stepMul = HOLDER_SPEED;
     if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
     if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
-    b.x += mv.x * MOVE_STEP * stepMul; b.y += mv.y * MOVE_STEP * stepMul;
+    b.x += mv.x * STEP_X * stepMul; b.y += mv.y * STEP_Y * stepMul;
     if (opts.clampBox) {
-      const m = opts.clampBox;
-      b.x = Math.max(-m, Math.min(m, b.x)); b.y = Math.max(-m, Math.min(m, b.y));
+      // Sơn Sàn: clamp to the paint grid's extent (cells span
+      // [-14.4,14.4]x[-8,8]); other clampBox callers pass a square m.
+      const mx = opts.clampX != null ? opts.clampX : opts.clampBox;
+      const my = opts.clampY != null ? opts.clampY : opts.clampBox;
+      b.x = Math.max(-mx, Math.min(mx, b.x)); b.y = Math.max(-my, Math.min(my, b.y));
     } else {
-      const d = Math.hypot(b.x, b.y); const maxR = ARENA_R0 - 0.8;
-      if (d > maxR) { b.x *= maxR / d; b.y *= maxR / d; } // the wall stops you
+      clampRect(b); // the wide field's walls stop you
     }
   });
 }
@@ -1948,10 +2012,9 @@ function applyShoves(room, moves, force, onHit) {
     });
     if (foe && foeD <= SHOVE_RANGE && foeD > 0.01) {
       const vx = foe.x, vy = foe.y;
-      foe.x += ((foe.x - b.x) / foeD) * force;
-      foe.y += ((foe.y - b.y) / foeD) * force;
-      const d2 = Math.hypot(foe.x, foe.y); const maxR = ARENA_R0 - 0.8;
-      if (d2 > maxR) { foe.x *= maxR / d2; foe.y *= maxR / d2; } // wall stops the knockback too
+      foe.x += ((foe.x - b.x) / foeD) * force * (4 / 3);
+      foe.y += ((foe.y - b.y) / foeD) * force * (3 / 4);
+      clampRect(foe); // the wall stops the knockback too
       g.shoveCd[p.seat] = SHOVE_CD_TICKS;
       if (onHit) onHit(room, p.seat, foeSeat, vx, vy);
     }
@@ -2035,7 +2098,7 @@ function spawnStar(room, gold) {
   let x = 0, y = 0;
   for (let i = 0; i < 8; i++) {
     const ang = rand(0, Math.PI * 2); const rr = rand(2, 8.5);
-    x = Math.cos(ang) * rr; y = Math.sin(ang) * rr;
+    x = Math.cos(ang) * rr * (4 / 3); y = Math.sin(ang) * rr * (3 / 4);
     let ok = true;
     (g.stars || []).forEach((s) => { if (Math.hypot(s.x - x, s.y - y) < 2) ok = false; });
     if (ok) break;
@@ -2086,6 +2149,7 @@ function stepSteal(room, t) {
 function simulateStealTick(room) {
   const g = room.game;
   g.tickCount += 1;
+  const trk = trackStart(room);
   const moves = collectMoves(room, botBrainSteal);
   applyMoves(room, moves, {});
   separateBlobs(room);
@@ -2114,6 +2178,7 @@ function simulateStealTick(room) {
     else remaining.push(s);
   });
   g.stars = remaining;
+  trackEnd(room, trk);
   let normals = g.stars.filter((s) => !s.gold).length;
   while (normals < 2) { spawnStar(room, false); normals += 1; }
   g.goldIn -= 1;
@@ -2141,7 +2206,7 @@ function botBrainCrown(room, p) {
     // Flee with the crown: away from the nearest foe, biased back
     // towards the centre when hugging the wall.
     if (near.foe) { tx = me.x - near.foe.x; ty = me.y - near.foe.y; }
-    if (Math.hypot(me.x, me.y) > 7) { tx += -me.x * 0.7; ty += -me.y * 0.7; }
+    if (ellipseDist(me, ARENA_R0) > 0.49) { tx += -me.x * 0.7; ty += -me.y * 0.7; }
   } else {
     const tp = g.crown.holder ? g.blobs[g.crown.holder] : g.crown;
     tx = tp.x - me.x; ty = tp.y - me.y;
@@ -2171,6 +2236,7 @@ function stepCrown(room, t) {
 function simulateCrownTick(room) {
   const g = room.game;
   g.tickCount += 1;
+  const trk = trackStart(room);
   const moves = collectMoves(room, botBrainCrown);
   applyMoves(room, moves, { holderSeat: g.crown.holder });
   separateBlobs(room);
@@ -2180,15 +2246,15 @@ function simulateCrownTick(room) {
       const ab = gg.blobs[attackerSeat];
       let dx = vx - ab.x, dy = vy - ab.y;
       const d = Math.hypot(dx, dy) || 1;
-      let cx = vx + (dx / d) * 1.6, cy = vy + (dy / d) * 1.6;
-      const cd = Math.hypot(cx, cy); const maxR = ARENA_R0 - 0.8;
-      if (cd > maxR) { cx *= maxR / cd; cy *= maxR / cd; }
+      const crownPos = { x: vx + (dx / d) * 1.6 * (4 / 3), y: vy + (dy / d) * 1.6 * (3 / 4) };
+      clampRect(crownPos);
       gg.crown.holder = null;
       gg.crown.acc = 0;
-      gg.crown.x = Math.round(cx * 100) / 100; gg.crown.y = Math.round(cy * 100) / 100;
+      gg.crown.x = Math.round(crownPos.x * 100) / 100; gg.crown.y = Math.round(crownPos.y * 100) / 100;
       gg.crown.lockTicks = CROWN_LOCK_TICKS;
     }
   });
+  trackEnd(room, trk);
   if (g.crown.holder) {
     const hb = g.blobs[g.crown.holder];
     g.crown.x = hb.x; g.crown.y = hb.y;
@@ -2223,9 +2289,9 @@ function simulateCrownTick(room) {
 // possible without complicating the base loop. Ranked by cells owned at
 // the end; ties -> earlier seat.
 function splatCell(x, y) {
-  const c = Math.max(0, Math.min(SPLAT_N - 1, Math.floor((x - SPLAT_MIN) / SPLAT_CELL)));
-  const r = Math.max(0, Math.min(SPLAT_N - 1, Math.floor((y - SPLAT_MIN) / SPLAT_CELL)));
-  return r * SPLAT_N + c;
+  const c = Math.max(0, Math.min(SPLAT_COLS - 1, Math.floor((x - SPLAT_MIN_X) / SPLAT_CELL)));
+  const r = Math.max(0, Math.min(SPLAT_ROWS - 1, Math.floor((y - SPLAT_MIN_Y) / SPLAT_CELL)));
+  return r * SPLAT_COLS + c;
 }
 function splatCounts(room) {
   const g = room.game;
@@ -2242,8 +2308,8 @@ function botBrainSplat(room, p) {
   let bd = 1e9, bx = 0, by = 0;
   for (let i = 0; i < (g.grid || []).length; i++) {
     if (g.grid[i] === p.seat) continue;
-    const cx = SPLAT_MIN + (i % SPLAT_N + 0.5) * SPLAT_CELL;
-    const cy = SPLAT_MIN + (Math.floor(i / SPLAT_N) + 0.5) * SPLAT_CELL;
+    const cx = SPLAT_MIN_X + (i % SPLAT_COLS + 0.5) * SPLAT_CELL;
+    const cy = SPLAT_MIN_Y + (Math.floor(i / SPLAT_COLS) + 0.5) * SPLAT_CELL;
     const d = Math.hypot(cx - me.x, cy - me.y);
     if (d < bd) { bd = d; bx = cx; by = cy; }
   }
@@ -2266,8 +2332,10 @@ function stepSplat(room, t) {
 function simulateSplatTick(room) {
   const g = room.game;
   g.tickCount += 1;
+  const trk = trackStart(room);
   const moves = collectMoves(room, botBrainSplat);
-  applyMoves(room, moves, { clampBox: 9.2 });
+  applyMoves(room, moves, { clampBox: 9.2, clampX: 14.4, clampY: 8 });
+  trackEnd(room, trk);
   room.players.forEach((p) => {
     const b = g.blobs[p.seat]; const mv = moves[p.seat];
     if (!b || !b.alive) return;
@@ -2275,10 +2343,10 @@ function simulateSplatTick(room) {
     if (g.paintCd[p.seat] > 0) g.paintCd[p.seat] -= 1;
     if (mv && mv.burst && g.paintCd[p.seat] <= 0) {
       const ci = splatCell(b.x, b.y);
-      const cc = ci % SPLAT_N, cr = Math.floor(ci / SPLAT_N);
+      const cc = ci % SPLAT_COLS, cr = Math.floor(ci / SPLAT_COLS);
       for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
         const rr = cr + dr, cc2 = cc + dc;
-        if (rr >= 0 && rr < SPLAT_N && cc2 >= 0 && cc2 < SPLAT_N) g.grid[rr * SPLAT_N + cc2] = p.seat;
+        if (rr >= 0 && rr < SPLAT_ROWS && cc2 >= 0 && cc2 < SPLAT_COLS) g.grid[rr * SPLAT_COLS + cc2] = p.seat;
       }
       g.paintCd[p.seat] = PAINT_CD_TICKS;
     }
@@ -2348,7 +2416,7 @@ function spawnSharedStar(room) {
   let x = 0, y = 0;
   for (let i = 0; i < 8; i++) {
     const ang = rand(0, Math.PI * 2); const rr = rand(2.5, 8.5);
-    x = Math.cos(ang) * rr; y = Math.sin(ang) * rr;
+    x = Math.cos(ang) * rr * (4 / 3); y = Math.sin(ang) * rr * (3 / 4);
     if (!g.shared || Math.hypot(x - g.shared.x, y - g.shared.y) >= 3) break;
   }
   g.star = { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
@@ -2412,28 +2480,28 @@ function simulateSharedTick(room) {
     if (iy < 0 && g.owners.u === p.seat) my -= 1;
   });
   const b = g.shared;
-  b.x += mx * MOVE_STEP; b.y += my * MOVE_STEP;
-  const d = Math.hypot(b.x, b.y); const maxR = ARENA_R0 - 0.8;
-  if (d > maxR) { b.x *= maxR / d; b.y *= maxR / d; } // walled arena
+  const ox = b.x, oy = b.y;
+  b.x += mx * STEP_X; b.y += my * STEP_Y;
+  clampRect(b); // walled arena
   b.x = Math.round(b.x * 100) / 100; b.y = Math.round(b.y * 100) / 100;
+  b.vx = Math.round((b.x - ox) * 100) / 100; b.vy = Math.round((b.y - oy) * 100) / 100;
   // Checkpoint touch scores for the team; a stale star respawns.
   if (g.star && Math.hypot(g.star.x - b.x, g.star.y - b.y) <= 1.3) { g.checks += 1; spawnSharedStar(room); }
   else if (g.star && g.tickCount - g.starTick >= STAR_STALE_TICKS) spawnSharedStar(room);
   // Cannonballs: same edge-spawn pattern as Né Đạn, lower density.
   g.spawnIn -= 1;
   if (g.spawnIn <= 0) {
-    const R = ARENA_R0 + 2;
-    const side = randInt(0, 3); const along = rand(-8, 8);
+    const side = randInt(0, 3);
     let x = 0, y = 0;
-    if (side === 0) { x = -R; y = along; } else if (side === 1) { x = R; y = along; }
-    else if (side === 2) { x = along; y = -R; } else { x = along; y = R; }
-    const tx = rand(-5, 5), ty = rand(-5, 5);
+    if (side === 0) { x = -17.5; y = rand(-8.5, 8.5); } else if (side === 1) { x = 17.5; y = rand(-8.5, 8.5); }
+    else if (side === 2) { x = rand(-15.5, 15.5); y = -10.5; } else { x = rand(-15.5, 15.5); y = 10.5; }
+    const tx = rand(-8, 8), ty = rand(-4.5, 4.5);
     const dx = tx - x, dy = ty - y; const dd = Math.hypot(dx, dy) || 1;
-    g.balls.push({ x, y, vx: (dx / dd) * SHARED_BALL_SPEED, vy: (dy / dd) * SHARED_BALL_SPEED });
+    g.balls.push({ x, y, vx: (dx / dd) * SHARED_BALL_SPEED * (4 / 3), vy: (dy / dd) * SHARED_BALL_SPEED * (3 / 4) });
     g.spawnIn = Math.max(20, 32 - Math.floor(g.tickCount / 192));
   }
   g.balls.forEach((ball) => { ball.x += ball.vx; ball.y += ball.vy; });
-  g.balls = g.balls.filter((ball) => Math.hypot(ball.x, ball.y) <= 15);
+  g.balls = g.balls.filter((ball) => Math.abs(ball.x) <= 19 && Math.abs(ball.y) <= 12);
   if (g.sharedInvuln > 0) g.sharedInvuln -= 1;
   else {
     const idx = g.balls.findIndex((ball) => Math.hypot(ball.x - b.x, ball.y - b.y) < BALL_HIT_DIST);
@@ -2460,13 +2528,16 @@ function finishShared(room) {
 // pushing against each other cancel out. Rect walls block players and
 // crate alike (axis-separate slide). Delivering the crate centre into
 // the goal zone scores +1 and loads the next layout (rotating).
+// 16:9 WAVE: the three mazes are redrawn for the wide field (crate /
+// goal / wall rects mapped x*4/3, y*3/4 from the old layouts, goals
+// widened a touch); the >=2-pushers rule is untouched.
 const BOX_LAYOUTS = [
-  { crate: { x: -6, y: 0 }, goal: { x: 6.5, y: -1.5, w: 3, h: 3 }, walls: [
-    { x: -1.5, y: 2.5, w: 3, h: 1.1 }, { x: -1.5, y: -3.6, w: 3, h: 1.1 } ] },
-  { crate: { x: -6.5, y: -5 }, goal: { x: 6, y: 3.5, w: 3.2, h: 3 }, walls: [
-    { x: -9.2, y: 1.8, w: 6.4, h: 1.2 }, { x: 2.8, y: -3, w: 6.4, h: 1.2 } ] },
-  { crate: { x: 0, y: -6.5 }, goal: { x: -1.6, y: 5.2, w: 3.2, h: 3 }, walls: [
-    { x: -3.6, y: -1, w: 1.1, h: 3.8 }, { x: 2.5, y: -1, w: 1.1, h: 3.8 }, { x: -2.5, y: 2.8, w: 6.1, h: 1.1 } ] },
+  { crate: { x: -8.6, y: 0 }, goal: { x: 8.7, y: -1.1, w: 4, h: 2.2 }, walls: [
+    { x: -2, y: 2.2, w: 4, h: 0.85 }, { x: -2, y: -3.05, w: 4, h: 0.85 } ] },
+  { crate: { x: -8.7, y: -3.75 }, goal: { x: 8, y: 2.6, w: 4.3, h: 2.25 }, walls: [
+    { x: -12.3, y: 1.35, w: 8.5, h: 0.9 }, { x: 3.7, y: -2.25, w: 8.5, h: 0.9 } ] },
+  { crate: { x: 0, y: -4.9 }, goal: { x: -2.1, y: 3.9, w: 4.3, h: 2.25 }, walls: [
+    { x: -4.8, y: -0.75, w: 1.5, h: 2.85 }, { x: 3.3, y: -0.75, w: 1.5, h: 2.85 }, { x: -3.3, y: 2.1, w: 8.1, h: 0.85 } ] },
 ];
 function loadBoxLayout(room) {
   const g = room.game;
@@ -2480,7 +2551,7 @@ function circleRectHit(cx, cy, r, w) {
   const ny = Math.max(w.y, Math.min(cy, w.y + w.h));
   return Math.hypot(cx - nx, cy - ny) < r;
 }
-function slideCircle(pos, dx, dy, r, walls, clampM) {
+function slideCircle(pos, dx, dy, r, walls, clampM, clampMY) {
   if (dx) {
     const nx = pos.x + dx;
     if (!walls.some((w) => circleRectHit(nx, pos.y, r, w))) pos.x = nx;
@@ -2490,7 +2561,8 @@ function slideCircle(pos, dx, dy, r, walls, clampM) {
     if (!walls.some((w) => circleRectHit(pos.x, ny, r, w))) pos.y = ny;
   }
   pos.x = Math.max(-clampM, Math.min(clampM, pos.x));
-  pos.y = Math.max(-clampM, Math.min(clampM, pos.y));
+  const my = clampMY != null ? clampMY : clampM;
+  pos.y = Math.max(-my, Math.min(my, pos.y));
 }
 function botBrainBox(room, p) {
   const g = room.game;
@@ -2523,6 +2595,7 @@ function stepBox(room, t) {
 function simulateBoxTick(room) {
   const g = room.game;
   g.tickCount += 1;
+  const trk = trackStart(room);
   const moves = collectMoves(room, botBrainBox);
   room.players.forEach((p) => {
     const b = g.blobs[p.seat]; const mv = moves[p.seat];
@@ -2532,10 +2605,12 @@ function simulateBoxTick(room) {
     let stepMul = 1;
     if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
     if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
-    slideCircle(b, mv.x * MOVE_STEP * stepMul, mv.y * MOVE_STEP * stepMul, 0.8, g.walls, ARENA_R0 - 0.8);
+    slideCircle(b, mv.x * STEP_X * stepMul, mv.y * STEP_Y * stepMul, 0.8, g.walls, CLAMP_X, CLAMP_Y);
   });
   separateBlobs(room);
+  trackEnd(room, trk);
   const c = g.crate;
+  const cox = c.x, coy = c.y;
   // Body-block: nobody may stand inside the crate; contact pushes out.
   room.players.forEach((p) => {
     const b = g.blobs[p.seat];
@@ -2558,11 +2633,12 @@ function simulateBoxTick(room) {
     contact.forEach((p) => { const mv = moves[p.seat]; if (mv) { sx += mv.x; sy += mv.y; } });
     const mag = Math.hypot(sx, sy);
     if (mag >= BOX_PUSH_MIN) {
-      slideCircle(c, (sx / mag) * MOVE_STEP * BOX_STEP_MUL, (sy / mag) * MOVE_STEP * BOX_STEP_MUL,
-        BOX_CRATE_R, g.walls, ARENA_R0 - BOX_CRATE_R);
+      slideCircle(c, (sx / mag) * STEP_X * BOX_STEP_MUL, (sy / mag) * STEP_Y * BOX_STEP_MUL,
+        BOX_CRATE_R, g.walls, CLAMP_X - BOX_CRATE_R, CLAMP_Y - BOX_CRATE_R);
     }
   }
   c.x = Math.round(c.x * 100) / 100; c.y = Math.round(c.y * 100) / 100;
+  c.vx = Math.round((c.x - cox) * 100) / 100; c.vy = Math.round((c.y - coy) * 100) / 100;
   const gl = g.goal;
   if (c.x >= gl.x && c.x <= gl.x + gl.w && c.y >= gl.y && c.y <= gl.y + gl.h) {
     g.deliveries += 1;
@@ -2637,10 +2713,11 @@ function moodOf(room, p) {
 // Wave 3: Xe Tăng / Đặt Bom / Kẻ Giả Mạo / Thủ Thành / Giải Mã Chung
 // ---------------------------------------------------------------------------
 // Shared movement for the walled tick games: dash handling matches
-// applyMoves, then either a slideCircle pass against wall rects or the
-// plain radial wall clamp.
-function moveBlobsWalled(room, moves, walls, clampM) {
+// applyMoves, then either a slideCircle pass against wall rects or
+// the plain rectangle wall clamp of the wide field.
+function moveBlobsWalled(room, moves, walls, clampM, clampMY) {
   const g = room.game;
+  const trk = trackStart(room);
   room.players.forEach((p) => {
     const b = g.blobs[p.seat]; const mv = moves[p.seat];
     if (!b || !b.alive || !mv) return;
@@ -2650,13 +2727,13 @@ function moveBlobsWalled(room, moves, walls, clampM) {
     if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
     if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
     if (walls) {
-      slideCircle(b, mv.x * MOVE_STEP * stepMul, mv.y * MOVE_STEP * stepMul, 0.8, walls, clampM);
+      slideCircle(b, mv.x * STEP_X * stepMul, mv.y * STEP_Y * stepMul, 0.8, walls, clampM, clampMY);
     } else {
-      b.x += mv.x * MOVE_STEP * stepMul; b.y += mv.y * MOVE_STEP * stepMul;
-      const d = Math.hypot(b.x, b.y); const maxR = ARENA_R0 - 0.8;
-      if (d > maxR) { b.x *= maxR / d; b.y *= maxR / d; }
+      b.x += mv.x * STEP_X * stepMul; b.y += mv.y * STEP_Y * stepMul;
+      clampRect(b);
     }
   });
+  trackEnd(room, trk);
 }
 function damageBlob(room, seat) {
   const g = room.game;
@@ -2699,7 +2776,7 @@ function stepShells(room, opts) {
   const keep = [];
   for (const s of g.shells) {
     s.x += s.vx; s.y += s.vy;
-    let dead = Math.hypot(s.x, s.y) > 11.5;
+    let dead = Math.abs(s.x) > 16.5 || Math.abs(s.y) > 9.5; // out of the wide field
     if (!dead && opts.walls) {
       dead = opts.walls.some((w) => s.x >= w.x - 0.1 && s.x <= w.x + w.w + 0.1 && s.y >= w.y - 0.1 && s.y <= w.y + w.h + 0.1);
     }
@@ -2751,7 +2828,7 @@ function simulateTankTick(room) {
   const g = room.game;
   g.tickCount += 1;
   const moves = collectMoves(room, botBrainTank);
-  moveBlobsWalled(room, moves, TANK_BLOCKS, 9.2);
+  moveBlobsWalled(room, moves, TANK_BLOCKS, CLAMP_X, CLAMP_Y);
   separateBlobs(room);
   processGuns(room, moves);
   stepShells(room, { walls: TANK_BLOCKS, hitPlayers: true });
@@ -2801,21 +2878,24 @@ function botBrainTank(room, p) {
 }
 
 // --- Game 18: Đặt Bom (tick, grid arena, chain reactions) -----------------
-function bomCellX(c) { return -10 + c * 2; }
+// 16:9 wave: 15 columns span x in [-15,15] (cell centres -14+2c); the
+// 9 rows are unchanged (centres -8+2r over the field's [-9,9]).
+function bomCellX(c) { return -14 + c * 2; }
 function bomCellY(r) { return -8 + r * 2; }
-function bomColOf(x) { return Math.max(0, Math.min(BOM_COLS - 1, Math.floor((x + 11) / 2))); }
+function bomColOf(x) { return Math.max(0, Math.min(BOM_COLS - 1, Math.floor((x + 15) / 2))); }
 function bomRowOf(y) { return Math.max(0, Math.min(BOM_ROWS - 1, Math.floor((y + 9) / 2))); }
 function bomIsHard(c, r) { return c % 2 === 1 && r % 2 === 1; }
+const BOM_MID = (BOM_COLS - 1) / 2; // 7: the middle column of 15
 // Spawn cells for up to 6 bombers: the four corners, then the top-
 // and bottom-edge midpoints. Nobody ever stacks on a shared cell.
-const BOM_SPAWNS = [[0, 0], [BOM_COLS - 1, BOM_ROWS - 1], [BOM_COLS - 1, 0], [0, BOM_ROWS - 1], [5, 0], [5, BOM_ROWS - 1]];
+const BOM_SPAWNS = [[0, 0], [BOM_COLS - 1, BOM_ROWS - 1], [BOM_COLS - 1, 0], [0, BOM_ROWS - 1], [BOM_MID, 0], [BOM_MID, BOM_ROWS - 1]];
 function bomIsSafe(c, r) {
   // Corner pockets: the 2x2 around each corner spawn (as always).
   if ((c <= 1 && r <= 1) || (c >= BOM_COLS - 2 && r >= BOM_ROWS - 2)
     || (c >= BOM_COLS - 2 && r <= 1) || (c <= 1 && r >= BOM_ROWS - 2)) return true;
   // Edge-mid pockets: the spawn cell plus the cell directly inward,
   // so a mid-edge bomber always has one guaranteed open step.
-  return (c === 5 && (r === 0 || r === 1)) || (c === 5 && (r === BOM_ROWS - 1 || r === BOM_ROWS - 2));
+  return (c === BOM_MID && (r === 0 || r === 1)) || (c === BOM_MID && (r === BOM_ROWS - 1 || r === BOM_ROWS - 2));
 }
 function bomCellRect(c, r) { return { x: bomCellX(c) - 1, y: bomCellY(r) - 1, w: 2, h: 2 }; }
 function blastCells(room, bomb) {
@@ -2901,11 +2981,7 @@ function simulateBomberTick(room) {
     if (!occupied) b.solid = true;
   });
   const moves = collectMoves(room, botBrainBomber);
-  moveBlobsWalled(room, moves, bomberWalls(room), 10.2);
-  room.players.forEach((p) => {
-    const b = g.blobs[p.seat];
-    if (b) b.y = Math.max(-8.2, Math.min(8.2, b.y)); // grid is 11 wide but 9 tall
-  });
+  moveBlobsWalled(room, moves, bomberWalls(room), 14.2, 8.2); // the grid spans [-15,15]x[-9,9], blobs keep 0.8 off the edge
   separateBlobs(room);
   // A places a bomb on the current cell; one live bomb per player.
   room.players.forEach((p) => {
@@ -3525,20 +3601,25 @@ function simulateDefendTick(room) {
   // bigger, slower 3-HP slimes join from the 20 second mark.
   g.spawnIn -= 1;
   if (g.spawnIn <= 0) {
+    // 16:9 wave: slimes pour in from the wide field's rim — a point on
+    // the spawn ellipse (the old 10.6 circle under the field map), so
+    // they arrive along every edge; speeds scale ~x1.1 so the average
+    // march time to the crystal matches the old game's.
     const ang = rand(0, Math.PI * 2);
     const big = g.tickCount >= 160 && Math.random() < 0.3;
     g.slimeSeq += 1;
     g.slimes.push({
       id: g.slimeSeq,
-      x: Math.round(Math.cos(ang) * 10.6 * 100) / 100, y: Math.round(Math.sin(ang) * 10.6 * 100) / 100,
-      hp: big ? 3 : 1, maxHp: big ? 3 : 1, r: big ? 1.05 : 0.7, speed: big ? 0.08 : 0.13, big,
+      x: Math.round(Math.cos(ang) * 10.6 * (4 / 3) * 100) / 100, y: Math.round(Math.sin(ang) * 10.6 * (3 / 4) * 100) / 100,
+      hp: big ? 3 : 1, maxHp: big ? 3 : 1, r: big ? 1.05 : 0.7, speed: big ? 0.09 : 0.14, big,
     });
     g.spawnIn = Math.max(10, Math.round(24 - 14 * (g.tickCount / (DEF_MS / TICK_MS))));
   }
   let crystalDown = false;
   g.slimes.forEach((sl) => {
     const d = Math.hypot(sl.x, sl.y) || 1;
-    sl.x -= (sl.x / d) * sl.speed; sl.y -= (sl.y / d) * sl.speed;
+    sl.vx = -(sl.x / d) * sl.speed; sl.vy = -(sl.y / d) * sl.speed;
+    sl.x += sl.vx; sl.y += sl.vy;
     if (Math.hypot(sl.x, sl.y) <= 1.35) {
       sl.dead = true;
       g.crystal.hp -= 1;
@@ -3564,7 +3645,7 @@ function botBrainDefend(room, p) {
     tx = sl.x - me.x; ty = sl.y - me.y;
     const f = g.facing[p.seat] || { x: 1, y: 0 };
     const dd = Math.hypot(tx, ty) || 1;
-    if ((tx / dd) * f.x + (ty / dd) * f.y > 0.92 && sd < 9.5) burst = true;
+    if ((tx / dd) * f.x + (ty / dd) * f.y > 0.92 && sd < 12) burst = true;
     if (sd < 2.4) { tx = -tx; ty = -ty; }
   } else { tx = -me.x; ty = -me.y; }
   const intent = Object.assign(dirIntent(tx, ty), { burst });
@@ -3791,11 +3872,12 @@ function simulateFightTick(room) {
     }
     platStep(b, FIGHT_PLATFORMS, PLAT_GRAV, PLAT_MAXFALL);
     if (b.ground) g.jumps[seat] = 0;
-    // Ring-out past the blast bounds.
-    if (b.x < -13 || b.x > 13 || b.y > 12.5 || b.y < -15) {
+    // Ring-out past the blast bounds (widened with the 16:9 stage:
+    // the floor now spans +-11.3, the field +-16 x +-9).
+    if (b.x < -17.5 || b.x > 17.5 || b.y > 10.5 || b.y < -11.5) {
       b.lives -= 1;
       if (b.lives > 0) {
-        b.x = 0; b.y = -1.5 - PLAT_HH - 0.6; b.vx = 0; b.vy = 0; b.ground = false;
+        b.x = 0; b.y = FIGHT_PLATFORMS[3].y - PLAT_HH - 0.6; b.vx = 0; b.vy = 0; b.ground = false;
         g.dmg[seat] = 0; g.jumps[seat] = 0; g.hitT[seat] = 0; g.dashT[seat] = 0; g.hvyT[seat] = 0;
         g.invuln[seat] = INVULN_TICKS; // 2s of cover on the way back in
       } else {
@@ -3817,10 +3899,10 @@ function botBrainFight(room, p) {
   // Recovery first — checked every tick, it is life-critical: airborne,
   // low or out past the floor's edge, so steer home and spend jumps /
   // the dash to get back over the stage.
-  if (!me.ground && (me.y > 1 || Math.abs(me.x) > 8.5)) {
+  if (!me.ground && (me.y > 1 || Math.abs(me.x) > 11.3)) {
     intent.x = me.x > 0 ? -1 : 1;
-    if (me.vy > 0.2 && me.y > -1.5 && (g.jumps[p.seat] || 0) < 2) intent.jump = true;
-    else if (Math.abs(me.x) > 9.5 && (g.dashCd[p.seat] || 0) <= 0) intent.dash = true;
+    if (me.vy > 0.2 && me.y > -1.1 && (g.jumps[p.seat] || 0) < 2) intent.jump = true;
+    else if (Math.abs(me.x) > 12.7 && (g.dashCd[p.seat] || 0) <= 0) intent.dash = true;
     return intent;
   }
   // Combat steering, re-decided on the usual per-difficulty cadence.
@@ -3830,7 +3912,7 @@ function botBrainFight(room, p) {
     const near = nearestFoe(room, p);
     dir = near.foe ? (Math.abs(near.foe.x - me.x) > 0.3 ? Math.sign(near.foe.x - me.x) : 0) : 0;
     // Never chase a foe off the edge: near the rim, hold inward.
-    if (Math.abs(me.x) > 7.8 && dir === Math.sign(me.x)) dir = -Math.sign(me.x);
+    if (Math.abs(me.x) > 10.4 && dir === Math.sign(me.x)) dir = -Math.sign(me.x);
     g.botIntent[p.seat] = { x: dir, y: 0 };
   }
   intent.x = dir;
@@ -3968,7 +4050,7 @@ function botBrainTemple(room, p) {
     if (wp.holdBtn) {
       if (!g.wpAt[p.seat]) g.wpAt[p.seat] = g.tickCount;
       const partnersIn = room.players.every((q) => q.seat === p.seat
-        || (g.chars[q.seat] && (g.chars[q.seat].home || g.chars[q.seat].y < 1.0)));
+        || (g.chars[q.seat] && (g.chars[q.seat].home || g.chars[q.seat].y < -1.5)));
       if (!partnersIn && g.tickCount - g.wpAt[p.seat] < 240) return intent; // keep holding (30s at the shared 125ms tick)
     }
     g.wpIdx[p.seat] = idx + 1;
@@ -4343,7 +4425,7 @@ function simulateFrogTick(room) {
     if (push !== 0) c.vx = push * FROG_RUN;
     else if (c.ground) c.vx = Math.abs(c.vx) <= 0.03 ? 0 : c.vx - Math.sign(c.vx) * 0.03;
     crateStep(c, staticSolids);
-    if (c.y > 13) { c.x = L.crates[ci].x; c.y = L.crates[ci].y; c.vx = 0; c.vy = 0; }
+    if (c.y > 10.5) { c.x = L.crates[ci].x; c.y = L.crates[ci].y; c.vx = 0; c.vy = 0; }
   });
   const solids = frogSolids(room);
   room.players.forEach((p) => {
@@ -4404,7 +4486,7 @@ function simulateFrogTick(room) {
       const inFeet = f.y + PLAT_HH > sp.y + sp.h - 0.15;
       if (inX && inFeet) { frogDie(room, seat); break; }
     }
-    if (g.frogs[seat] === f && f.y > 13) frogDie(room, seat);
+    if (g.frogs[seat] === f && f.y > 10.5) frogDie(room, seat);
   });
   (g.flies || []).forEach((fl) => {
     if (fl.taken) return;
@@ -4497,7 +4579,7 @@ function botBrainFrog(room, p) {
       // Hazard probe: jump as the near edge of a spike strip comes
       // underfoot — a carrying bot leaves it later (0.5) because its
       // boosted jump needs the latest safe takeoff.
-      const lead = f.belly != null ? 0.5 : 1.15;
+      const lead = f.belly != null ? 0.6 : 1.15;
       for (const sp of L.spikes) {
         const edge = intent.x > 0 ? sp.x : sp.x + sp.w;
         const dist = (edge - f.x) * intent.x;
@@ -4528,7 +4610,7 @@ function finishFrog(room) {
 // new surface; falling out of the world never happens (the carve is
 // capped), so elimination is HP-only. Placement: survivors by HP,
 // then reverse elimination order — all through placementAt().
-function cannonColAt(x) { return Math.max(0, Math.min(CANNON_COLS - 1, Math.floor((x + 12) / 0.2))); }
+function cannonColAt(x) { return Math.max(0, Math.min(CANNON_COLS - 1, Math.floor((x + 16) / 0.2))); }
 function cannonNextTurn(room, t, afterSeat) {
   const g = room.game;
   const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
@@ -4631,7 +4713,7 @@ function simulateShellTick(room) {
       if (c && c.alive && Math.hypot(sh.x - c.x, sh.y - (c.y - 0.4)) < 0.85) direct = true;
     });
     if (direct) { resolveBoom(room, sh.x, sh.y); return; }
-    if (sh.x < -12.6 || sh.x > 12.6) { // sailed out of the world: no boom
+    if (sh.x < -16.6 || sh.x > 16.6) { // sailed out of the world: no boom
       g.shell = null;
       g.boomFx = null;
       g.phase = 'boom';
@@ -4668,7 +4750,7 @@ function resolveBoom(room, ix, iy) {
     }
   });
   for (let i = 0; i < CANNON_COLS; i++) {
-    const cx = -12 + (i + 0.5) * 0.2;
+    const cx = -16 + (i + 0.5) * 0.2;
     const dx = Math.abs(cx - ix);
     if (dx < B.blastR) {
       const depth = Math.sqrt(B.blastR * B.blastR - dx * dx);
@@ -4755,7 +4837,7 @@ function blobsView(room) {
   const out = {};
   room.players.forEach((p) => {
     const b = g.blobs ? g.blobs[p.seat] : null;
-    if (b) out[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
+    if (b) out[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
   });
   return out;
 }
@@ -4770,7 +4852,7 @@ function facingView(room) {
 }
 function shellsView(room) {
   const g = room.game;
-  return (g.shells || []).map((s) => ({ id: s.id, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100 }));
+  return (g.shells || []).map((s) => ({ id: s.id, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, vx: s.vx, vy: s.vy }));
 }
 
 function gameView(room, role, seat, t) {
@@ -4796,16 +4878,16 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
+      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
     });
   } else if (g.id === 'ne-dan') {
     v.arenaR = ARENA_R0;
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
+      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
     });
-    v.balls = (g.balls || []).map((b) => ({ x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100 }));
+    v.balls = (g.balls || []).map((b) => ({ x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, vx: Math.round(b.vx * 100) / 100, vy: Math.round(b.vy * 100) / 100 }));
   } else if (g.id === 'keo-co') {
     v.teams = g.teams;
     v.presses = g.presses;
@@ -4828,7 +4910,7 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
+      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
     });
     v.stars = (g.stars || []).map((s) => ({ id: s.id, x: s.x, y: s.y, gold: s.gold }));
     v.banked = g.banked;
@@ -4838,7 +4920,7 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
+      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
     });
     v.hold = g.hold;
     v.crown = g.crown ? { holder: g.crown.holder, x: Math.round(g.crown.x * 100) / 100, y: Math.round(g.crown.y * 100) / 100 } : null;
@@ -4848,7 +4930,7 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
+      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
     });
     v.grid = g.grid;
     v.counts = splatCounts(room);
@@ -4869,20 +4951,20 @@ function gameView(room, role, seat, t) {
   } else if (g.id === 'chung-mot-than') {
     v.arenaR = ARENA_R0;
     v.owners = g.owners;
-    v.shared = g.shared ? { x: Math.round(g.shared.x * 100) / 100, y: Math.round(g.shared.y * 100) / 100 } : null;
+    v.shared = g.shared ? { x: Math.round(g.shared.x * 100) / 100, y: Math.round(g.shared.y * 100) / 100, vx: g.shared.vx || 0, vy: g.shared.vy || 0 } : null;
     v.star = g.star ? { x: g.star.x, y: g.star.y } : null;
     v.hearts = g.hearts;
     v.checks = g.checks;
-    v.balls = (g.balls || []).map((b) => ({ x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100 }));
+    v.balls = (g.balls || []).map((b) => ({ x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, vx: Math.round(b.vx * 100) / 100, vy: Math.round(b.vy * 100) / 100 }));
     if (seat) v.myDirs = ['u', 'r', 'd', 'l'].filter((d) => g.owners && g.owners[d] === seat);
   } else if (g.id === 'day-hop') {
     v.arenaR = ARENA_R0;
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive };
+      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
     });
-    v.crate = g.crate ? { x: g.crate.x, y: g.crate.y } : null;
+    v.crate = g.crate ? { x: g.crate.x, y: g.crate.y, vx: g.crate.vx || 0, vy: g.crate.vy || 0 } : null;
     v.goal = g.goal;
     v.walls = g.walls;
     v.layout = g.layout;
@@ -4919,8 +5001,8 @@ function gameView(room, role, seat, t) {
     // question's text or anyone's answer. A player view carries only
     // that player's own question + the shared options; the host gets
     // category + answered/voted status only. Chat is public by design.
-    const pair = IMPOSTOR_BANK[g.imp.pair];
-    v.category = pair.cat;
+    const pair = g.imp ? IMPOSTOR_BANK[g.imp.pair] : null;
+    v.category = pair ? pair.cat : '';
     v.phaseDur = g.phase === 'answer' ? IMP_ANSWER_MS : g.phase === 'discuss' ? IMP_DISCUSS_MS : g.phase === 'vote' ? IMP_VOTE_MS : IMP_REVEAL_MS;
     const answered = {}; const voted = {};
     room.players.forEach((p) => {
@@ -4929,7 +5011,7 @@ function gameView(room, role, seat, t) {
     });
     v.answered = answered; v.voted = voted;
     if (g.phase === 'discuss' || g.phase === 'vote' || g.phase === 'reveal') v.chatLog = g.chatLog || [];
-    if (g.phase === 'reveal' && g.reveal) {
+    if (g.phase === 'reveal' && g.reveal && pair) {
       v.reveal = {
         impostor: g.reveal.impostor, caught: g.reveal.caught,
         realQ: pair.real, fakeQ: pair.fake, options: pair.options,
@@ -4937,8 +5019,10 @@ function gameView(room, role, seat, t) {
       };
     }
     if (seat) {
-      v.myQuestion = g.imp.seat === seat ? pair.fake : pair.real;
-      v.options = pair.options;
+      if (pair) {
+        v.myQuestion = g.imp.seat === seat ? pair.fake : pair.real;
+        v.options = pair.options;
+      }
       v.mine = g.inputs[seat] ? g.inputs[seat].choice : null;
       v.myVote = g.votes[seat] != null ? g.votes[seat] : null;
     }
@@ -5020,7 +5104,7 @@ function gameView(room, role, seat, t) {
     v.blobs = blobsView(room);
     v.facing = facingView(room);
     v.shells = shellsView(room);
-    v.slimes = (g.slimes || []).map((s) => ({ id: s.id, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, hp: s.hp, maxHp: s.maxHp, big: s.big }));
+    v.slimes = (g.slimes || []).map((s) => ({ id: s.id, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, hp: s.hp, maxHp: s.maxHp, big: s.big, vx: Math.round((s.vx || 0) * 100) / 100, vy: Math.round((s.vy || 0) * 100) / 100 }));
     v.crystal = g.crystal ? { hp: g.crystal.hp, max: DEF_CRYSTAL_HP } : null;
     v.kills = g.kills;
   } else if (g.id === 'giai-ma-chung') {
@@ -5068,7 +5152,7 @@ function gameView(room, role, seat, t) {
     v.chars = {};
     if (g.chars) room.players.forEach((p) => {
       const c = g.chars[p.seat];
-      if (c) v.chars[p.seat] = { x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100, el: c.el, home: !!c.home, ground: !!c.ground };
+      if (c) v.chars[p.seat] = { x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100, el: c.el, home: !!c.home, ground: !!c.ground, vx: Math.round((c.vx || 0) * 100) / 100, vy: Math.round((c.vy || 0) * 100) / 100 };
     });
     if (seat != null) {
       v.myEl = g.elOf[seat] || null;
@@ -5085,10 +5169,10 @@ function gameView(room, role, seat, t) {
       if (b) v.blobs[p.seat] = {
         x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, alive: true,
         face: g.face[p.seat] || 1, ground: !!b.ground, dash: (g.dashT[p.seat] || 0) > 0,
-        team: soccerTeam(p.seat),
+        team: soccerTeam(p.seat), vx: Math.round((b.vx || 0) * 100) / 100, vy: Math.round((b.vy || 0) * 100) / 100,
       };
     });
-    v.ball = g.ball ? { x: Math.round(g.ball.x * 100) / 100, y: Math.round(g.ball.y * 100) / 100 } : null;
+    v.ball = g.ball ? { x: Math.round(g.ball.x * 100) / 100, y: Math.round(g.ball.y * 100) / 100, vx: Math.round(g.ball.vx * 100) / 100, vy: Math.round(g.ball.vy * 100) / 100 } : null;
     v.scoreboard = { do: (g.score && g.score.do) || 0, xanh: (g.score && g.score.xanh) || 0 };
     v.goalInfo = g.phase === 'goal' ? g.goalInfo : null;
     if (seat != null) v.myTeam = soccerTeam(seat);
@@ -5104,13 +5188,13 @@ function gameView(room, role, seat, t) {
     v.fliesEaten = g.fliesEaten || 0;
     v.fliesTotal = FROG_LEVELS.length * 3;
     v.flies = (g.flies || []).map((fl, i) => ({ id: i, x: fl.x, y: fl.y, taken: !!fl.taken }));
-    v.crates = (g.crates || []).map((c, i) => ({ id: i, x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100 }));
+    v.crates = (g.crates || []).map((c, i) => ({ id: i, x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100, vx: Math.round((c.vx || 0) * 100) / 100, vy: Math.round((c.vy || 0) * 100) / 100 }));
     v.frogs = {};
     if (g.frogs) room.players.forEach((p) => {
       const f = g.frogs[p.seat];
       if (!f) return;
       v.frogs[p.seat] = {
-        x: Math.round(f.x * 100) / 100, y: Math.round(f.y * 100) / 100,
+        x: Math.round(f.x * 100) / 100, y: Math.round(f.y * 100) / 100, vx: Math.round((f.vx || 0) * 100) / 100, vy: Math.round((f.vy || 0) * 100) / 100,
         face: g.face[p.seat] || 1, ground: !!f.ground,
         state: f.by != null ? 'in' : f.belly != null ? 'carry' : 'free',
         bellySeat: f.belly != null ? f.belly : null,
@@ -5140,6 +5224,7 @@ function gameView(room, role, seat, t) {
     });
     v.shell = g.shell ? {
       x: Math.round(g.shell.x * 100) / 100, y: Math.round(g.shell.y * 100) / 100,
+      vx: Math.round(g.shell.vx * 100) / 100, vy: Math.round(g.shell.vy * 100) / 100,
       trail: g.shell.trail || [],
     } : null;
     v.boom = g.phase === 'boom' && g.boomFx ? { x: g.boomFx.x, y: g.boomFx.y, hits: g.boomFx.hits, at: g.boomFx.at } : null;
@@ -5757,7 +5842,16 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .wolfcard { background: rgba(255,255,255,.92); color: #4A3226; border-radius: 18px; padding: 10px 6px; text-align: center; font-weight: 700; }
 .wolfcard.dead { opacity: .62; filter: grayscale(.8); }
 .wolfcard .rolechip { display: inline-block; margin-top: 4px; padding: 2px 10px; border-radius: 999px; background: #312E81; color: #fff; font-size: 13px; }
-.ngboard { position: relative; width: min(100%, max(240px, calc(100vh - 280px))); width: min(100%, max(240px, calc(100dvh - 280px))); padding-top: min(100%, max(240px, calc(100vh - 280px))); padding-top: min(100%, max(240px, calc(100dvh - 280px))); margin: 6px auto; background: #FDF6E3; border-radius: 18px; box-shadow: inset 0 0 0 3px rgba(0,0,0,.15); }
+.ngrow { display: flex; gap: 14px; align-items: stretch; margin-top: 6px; }
+.ngrow .ngmid { flex: 0 0 auto; min-width: 0; width: calc(100vh - 215px); width: calc(100dvh - 215px); max-width: 46%; margin: 0 auto; }
+.ngside { flex: 1 1 0; min-width: 0; background: rgba(255,255,255,.14); border-radius: 16px; padding: 10px 12px; overflow: hidden; }
+.ngside h3 { margin: 0 0 8px; font-size: 17px; }
+.ngside .rrow { margin: 5px 0; padding: 6px 10px; font-size: 14.5px; }
+.ngside .chatrow { font-size: 14px; }
+.ngside .progbar { height: 9px; background: rgba(0,0,0,.3); border-radius: 99px; overflow: hidden; margin-top: 4px; }
+.ngside .progbar i { display: block; height: 100%; border-radius: 99px; }
+@media (max-width: 1100px) { .ngrow { flex-direction: column; } .ngside { width: 100%; } .ngrow .ngmid { width: 100%; max-width: 560px; } }
+.ngboard { position: relative; width: 100%; padding-top: 100%; margin: 6px auto; background: #FDF6E3; border-radius: 18px; box-shadow: inset 0 0 0 3px rgba(0,0,0,.15); }
 .ngcell { position: absolute; box-sizing: border-box; border: 1px solid rgba(0,0,0,.18); border-radius: 4px; background: #fff; }
 .ngcell.safe { background: #FFE9A8; }
 .ngcell.quad { border: none; border-radius: 14px; }
@@ -5801,7 +5895,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .key { border: none; border-radius: 18px; padding: 16px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 24px;
   background: #fff; color: #4A3226; box-shadow: 0 5px 0 rgba(140,90,30,.3); cursor: pointer; }
 .key:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(140,90,30,.3); }
-.tapbtn, .opt, .key, .pad, .btn[data-cmd="choose"], .btn[data-cmd="guessSubmit"] { touch-action: none; user-select: none; -webkit-user-select: none; }
+.tapbtn, .opt, .key, .pad, .symbtn, .abtn, .disc, .btn[data-cmd="choose"], .btn[data-cmd="guessSubmit"] { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .pressed { transform: scale(.93) !important; filter: brightness(1.25) saturate(1.15); box-shadow: 0 0 0 3px rgba(255,255,255,.8), 0 0 26px rgba(255,255,255,.6) !important; }
 .guessbox { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 44px; background: #fff; border-radius: 20px;
   padding: 8px 20px; min-height: 74px; box-shadow: inset 0 -5px 0 rgba(140,90,30,.15); }
@@ -5860,8 +5954,8 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 /* --- Wave 5 stages ---------------------------------------------------------
    da-bong plays in a 32 x 18 space on the wide 16:9 field; can-goc in a
    24 x 16 space on the 3:2 field; ech-op reuses the square temple field. */
-.afield.wide { aspect-ratio: 95 / 48; width: min(100%, max(340px, calc((100vh - 190px) * 95 / 48))); width: min(100%, max(340px, calc((100dvh - 190px) * 95 / 48))); }
-.afield.art { aspect-ratio: 3 / 2; width: min(100%, max(300px, calc((100vh - 200px) * 1.5))); width: min(100%, max(300px, calc((100dvh - 200px) * 1.5))); }
+.afield.wide { aspect-ratio: 95 / 48; width: min(100%, max(340px, calc((100vh - 150px) * 95 / 48))); width: min(100%, max(340px, calc((100dvh - 150px) * 95 / 48))); }
+.afield.art { aspect-ratio: 16 / 9; width: min(100%, max(340px, calc((100vh - 190px) * 16 / 9))); width: min(100%, max(340px, calc((100dvh - 190px) * 16 / 9))); }
 .g-da-bong { background-color: #061A0C; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(74,222,128,.25), transparent 62%), linear-gradient(rgba(134,239,172,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(134,239,172,.05) 1px, transparent 1px), linear-gradient(165deg, #0B3D1E, #07290F 58%, #04150A); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.6), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(2,20,8,.5); }
 .g-ech-op { background-color: #170E04; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(255,190,80,.22), transparent 62%), repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 3px, transparent 3px 26px), repeating-linear-gradient(90deg, rgba(0,0,0,.12) 0 3px, transparent 3px 44px), linear-gradient(165deg, #2E1C07, #201204 58%, #0D0701); background-size: auto, auto, auto, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.64), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(14,8,1,.5); }
 .g-can-goc { background-color: #0A1420; background-image: radial-gradient(ellipse 90% 55% at 50% -8%, rgba(125,211,252,.22), transparent 62%), linear-gradient(rgba(147,197,253,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(147,197,253,.05) 1px, transparent 1px), linear-gradient(165deg, #0E2233, #0A1826 58%, #050C14); background-size: auto, 34px 34px, 34px 34px, auto; box-shadow: inset 0 0 130px rgba(0,0,0,.62), inset 0 -10px 0 rgba(0,0,0,.25), 0 18px 34px rgba(2,10,18,.5); }
@@ -5877,7 +5971,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .afrog { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 3; pointer-events: none; }
 .afrog svg { display: block; margin: 0 auto; }
 .afrog.carry svg { filter: drop-shadow(0 0 10px rgba(255,220,120,.85)); }
-.fcrate { position: absolute; width: 5%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 2; pointer-events: none; transition: left .18s linear, top .18s linear; display: flex; align-items: center; justify-content: center; font-size: 22px; background: linear-gradient(150deg, #B97B34, #8A5518); border: 3px solid #E8B96A; border-radius: 8px; box-shadow: 0 0 14px rgba(255,180,80,.4), 0 5px 10px rgba(0,0,0,.45), inset 0 0 0 3px rgba(0,0,0,.18); }
+.fcrate { position: absolute; width: 3.75%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 2; pointer-events: none; transition: left .18s linear, top .18s linear; display: flex; align-items: center; justify-content: center; font-size: 22px; background: linear-gradient(150deg, #B97B34, #8A5518); border: 3px solid #E8B96A; border-radius: 8px; box-shadow: 0 0 14px rgba(255,180,80,.4), 0 5px 10px rgba(0,0,0,.45), inset 0 0 0 3px rgba(0,0,0,.18); }
 .artwrap { position: absolute; inset: 0; }
 .artwrap svg { width: 100%; height: 100%; display: block; }
 .boomflash { position: absolute; border-radius: 50%; z-index: 5; pointer-events: none; transform: translate(-50%, -50%); background: radial-gradient(circle, rgba(255,246,200,.95), rgba(255,150,50,.75) 55%, rgba(255,80,20,.12)); animation: boomPop .5s ease-out; }
@@ -5890,7 +5984,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .bhard { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: linear-gradient(150deg, #6B7280, #374151); border: 2px solid rgba(220,230,255,.4); box-shadow: inset 0 0 0 2px rgba(0,0,0,.3), 0 3px 7px rgba(0,0,0,.5); }
 .bsoft { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: linear-gradient(150deg, #C98A4B, #96622A); border: 2px solid rgba(255,214,150,.55); box-shadow: inset 0 0 0 2px rgba(0,0,0,.22), 0 3px 7px rgba(0,0,0,.45); }
 .abomb { position: absolute; z-index: 2; transform: translate(-50%, -50%); pointer-events: none; font-size: 30px; line-height: 1; filter: drop-shadow(0 0 10px rgba(255,90,40,.75)); animation: bombPulse .5s ease-in-out infinite alternate; }
-@keyframes bombPulse { from { transform: translate(-50%, -50%) scale(1); } to { transform: translate(-50%, -50%) scale(1.22); } }
+@keyframes bombPulse { from { scale: 1; } to { scale: 1.22; } }
 .ablast { position: absolute; z-index: 2; pointer-events: none; border-radius: 6px; background: radial-gradient(circle, rgba(255,240,190,.95), rgba(255,140,40,.75) 60%, rgba(255,80,20,.25)); box-shadow: 0 0 18px rgba(255,150,50,.8); }
 .aslime { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50% 50% 46% 46%; z-index: 1; pointer-events: none; transition: left .18s linear, top .18s linear; background: radial-gradient(circle at 36% 30%, #C6FF9E, #58C472 55%, #1E7A46); box-shadow: 0 0 14px rgba(90,230,140,.75), 0 4px 7px rgba(0,0,0,.4); }
 .aslime.big { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
@@ -5922,7 +6016,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .rope .knot { position: absolute; top: 50%; width: 34px; height: 34px; border-radius: 50%; background: #FFC93D;
   border: 4px solid #fff; transform: translate(-50%, -50%); box-shadow: 0 0 18px rgba(255,201,61,.85), 0 6px 12px rgba(0,0,0,.3); transition: left .3s; }
 .chatrow { display: flex; gap: 8px; align-items: center; background: rgba(255,255,255,.22); border-radius: 14px; padding: 7px 12px; margin: 6px 0; font-weight: 700; text-align: left; }
-.afield { position: relative; width: min(100%, max(260px, calc(100vh - 200px))); width: min(100%, max(260px, calc(100dvh - 200px))); aspect-ratio: 1; margin: 6px auto; border-radius: 18px;
+.afield { position: relative; width: min(100%, max(340px, calc((100vh - 190px) * 16 / 9))); width: min(100%, max(340px, calc((100dvh - 190px) * 16 / 9))); aspect-ratio: 16 / 9; margin: 6px auto; border-radius: 18px;
   background:
     radial-gradient(ellipse at 50% 40%, rgba(255,255,255,.08), rgba(0,0,0,.34) 82%),
     repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 45px),
@@ -5941,10 +6035,10 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .astar { position: absolute; transform: translate(-50%, -50%); z-index: 1; font-size: 24px; line-height: 1; color: #FFE066;
   text-shadow: 0 0 10px rgba(255,205,60,.95), 0 0 22px rgba(255,170,30,.55), 0 2px 3px rgba(0,0,0,.4); animation: starBob 1.6s ease-in-out infinite; pointer-events: none; }
 .astar.gold { font-size: 36px; color: #FFC93D; text-shadow: 0 0 14px rgba(255,201,61,1), 0 0 34px rgba(255,160,20,.8), 0 2px 4px rgba(0,0,0,.45); }
-@keyframes starBob { 0%,100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -62%) scale(1.12); } }
+@keyframes starBob { 0%,100% { translate: 0 0; scale: 1; } 50% { translate: 0 -4px; scale: 1.12; } }
 .acrown { position: absolute; transform: translate(-50%, -135%); z-index: 3; pointer-events: none;
   transition: left .18s linear, top .18s linear; filter: drop-shadow(0 0 12px rgba(255,201,61,.9)); animation: starBob 2s ease-in-out infinite; }
-.acrate { position: absolute; width: 13.3%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 2; pointer-events: none;
+.acrate { position: absolute; width: 10%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 2; pointer-events: none;
   transition: left .18s linear, top .18s linear; display: flex; align-items: center; justify-content: center; font-size: 30px;
   background: linear-gradient(150deg, #B97B34, #8A5518); border: 3px solid #E8B96A; border-radius: 9px;
   box-shadow: 0 0 18px rgba(255,180,80,.5), 0 6px 12px rgba(0,0,0,.45), inset 0 0 0 3px rgba(0,0,0,.18); }
@@ -5966,7 +6060,7 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
   border: 5px solid rgba(255,224,102,.9); box-shadow: 0 0 22px rgba(255,210,80,.55), inset 0 0 18px rgba(255,210,80,.3); opacity: 0; }
 .tapbtn.rowbtn { background: linear-gradient(180deg, #38BDF8, #0369A1); }
 .tapbtn.rowbtn.now { background: linear-gradient(180deg, #FFE066, #FF9F1C); color: #4A2503; box-shadow: 0 0 34px rgba(255,200,60,.9); animation: pop .25s ease; }
-.splatgrid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: repeat(12, 1fr); gap: 2px; z-index: 0; }
+.splatgrid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(18, 1fr); grid-template-rows: repeat(10, 1fr); gap: 2px; z-index: 0; }
 .scell { border-radius: 3px; background: rgba(255,255,255,.07); }
 .duel-bang { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 120px; line-height: 1.1; text-align: center; color: #FFC93D;
   text-shadow: 0 0 34px rgba(255,180,40,.75), 0 6px 0 #7C2D12, 0 12px 30px rgba(0,0,0,.55); animation: pop .3s ease; }
@@ -6116,11 +6210,26 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 /* Big-screen lobby / chooser / podium: use the width a TV offers.
    Phone widths are untouched (these rules start at 1500px). */
 @media (min-width: 1500px) {
-  .wrap { max-width: 1520px; }
+  .wrap { max-width: 1760px; }
+  .stage:not(:has(.afield)):not(:has(.ngboard)) { max-width: 1760px; }
+  .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; align-content: start; }
+  .wolfgrid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
   .games { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
   .seats { grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); }
   .pod { width: 185px; }
 }
+/* --- 16:9 play HUD ---------------------------------------------------------
+   render() stamps .playhud on #app while the host shows a field game:
+   the title, timer bar, score chips and hint float OVER the stage so
+   the field itself can span the TV (16:9, ~91% of a 1920px width). */
+#app.playhud .stage { padding: 8px 10px; }
+#app.playhud .stage > h2 { position: absolute; top: 12px; left: 18px; z-index: 8; margin: 0; pointer-events: none; font-size: 22px; }
+@media (min-width: 1100px) { #app.playhud .stage:has(> #afield) > .baloo { position: absolute; top: 12px; left: 300px; right: 300px; z-index: 8; margin: 0; text-align: center; pointer-events: none; } }
+#app.playhud .stage > .scorebar { position: absolute; top: 10px; right: 14px; z-index: 8; margin: 0; max-width: 62%; justify-content: flex-end; pointer-events: none; }
+#app.playhud .stage > .tbar { position: absolute; top: 0; left: 0; right: 0; height: 6px; margin: 0; border-radius: 0; z-index: 9; }
+#app.playhud .stage > p.center { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 8; margin: 0; max-width: 94%; padding: 5px 16px; border-radius: 999px; background: rgba(10,8,20,.55); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#app.playhud .afield:not(.wide) { width: min(100%, calc((100vh - 104px) * 16 / 9)); width: min(100%, calc((100dvh - 104px) * 16 / 9)); margin: 0 auto; }
+#app.playhud .topbar { margin-bottom: 2px; }
 </style>
 </head>
 <body>
@@ -6716,9 +6825,7 @@ function countdownHTML(g) {
 }
 // Shared client helpers for the two platformer games (wave 4): rect
 // geometry in the arena's % space, stick-fighter pose + damage colour.
-function rectStyle(r) {
-  return 'left:' + ((r.x + 12) / 24 * 100) + '%;top:' + ((r.y + 12) / 24 * 100) + '%;width:' + (r.w / 24 * 100) + '%;height:' + (r.h / 24 * 100) + '%';
-}
+function rectStyle(r) { return 'left:' + PX(r.x) + '%;top:' + PY(r.y) + '%;width:' + (r.w / 32 * 100) + '%;height:' + (r.h / 18 * 100) + '%'; }
 // Đá Bóng Đầu To maps its 38 x 19.2 space onto the wide field.
 function rectStyleS(r) {
   return 'left:' + ((r.x + 19) / 38 * 100) + '%;top:' + ((r.y + 9.6) / 19.2 * 100) + '%;width:' + (r.w / 38 * 100) + '%;height:' + (r.h / 19.2 * 100) + '%';
@@ -6771,7 +6878,6 @@ function hostStage(v) {
     if (g.phase === 'dodge') {
       h += '<div class="baloo" style="font-size:25px">Né hết đạn pháo! Trúng là mất 1 mạng…</div>';
       h += '<div class="afield" id="afield"><div class="aring" id="aring"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
-      for (var nI = 0; nI < (g.balls ? g.balls.length : 0); nI++) h += '<div class="aball" id="nball-' + nI + '"></div>';
       for (var dI = 0; dI < v.players.length; dI++) { var dp = v.players[dI]; h += '<div class="ablob" id="ablob-' + dp.seat + '" style="left:50%;top:50%;color:' + COLORS[dp.color] + '">' + orbSVG(dp.color, 46) + '<div class="aname">' + esc(dp.name) + '</div><div class="alives" id="alives-' + dp.seat + '"></div></div>'; }
       h += '</div>';
       h += '<p class="center">Đạn bay càng lúc càng dày · Hết mạng là bị loại · Người sống sót cuối cùng thắng!</p>';
@@ -6779,11 +6885,11 @@ function hostStage(v) {
   } else if (g.id === 'keo-co') {
     if (g.phase === 'pull') {
       h += '<div class="baloo" style="font-size:25px">Đội A (ghế lẻ) ⟵ KÉO! ⟶ Đội B (ghế chẵn)</div>';
-      var kpct = Math.max(3, Math.min(97, 50 + (g.knot / 84) * 46));
-      h += '<div class="rope"><div class="mid"></div><div class="knot" style="left:' + kpct + '%"></div></div>';
+      var kpct = Math.max(3, Math.min(97, 50 + (g.knot / 112) * 46));
+      h += '<div class="rope"><div class="mid"></div><div class="knot" id="tugknot" style="left:' + kpct + '%"></div></div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 20000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
       h += '<div class="scorebar">';
-      for (var tI = 0; tI < v.players.length; tI++) { var tp = v.players[tI]; var tm = tp.seat % 2 === 1 ? 'A' : 'B'; h += '<span class="scorechip">' + blobSVG(tp.color, tp.mood, 28) + ' ' + esc(tp.name) + ' · Đội ' + tm + ' · ' + (g.presses ? (g.presses[tp.seat] || 0) : 0) + ' lần kéo</span>'; }
+      for (var tI = 0; tI < v.players.length; tI++) { var tp = v.players[tI]; var tm = tp.seat % 2 === 1 ? 'A' : 'B'; h += '<span class="scorechip">' + blobSVG(tp.color, tp.mood, 28) + ' ' + esc(tp.name) + ' · Đội ' + tm + ' · <span id="tugpress-' + tp.seat + '">' + (g.presses ? (g.presses[tp.seat] || 0) : 0) + '</span> lần kéo</span>'; }
       h += '</div>';
       h += '<p class="center">Kéo nút thắt vàng chạm mép phía đội mình là thắng ngay!</p>';
     }
@@ -6816,11 +6922,10 @@ function hostStage(v) {
     if (g.phase === 'steal') {
       h += '<div class="baloo" style="font-size:25px">Nhặt sao vàng, xô đối thủ cho rơi sao! Sao lớn = 3 sao thường</div>';
       h += '<div class="afield" id="afield"><div class="aring" id="aring"></div>';
-      if (g.stars) for (var sI2 = 0; sI2 < g.stars.length; sI2++) { var st = g.stars[sI2]; h += '<div class="astar' + (st.gold ? ' gold' : '') + '" id="astar-' + st.id + '" style="left:' + ((st.x + 12) / 24 * 100) + '%;top:' + ((st.y + 12) / 24 * 100) + '%">★</div>'; }
       for (var aI2 = 0; aI2 < v.players.length; aI2++) { var ap2 = v.players[aI2]; h += '<div class="ablob" id="ablob-' + ap2.seat + '" style="left:50%;top:50%;color:' + COLORS[ap2.color] + '">' + orbSVG(ap2.color, 46) + '<div class="aname">' + esc(ap2.name) + '</div></div>'; }
       h += '</div>';
       h += '<div class="scorebar">';
-      for (var bI = 0; bI < v.players.length; bI++) { var bp = v.players[bI]; h += '<span class="scorechip">' + orbSVG(bp.color, 26) + ' ' + esc(bp.name) + ' · ★ ' + (g.banked ? (g.banked[bp.seat] || 0) : 0) + '</span>'; }
+      for (var bI = 0; bI < v.players.length; bI++) { var bp = v.players[bI]; h += '<span class="scorechip">' + orbSVG(bp.color, 26) + ' ' + esc(bp.name) + ' · ★ <span id="bankn-' + bp.seat + '">' + (g.banked ? (g.banked[bp.seat] || 0) : 0) + '</span></span>'; }
       h += '</div>';
     }
   } else if (g.id === 'giu-vuong-mien') {
@@ -6837,7 +6942,7 @@ function hostStage(v) {
     if (g.phase === 'splat') {
       h += '<div class="baloo" style="font-size:25px">Chạy sơn sàn theo màu của mình — hết giờ ai nhiều ô nhất thắng!</div>';
       h += '<div class="afield" id="afield"><div class="splatgrid">';
-      for (var gI = 0; gI < 144; gI++) { var gs = g.grid ? g.grid[gI] : 0; var gp2 = gs ? playerOf(v, gs) : null; h += '<div class="scell" id="scell-' + gI + '"' + (gp2 ? ' style="background:' + COLORS[gp2.color] + '"' : '') + '></div>'; }
+      for (var gI = 0; gI < 180; gI++) { var gs = g.grid ? g.grid[gI] : 0; var gp2 = gs ? playerOf(v, gs) : null; h += '<div class="scell" id="scell-' + gI + '"' + (gp2 ? ' style="background:' + COLORS[gp2.color] + '"' : '') + '></div>'; }
       h += '</div>';
       for (var sI3 = 0; sI3 < v.players.length; sI3++) { var sp3 = v.players[sI3]; h += '<div class="ablob" id="ablob-' + sp3.seat + '" style="left:50%;top:50%;color:' + COLORS[sp3.color] + '">' + orbSVG(sp3.color, 40) + '<div class="aname">' + esc(sp3.name) + '</div></div>'; }
       h += '</div>';
@@ -6869,9 +6974,8 @@ function hostStage(v) {
       for (var oI = 0; oI < 4; oI++) { var op = g.owners ? playerOf(v, g.owners[dirKeys[oI]]) : null; if (op) h += '<span class="scorechip">' + dirNames[dirKeys[oI]] + ': ' + esc(op.name) + '</span>'; }
       h += '</div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - 60000) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      h += '<div class="afield" id="afield"><div class="aring" style="width:83.4%;height:83.4%"></div>';
-      for (var bI2 = 0; bI2 < (g.balls ? g.balls.length : 0); bI2++) h += '<div class="aball" id="nball-' + bI2 + '"></div>';
-      if (g.star) h += '<div class="astar gold" id="cstar" style="left:' + ((g.star.x + 12) / 24 * 100) + '%;top:' + ((g.star.y + 12) / 24 * 100) + '%">★</div>';
+      h += '<div class="afield" id="afield"><div class="aring" style="width:95%;height:91.1%"></div>';
+      if (g.star) h += '<div class="astar gold" id="cstar" style="left:' + PX(g.star.x) + '%;top:' + PY(g.star.y) + '%">★</div>';
       h += '<div class="ablob" id="sharedblob" style="left:50%;top:50%">' + sharedOrbSVG(v, 52) + '<div class="aname">CẢ ĐỘI</div></div>';
       h += '</div>';
       h += '<p class="center">Một quả bóng, bốn người lái — mỗi người giữ một hướng! Chạm sao ⭐ là +1 điểm kiểm tra · Trúng đạn là cả đội mất 1 tim</p>';
@@ -6881,8 +6985,8 @@ function hostStage(v) {
       h += '<div class="scorebar"><span class="scorechip">📦 Đã giao: <b id="delivn">' + (g.deliveries || 0) + '</b> hộp</span><span class="scorechip">Mê cung ' + ((g.layout || 0) + 1) + '/3</span></div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 75000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
       h += '<div class="afield" id="afield">';
-      if (g.goal) h += '<div class="agoal" style="left:' + ((g.goal.x + 12) / 24 * 100) + '%;top:' + ((g.goal.y + 12) / 24 * 100) + '%;width:' + (g.goal.w / 24 * 100) + '%;height:' + (g.goal.h / 24 * 100) + '%">ĐÍCH</div>';
-      if (g.walls) for (var wI = 0; wI < g.walls.length; wI++) { var wl = g.walls[wI]; h += '<div class="awallseg" style="left:' + ((wl.x + 12) / 24 * 100) + '%;top:' + ((wl.y + 12) / 24 * 100) + '%;width:' + (wl.w / 24 * 100) + '%;height:' + (wl.h / 24 * 100) + '%"></div>'; }
+      if (g.goal) h += '<div class="agoal" style="' + rectStyle(g.goal) + '">ĐÍCH</div>';
+      if (g.walls) for (var wI = 0; wI < g.walls.length; wI++) { var wl = g.walls[wI]; h += '<div class="awallseg" style="' + rectStyle(wl) + '"></div>'; }
       h += '<div class="acrate" id="acrate" style="left:50%;top:50%">📦</div>';
       for (var pI3 = 0; pI3 < v.players.length; pI3++) { var pp3 = v.players[pI3]; h += '<div class="ablob" id="ablob-' + pp3.seat + '" style="left:50%;top:50%;color:' + COLORS[pp3.color] + '">' + orbSVG(pp3.color, 44) + '<div class="aname">' + esc(pp3.name) + '</div></div>'; }
       h += '</div>';
@@ -6902,8 +7006,8 @@ function hostStage(v) {
   } else if (g.id === 'xe-tank') {
     if (g.phase === 'tank') {
       h += '<div class="baloo" style="font-size:25px">Lái xe tăng, bắn hạ đối thủ! Núp sau thùng chắn — đạn không xuyên qua được</div>';
-      h += '<div class="afield" id="afield"><div class="aframe" style="left:11.67%;top:11.67%;width:76.67%;height:76.67%"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
-      if (g.blocks) for (var kI = 0; kI < g.blocks.length; kI++) { var kb = g.blocks[kI]; h += '<div class="ablock" style="left:' + ((kb.x + 12) / 24 * 100) + '%;top:' + ((kb.y + 12) / 24 * 100) + '%;width:' + (kb.w / 24 * 100) + '%;height:' + (kb.h / 24 * 100) + '%"></div>'; }
+      h += '<div class="afield" id="afield"><div class="aframe" style="left:2.5%;top:4.44%;width:95%;height:91.11%"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
+      if (g.blocks) for (var kI = 0; kI < g.blocks.length; kI++) { var kb = g.blocks[kI]; h += '<div class="ablock" style="' + rectStyle(kb) + '"></div>'; }
       for (var tI2 = 0; tI2 < v.players.length; tI2++) { var tp2 = v.players[tI2]; var fc = g.facing ? g.facing[tp2.seat] : null; var deg = fc ? Math.round(Math.atan2(fc.y, fc.x) * 180 / Math.PI) : 0; h += '<div class="ablob" id="ablob-' + tp2.seat + '" style="left:50%;top:50%;color:' + COLORS[tp2.color] + '"><span class="orbwrap">' + orbSVG(tp2.color, 46) + '<span class="abarrel" id="barrel-' + tp2.seat + '" style="transform:rotate(' + deg + 'deg)"></span></span><div class="aname">' + esc(tp2.name) + '</div><div class="alives" id="alives-' + tp2.seat + '"></div></div>'; }
       h += '</div>';
       h += '<p class="center">Trúng đạn mất 1 mạng · Hết 3 mạng là bị loại · A: bắn · B: lướt nhanh</p>';
@@ -6912,10 +7016,8 @@ function hostStage(v) {
     if (g.phase === 'bomber') {
       h += '<div class="baloo" style="font-size:25px">Đặt bom phá tường gỗ, thổi bay đối thủ! Né xa vụ nổ chữ thập</div>';
       h += '<div class="afield" id="afield">';
-      if (g.hard) for (var hI2 = 0; hI2 < g.hard.length; hI2++) h += '<div class="bhard" style="left:' + ((1 + 2 * g.hard[hI2][0]) / 24 * 100) + '%;top:' + ((3 + 2 * g.hard[hI2][1]) / 24 * 100) + '%;width:8.33%;height:8.33%"></div>';
-      if (g.soft) for (var sI4 = 0; sI4 < g.soft.length; sI4++) h += '<div class="bsoft" style="left:' + ((1 + 2 * g.soft[sI4][0]) / 24 * 100) + '%;top:' + ((3 + 2 * g.soft[sI4][1]) / 24 * 100) + '%;width:8.33%;height:8.33%"></div>';
-      if (g.blasts) for (var bI3 = 0; bI3 < g.blasts.length; bI3++) for (var cI5 = 0; cI5 < g.blasts[bI3].cells.length; cI5++) { var bc = g.blasts[bI3].cells[cI5]; h += '<div class="ablast" style="left:' + ((1 + 2 * bc[0]) / 24 * 100) + '%;top:' + ((3 + 2 * bc[1]) / 24 * 100) + '%;width:8.33%;height:8.33%"></div>'; }
-      if (g.bombs) for (var boI = 0; boI < g.bombs.length; boI++) { var bo = g.bombs[boI]; h += '<div class="abomb" id="abomb-' + bo.id + '" style="left:' + ((bo.x + 12) / 24 * 100) + '%;top:' + ((bo.y + 12) / 24 * 100) + '%">💣</div>'; }
+      if (g.hard) for (var hI2 = 0; hI2 < g.hard.length; hI2++) h += '<div class="bhard" style="left:' + (g.hard[hI2][0] * 6.25) + '%;top:' + (g.hard[hI2][1] * 11.1111) + '%;width:6.25%;height:11.1111%"></div>';
+      if (g.soft) for (var sI4 = 0; sI4 < g.soft.length; sI4++) h += '<div class="bsoft" id="bsoft-' + g.soft[sI4][0] + ',' + g.soft[sI4][1] + '" style="left:' + (g.soft[sI4][0] * 6.25) + '%;top:' + (g.soft[sI4][1] * 11.1111) + '%;width:6.25%;height:11.1111%"></div>';
       for (var bI4 = 0; bI4 < v.players.length; bI4++) { var bp4 = v.players[bI4]; h += '<div class="ablob" id="ablob-' + bp4.seat + '" style="left:50%;top:50%;color:' + COLORS[bp4.color] + '">' + orbSVG(bp4.color, 42) + '<div class="aname">' + esc(bp4.name) + '</div><div class="alives" id="alives-' + bp4.seat + '"></div></div>'; }
       h += '</div>';
       h += '<p class="center">Tường xám không phá được · Tường gỗ phá được · Nổ dây chuyền khi lửa chạm bom khác · Trúng nổ mất 1 mạng (có 2 mạng)</p>';
@@ -6955,7 +7057,7 @@ function hostStage(v) {
   } else if (g.id === 'thu-thanh') {
     if (g.phase === 'defend') {
       h += '<div class="scorebar"><span class="scorechip">💎 Pha lê: <b id="crystalhp">' + (g.crystal ? g.crystal.hp : 10) + '</b>/10</span><span class="scorechip">🟢 Đã hạ: <b id="killn">' + (g.kills || 0) + '</b> slime</span></div>';
-      h += '<div class="afield" id="afield"><div class="aring" style="width:83.4%;height:83.4%"></div>';
+      h += '<div class="afield" id="afield"><div class="aring" style="width:95%;height:91.1%"></div>';
       h += '<div class="acrystal">💎<div class="chp" id="crystalhearts">' + (g.crystal ? '❤'.repeat(Math.max(0, g.crystal.hp)) : '') + '</div></div>';
       for (var dI4 = 0; dI4 < v.players.length; dI4++) { var dp4 = v.players[dI4]; var fc2 = g.facing ? g.facing[dp4.seat] : null; var deg2 = fc2 ? Math.round(Math.atan2(fc2.y, fc2.x) * 180 / Math.PI) : 0; h += '<div class="ablob" id="ablob-' + dp4.seat + '" style="left:50%;top:50%;color:' + COLORS[dp4.color] + '"><span class="orbwrap">' + orbSVG(dp4.color, 46) + '<span class="abarrel" id="barrel-' + dp4.seat + '" style="transform:rotate(' + deg2 + 'deg)"></span></span><div class="aname">' + esc(dp4.name) + '</div></div>'; }
       h += '</div>';
@@ -6977,7 +7079,7 @@ function hostStage(v) {
       (g.platforms || []).forEach(function (pf) { h += '<div class="fplat' + (pf.oneWay ? ' oneway' : '') + '" style="' + rectStyle(pf) + '"></div>'; });
       for (var fI = 0; fI < v.players.length; fI++) {
         var fp = v.players[fI]; var fb = g.blobs[fp.seat];
-        h += '<div class="ablob" id="ablob-' + fp.seat + '" style="left:' + ((fb.x + 12) / 24 * 100) + '%;top:' + ((fb.y + 12) / 24 * 100) + '%;color:' + COLORS[fp.color] + '">'
+        h += '<div class="ablob" id="ablob-' + fp.seat + '" style="left:' + PX(fb.x) + '%;top:' + PY(fb.y) + '%;color:' + COLORS[fp.color] + '">'
           + '<div class="admg" id="dmg-' + fp.seat + '" style="color:' + dmgColor(fb.dmg || 0) + '">' + (fb.dmg || 0) + '%</div>'
           + '<span id="fig-' + fp.seat + '">' + stickSVG(fp.color, fightPose(fb), fb.face) + '</span>'
           + '<div class="alives" id="alives-' + fp.seat + '">' + '♥'.repeat(Math.max(0, fb.lives)) + '</div>'
@@ -6995,11 +7097,11 @@ function hostStage(v) {
       (g.buttons || []).forEach(function (bt) { h += '<div class="tbtn" style="' + rectStyle(bt) + '"></div>'; });
       if (g.doors) { h += '<div class="tdoor lua" style="' + rectStyle(g.doors.lua) + '"></div>'; h += '<div class="tdoor nuoc" style="' + rectStyle(g.doors.nuoc) + '"></div>'; }
       (g.gates || []).forEach(function (gt, gi) { h += '<div class="tgate' + (g.gateOpen ? ' open' : '') + '" id="gate-' + gi + '" style="' + rectStyle(gt) + '"></div>'; });
-      (g.gems || []).forEach(function (gm) { h += '<div class="tgem ' + gm.el + (gm.taken ? ' taken' : '') + '" id="tgem-' + gm.id + '" style="left:' + ((gm.x + 12) / 24 * 100) + '%;top:' + ((gm.y + 12) / 24 * 100) + '%"><i></i></div>'; });
+      (g.gems || []).forEach(function (gm) { h += '<div class="tgem ' + gm.el + (gm.taken ? ' taken' : '') + '" id="tgem-' + gm.id + '" style="left:' + PX(gm.x) + '%;top:' + PY(gm.y) + '%"><i></i></div>'; });
       for (var tI = 0; tI < v.players.length; tI++) {
         var tp = v.players[tI]; var tc = g.chars[tp.seat];
         if (!tc) continue;
-        h += '<div class="achar' + (tc.home ? ' home' : '') + '" id="achar-' + tp.seat + '" style="left:' + ((tc.x + 12) / 24 * 100) + '%;top:' + ((tc.y + 12) / 24 * 100) + '%">' + charSVG(tc.el, tp.color) + '<div class="aname">' + esc(tp.name) + '</div></div>';
+        h += '<div class="achar' + (tc.home ? ' home' : '') + '" id="achar-' + tp.seat + '" style="left:' + PX(tc.x) + '%;top:' + PY(tc.y) + '%">' + charSVG(tc.el, tp.color) + '<div class="aname">' + esc(tp.name) + '</div></div>';
       }
       h += '</div>';
       h += '<p class="center">Hồ đỏ chỉ Lửa qua được, hồ xanh chỉ Nước, hồ xanh lá hại cả hai! Đứng lên nút vàng để mở cổng cho đồng đội, rồi về đúng cửa của mình.</p>';
@@ -7062,11 +7164,27 @@ function hostStage(v) {
       h += '<div class="center baloo" style="font-size:24px">Lượt của: ' + (turnP ? esc(turnP.name) : '') + (g.dice ? ' · <span class="diceface">' + DICE_FACES[g.dice] + '</span> ' + g.dice + ' chấm' : ' · đang chờ thảy xúc xắc…') + '</div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
+    // Wide layout: the square board keeps the full stage height in the
+    // middle; the freed side columns carry the turn order + per-player
+    // progress (left) and the event log (right), so the whole row
+    // spans the TV instead of leaving two dead bands.
+    h += '<div class="ngrow"><div class="ngside"><h3>Thứ tự lượt & tiến độ</h3>';
+    var turnIdx = 0;
+    for (var tIx = 0; tIx < v.players.length; tIx++) if (v.players[tIx].seat === g.turn) turnIdx = tIx;
+    for (var nI2 = 0; nI2 < v.players.length; nI2++) {
+      var np3 = v.players[(turnIdx + nI2) % v.players.length];
+      var hs = g.horses ? (g.horses[np3.seat] || []) : [];
+      var home3 = 0, sum3 = 0;
+      for (var hI3 = 0; hI3 < hs.length; hI3++) { if (hs[hI3] === 58) home3++; sum3 += hs[hI3]; }
+      var isTurn = np3.seat === g.turn && g.phase !== 'ngWin';
+      h += '<div class="rrow"' + (isTurn ? ' style="outline:3px solid #FFC93D"' : '') + '>' + blobSVG(np3.color, np3.mood, 28) + '<span>' + esc(np3.name) + (isTurn ? ' <b>◀ đang đi</b>' : '') + '<br><span class="muted">🐴 về đích ' + home3 + '/4 · tiến độ ' + (g.progress ? (g.progress[np3.seat] || 0) : 0) + '</span><span class="progbar"><i style="width:' + Math.round(sum3 / 232 * 100) + '%;background:' + COLORS[np3.color] + '"></i></span></span></div>';
+    }
+    h += '</div><div class="ngmid">';
     h += nguaBoardHTML(v, g);
-    h += '<div class="scorebar">';
-    for (var nI2 = 0; nI2 < v.players.length; nI2++) { var np3 = v.players[nI2]; var hs = g.horses ? (g.horses[np3.seat] || []) : []; var home3 = 0; for (var hI3 = 0; hI3 < hs.length; hI3++) if (hs[hI3] === 58) home3++; h += '<span class="scorechip">' + blobSVG(np3.color, np3.mood, 28) + ' ' + esc(np3.name) + ' · 🐴 về đích ' + home3 + '/4 · tiến độ ' + (g.progress ? (g.progress[np3.seat] || 0) : 0) + '</span>'; }
-    h += '</div>';
-    if (g.log) for (var lI = Math.max(0, g.log.length - 4); lI < g.log.length; lI++) h += '<div class="chatrow">🎲 ' + esc(g.log[lI]) + '</div>';
+    h += '</div><div class="ngside"><h3>Diễn biến</h3>';
+    if (g.log && g.log.length) for (var lI = 0; lI < g.log.length; lI++) h += '<div class="chatrow">🎲 ' + esc(g.log[lI]) + '</div>';
+    else h += '<p class="muted">Chưa có diễn biến nào…</p>';
+    h += '</div></div>';
     h += '<p class="center">Ô vàng là ô an toàn — ngựa đứng đó không bị đá. Thảy 6 được đi tiếp; 6 ba lần liên tiếp thì mất lượt!</p>';
   } else if (g.id === 'da-bong') {
     var sb = g.scoreboard || { do: 0, xanh: 0 };
@@ -7095,13 +7213,13 @@ function hostStage(v) {
     (g.solids || []).forEach(function (s) { h += '<div class="tbrick" style="' + rectStyle(s) + '"></div>'; });
     (g.spikes || []).forEach(function (sp3) { h += '<div class="fspike" style="' + rectStyle(sp3) + '"></div>'; });
     if (g.door) h += '<div class="fdoor" style="' + rectStyle(g.door) + '"></div>';
-    (g.flies || []).forEach(function (fl) { h += '<div class="ffly' + (fl.taken ? ' taken' : '') + '" id="ffly-' + fl.id + '" style="left:' + ((fl.x + 12) / 24 * 100) + '%;top:' + ((fl.y + 12) / 24 * 100) + '%"></div>'; });
-    (g.crates || []).forEach(function (cr) { h += '<div class="fcrate" id="fcrate-' + cr.id + '" style="left:' + ((cr.x + 12) / 24 * 100) + '%;top:' + ((cr.y + 12) / 24 * 100) + '%"></div>'; });
+    (g.flies || []).forEach(function (fl) { h += '<div class="ffly' + (fl.taken ? ' taken' : '') + '" id="ffly-' + fl.id + '" style="left:' + PX(fl.x) + '%;top:' + PY(fl.y) + '%"></div>'; });
+    (g.crates || []).forEach(function (cr) { h += '<div class="fcrate" id="fcrate-' + cr.id + '" style="left:' + PX(cr.x) + '%;top:' + PY(cr.y) + '%"></div>'; });
     for (var fI2 = 0; fI2 < v.players.length; fI2++) {
       var fp3 = v.players[fI2]; var ff = g.frogs[fp3.seat];
       if (!ff) continue;
       var bellyP = ff.bellySeat ? playerOf(v, ff.bellySeat) : null;
-      h += '<div class="afrog' + (ff.state === 'carry' ? ' carry' : '') + '" id="afrog-' + fp3.seat + '" data-st="' + ff.state + ':' + (ff.bellySeat || '') + '" style="left:' + ((ff.x + 12) / 24 * 100) + '%;top:' + ((ff.y + 12) / 24 * 100) + '%' + (ff.state === 'in' ? ';display:none' : '') + '">' + frogSVG(fp3.color, bellyP ? bellyP.color : null) + '<div class="aname">' + esc(fp3.name) + '</div></div>';
+      h += '<div class="afrog' + (ff.state === 'carry' ? ' carry' : '') + '" id="afrog-' + fp3.seat + '" data-st="' + ff.state + ':' + (ff.bellySeat || '') + '" style="left:' + PX(ff.x) + '%;top:' + PY(ff.y) + '%' + (ff.state === 'in' ? ';display:none' : '') + '">' + frogSVG(fp3.color, bellyP ? bellyP.color : null) + '<div class="aname">' + esc(fp3.name) + '</div></div>';
     }
     h += '</div>';
     h += '<p class="center">Đứng cạnh đồng đội rồi bấm B/X để NUỐT bạn vào bụng — ếch đang vác nhảy xa và cao hơn hẳn! Sang bờ an toàn thì bấm B/X lần nữa để nhả ra. Cả đội cùng đứng vào cửa xanh là qua màn.</p>';
@@ -7112,20 +7230,20 @@ function hostStage(v) {
     if (g.phase === 'aim' && turnP3 && g.cannons && g.cannons[g.turn]) h += '<span class="scorechip">Góc ' + g.cannons[g.turn].angle + '° · Lực ' + g.cannons[g.turn].power + '</span>';
     h += '</div>';
     if (g.phase === 'aim') h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    h += '<div class="afield art" id="afield"><div class="artwrap"><svg viewBox="0 0 240 160" preserveAspectRatio="none">';
-    var pts = '0,160 ';
-    for (var cI = 0; cI < (g.heights || []).length; cI++) { var hy = Math.round(((g.heights[cI] + 8) * 10) * 10) / 10; pts += (cI * 2) + ',' + hy + ' ' + ((cI + 1) * 2) + ',' + hy + ' '; }
-    pts += '240,160';
+    h += '<div class="afield art" id="afield"><div class="artwrap"><svg viewBox="0 0 320 180" preserveAspectRatio="none">';
+    var pts = '0,180 ';
+    for (var cI = 0; cI < (g.heights || []).length; cI++) { var hy = Math.round(((g.heights[cI] + 9) * 10) * 10) / 10; pts += (cI * 2) + ',' + hy + ' ' + ((cI + 1) * 2) + ',' + hy + ' '; }
+    pts += '320,180';
     h += '<polygon points="' + pts + '" fill="#3E6B35" stroke="#7AC74F" stroke-width="1.6"/>';
     if (g.shell && g.shell.trail && g.shell.trail.length > 1) {
       var tp9 = '';
-      for (var tI9 = 0; tI9 < g.shell.trail.length; tI9++) tp9 += Math.round((g.shell.trail[tI9].x + 12) * 10) + ',' + Math.round((g.shell.trail[tI9].y + 8) * 10) + ' ';
+      for (var tI9 = 0; tI9 < g.shell.trail.length; tI9++) tp9 += Math.round((g.shell.trail[tI9].x + 16) * 10) + ',' + Math.round((g.shell.trail[tI9].y + 9) * 10) + ' ';
       h += '<polyline points="' + tp9 + '" fill="none" stroke="rgba(255,240,190,.75)" stroke-width="1.6" stroke-dasharray="3 3"/>';
     }
     for (var nI = 0; nI < v.players.length; nI++) {
       var np9 = v.players[nI]; var cn = g.cannons ? g.cannons[np9.seat] : null;
       if (!cn) continue;
-      var cx9 = Math.round((cn.x + 12) * 10), cy9 = Math.round((cn.y + 8) * 10);
+      var cx9 = Math.round((cn.x + 16) * 10), cy9 = Math.round((cn.y + 9) * 10);
       var colr = COLORS[np9.color] || '#fff';
       if (!cn.alive) {
         h += '<g opacity=".55"><circle cx="' + cx9 + '" cy="' + (cy9 - 4) + '" r="6" fill="#5A6472"/><path d="M' + (cx9 - 4) + ' ' + (cy9 - 8) + ' l8 8 M' + (cx9 + 4) + ' ' + (cy9 - 8) + ' l-8 8" stroke="#FF8A7A" stroke-width="2"/></g>';
@@ -7140,8 +7258,8 @@ function hostStage(v) {
       h += '<text x="' + cx9 + '" y="' + (cy9 + 13) + '" font-size="8.5" font-weight="700" fill="#fff" text-anchor="middle" style="text-shadow:0 1px 2px #000">' + esc(np9.name) + '</text>';
     }
     h += '</svg></div>';
-    if (g.shell) h += '<div class="ashell" id="shellpt" style="left:' + ((g.shell.x + 12) / 24 * 100) + '%;top:' + ((g.shell.y + 8) / 16 * 100) + '%"></div>';
-    if (g.boom) h += '<div class="boomflash" style="left:' + ((g.boom.x + 12) / 24 * 100) + '%;top:' + ((g.boom.y + 8) / 16 * 100) + '%"></div>';
+    if (g.shell) h += '<div class="ashell" id="shellpt" style="left:' + PX(g.shell.x) + '%;top:' + PY(g.shell.y) + '%"></div>';
+    if (g.boom) h += '<div class="boomflash" style="left:' + PX(g.boom.x) + '%;top:' + PY(g.boom.y) + '%"></div>';
     h += '</div>';
     h += '<p class="center">Căn góc như Gunny: ▲▼ chỉnh góc · ◀▶ chỉnh lực · X đổi hướng · A bắn. Không có đường đạn mẫu đâu — gió còn đổi mỗi lượt nữa!</p>';
   }
@@ -7270,20 +7388,19 @@ function viewSig(v) {
     } else if (g.id === 'ne-dan') {
       var ak2 = '';
       if (g.blobs) for (var bs2 in g.blobs) ak2 += bs2 + (g.blobs[bs2].alive ? '1' : '0') + g.blobs[bs2].lives;
-      gp = pl ? [g.id, g.phase, ak2, g.lastRound] : [g.id, g.phase, ak2, g.balls ? g.balls.length : 0, g.lastRound];
+      gp = [g.id, g.phase, ak2, g.lastRound];
     } else if (g.id === 'keo-co') {
-      gp = pl ? [g.id, g.phase, Math.round((g.knot || 0) / 9), g.lastRound] : [g.id, g.phase, g.knot, g.presses, g.lastRound];
+      gp = pl ? [g.id, g.phase, Math.round((g.knot || 0) / 9), g.lastRound] : [g.id, g.phase, g.lastRound];
     } else if (g.id === 'chia-cuop') {
       gp = [g.id, g.phase, g.round, g.points, g.chosen, g.chat, g.reveal, g.mineChosen, g.lastRound];
     } else if (g.id === 'cuop-sao') {
-      gp = pl ? [g.id, g.phase, g.banked ? g.banked[S.seat] : 0, g.lastRound] : [g.id, g.phase, g.banked, g.stars, g.lastRound];
+      gp = pl ? [g.id, g.phase, g.banked ? g.banked[S.seat] : 0, g.lastRound] : [g.id, g.phase, g.lastRound];
     } else if (g.id === 'giu-vuong-mien') {
       gp = [g.id, g.phase, g.crown ? g.crown.holder : '-', g.lastRound];
     } else if (g.id === 'son-san') {
       gp = [g.id, g.phase, g.lastRound];
     } else if (g.id === 'chung-mot-than') {
-      gp = pl ? [g.id, g.phase, g.hearts, g.checks, g.owners, g.lastRound]
-        : [g.id, g.phase, g.hearts, g.checks, g.owners, g.star, g.balls ? g.balls.length : 0, g.lastRound];
+      gp = [g.id, g.phase, g.hearts, g.checks, g.owners, g.lastRound];
     } else if (g.id === 'day-hop') {
       gp = [g.id, g.phase, g.deliveries, g.layout, g.lastRound];
     } else if (g.id === 'cheo-thuyen') {
@@ -7295,8 +7412,7 @@ function viewSig(v) {
     } else if (g.id === 'dat-bom') {
       var bk = '';
       if (g.blobs) for (var bs3 in g.blobs) bk += bs3 + (g.blobs[bs3].alive ? '1' : '0') + g.blobs[bs3].lives;
-      gp = pl ? [g.id, g.phase, bk, g.lastRound]
-        : [g.id, g.phase, bk, g.bombs ? g.bombs.length : 0, g.soft ? g.soft.length : 0, g.blasts, g.lastRound];
+      gp = [g.id, g.phase, bk, g.lastRound];
     } else if (g.id === 'thu-thanh') {
       gp = [g.id, g.phase, g.crystal ? g.crystal.hp : 0, g.kills, g.lastRound];
     } else if (g.id === 'ke-gia-mao') {
@@ -7345,15 +7461,89 @@ function viewSig(v) {
   var pls = v.playlist ? [v.playlist.active ? 1 : 0, v.playlist.pos || 0, v.playlist.total || 0, v.playlist.nextName || '', v.playlist.nextInSec] : 0;
   return JSON.stringify([v.phase, v.players, v.bubble, v.standings, v.gap, gp, v.lastGame, pls]);
 }
+var FIELD_GAMES = { 'day-ra': 1, 'ne-dan': 1, 'cuop-sao': 1, 'giu-vuong-mien': 1, 'son-san': 1, 'xe-tank': 1, 'dat-bom': 1, 'thu-thanh': 1, 'chung-mot-than': 1, 'day-hop': 1, 'nguoi-que': 1, 'den-lua-nuoc': 1, 'ech-op': 1, 'da-bong': 1, 'can-goc': 1 };
+// The phone's control cluster for the current screen, as a key: the
+// cluster's CONTENT is a pure function of this key, so while the key is
+// unchanged a state push may rebuild everything AROUND the controls
+// but must never rebuild the controls themselves — a rebuilt DiscPad
+// or button detaches the very node a finger is holding, and the held
+// direction dies mid-press (the "bấm không ăn / giữ hướng bị rơi"
+// complaint). render() transplants the live cluster nodes into the
+// fresh markup instead (see clusterNodes).
+function playerCtrlKey(v) {
+  var g = v.game; if (!g) return '';
+  var myB = g.blobs ? g.blobs[S.seat] : null;
+  var ko = myB && !myB.alive ? '|ko' : '';
+  switch (g.id) {
+    case 'day-ra': case 'ne-dan': case 'xe-tank': case 'dat-bom': case 'thu-thanh': case 'nguoi-que':
+      return g.id + '|' + g.phase + ko;
+    case 'ech-op':
+      return g.id + '|' + g.phase + '|' + (g.myState || '');
+    case 'can-goc': {
+      var mc = g.myCannon;
+      return g.id + '|' + g.phase + '|' + (!mc || !mc.alive ? 'ko' : g.myTurn ? 'aim' : 'wait');
+    }
+    case 'cao-boi':
+      return g.id + '|' + g.phase + '|' + (g.mine || '');
+    case 'do-vui':
+      return g.id + '|' + g.phase + '|' + g.round + '|' + (g.mine == null ? 'ans' : 'done');
+    case 'chia-cuop': {
+      var inP = g.pair && g.pair.indexOf(S.seat) >= 0;
+      return g.id + '|' + g.phase + '|' + (inP ? 'in' : 'out') + '|' + (g.mineChosen ? 'chosen' : '');
+    }
+    case 'ke-gia-mao':
+      return g.id + '|' + g.phase + '|' + g.round + '|' + (g.mine == null ? 'a0' : 'a1') + '|' + (g.myVote == null ? 'v0' : 'v1');
+    case 'ma-soi': {
+      var k = g.id + '|' + g.phase + '|' + (g.myRole || '') + '|' + (g.myAlive ? 'alive' : 'dead');
+      if (g.phase === 'night') k += '|' + (g.myWolfVote == null ? 0 : 1) + (g.myGuardPick == null ? 0 : 1) + (g.mySeerPick == null ? 0 : 1) + '|' + (g.myWitchDone ? 'wd' : '') + (g.wolvesIn ? 'wi' : '') + '|' + (g.myWitchSave ? 'ws' : '') + '|' + (g.myWitchPoison || '');
+      if (g.phase === 'vote') k += '|' + (g.voted && g.voted[S.seat] ? 'voted' : '');
+      return k;
+    }
+    case 'ca-ngua':
+      return g.id + '|' + g.phase + '|' + (g.myTurn ? 'my' : 'other') + '|' + (g.dice || 0) + '|' + (g.myLegal || []).map(function (e) { return e.horse; }).join(',');
+  }
+  return g.id + '|' + g.phase;
+}
+function clusterNodes(root) {
+  var out = [];
+  var pw = root.querySelector('.padwrap'); if (pw) out.push(pw);
+  var tb = root.querySelector('.tapbtn'); if (tb) out.push(tb);
+  var og = root.querySelector('.optgrid'); if (og) out.push(og);
+  var sg = root.querySelector('.symgrid'); if (sg) out.push(sg);
+  var ct = root.querySelector('#chatText'); if (ct && ct.parentElement) out.push(ct.parentElement);
+  var chs = root.querySelectorAll('[data-cmd="choose"]');
+  for (var i = 0; i < chs.length; i++) { var pp = chs[i].parentElement; if (pp && out.indexOf(pp) < 0) out.push(pp); }
+  var rl = root.querySelector('[data-cmd="roll"]'); if (rl && rl.parentElement && out.indexOf(rl.parentElement) < 0) out.push(rl.parentElement);
+  return out;
+}
 function render() {
   var app = el('app');
-  if (!S.role) { if (S.sig !== 'home') { S.sig = 'home'; app.innerHTML = homeHTML(); } return; }
+  if (!S.role) { if (app.classList) app.classList.remove('playhud'); if (S.sig !== 'home') { S.sig = 'home'; S.ctrlKey = ''; app.innerHTML = homeHTML(); } return; }
   var v = S.view;
   if (!v) { app.innerHTML = '<div class="card center"><h2>Đang nối phòng…</h2><p class="muted">Nếu chờ lâu vẫn không vào được, phòng có thể đã đóng hoặc hết hạn.</p><p><button class="btn ghost" data-cmd="reload">Về trang chính</button></p></div>'; return; }
+  if (app.classList) app.classList.toggle('playhud', !!(S.role === 'host' && v.phase === 'playing' && v.game && FIELD_GAMES[v.game.id]));
   var sig = viewSig(v);
   if (sig === S.sig) return;
+  var transplant = null;
+  if (S.role === 'player' && v.phase === 'playing' && v.game) {
+    var key = playerCtrlKey(v);
+    if (S.ctrlKey === key) transplant = clusterNodes(document);
+    S.ctrlKey = key;
+  } else S.ctrlKey = '';
   S.sig = sig;
   app.innerHTML = S.role === 'host' ? hostHTML(v) : playerHTML(v);
+  if (transplant && transplant.length) {
+    var fresh = clusterNodes(app);
+    if (fresh.length === transplant.length) {
+      var activeEl = document.activeElement;
+      var caret = activeEl && activeEl.id === 'chatText' ? activeEl.selectionStart : -1;
+      for (var ti = 0; ti < fresh.length; ti++) fresh[ti].parentNode.replaceChild(transplant[ti], fresh[ti]);
+      if (activeEl && activeEl.id === 'chatText' && document.activeElement !== activeEl) {
+        activeEl.focus();
+        try { activeEl.setSelectionRange(caret, caret); } catch (e) {}
+      }
+    }
+  }
   afterRender(v);
 }
 function checkRoundWin(v) {
@@ -7410,12 +7600,13 @@ function countUp(row) {
     if (p >= 1) clearInterval(iv);
   }, 40);
 }
-function fxSparks(field, x, y, colorHex, n) {
+function fxSparks(field, x, y, colorHex, n, fam) {
+  var fp = famPct(fam || 'std', x, y);
   for (var i = 0; i < n; i++) {
     var s = document.createElement('span');
     s.className = 'fx-spark';
-    s.style.left = ((x + 12) / 24 * 100) + '%';
-    s.style.top = ((y + 12) / 24 * 100) + '%';
+    s.style.left = fp[0] + '%';
+    s.style.top = fp[1] + '%';
     s.style.background = colorHex; s.style.color = colorHex;
     field.appendChild(s);
     var ang = Math.random() * Math.PI * 2; var dist = 22 + Math.random() * 48;
@@ -7432,8 +7623,8 @@ function fxSparks(field, x, y, colorHex, n) {
 function fxGhost(field, pos, colorName) {
   var s = document.createElement('span');
   s.className = 'fx-ghost';
-  s.style.left = ((pos.x + 12) / 24 * 100) + '%';
-  s.style.top = ((pos.y + 12) / 24 * 100) + '%';
+  s.style.left = PX(pos.x) + '%';
+  s.style.top = PY(pos.y) + '%';
   s.innerHTML = orbSVG(colorName, 40);
   field.appendChild(s);
   requestAnimationFrame(function () { s.style.opacity = '0'; });
@@ -7442,17 +7633,17 @@ function fxGhost(field, pos, colorName) {
 function fxTrail(field, ball) {
   var s = document.createElement('span');
   s.className = 'fx-trail';
-  s.style.left = ((ball.x + 12) / 24 * 100) + '%';
-  s.style.top = ((ball.y + 12) / 24 * 100) + '%';
+  s.style.left = PX(ball.x) + '%';
+  s.style.top = PY(ball.y) + '%';
   field.appendChild(s);
   setTimeout(function () { s.remove(); }, 320);
 }
 function fxWarn(field, ball) {
-  var cx = Math.max(-11, Math.min(11, ball.x)), cy = Math.max(-11, Math.min(11, ball.y));
+  var cx = Math.max(-15, Math.min(15, ball.x)), cy = Math.max(-8.5, Math.min(8.5, ball.y));
   var s = document.createElement('span');
   s.className = 'awarn';
-  s.style.left = ((cx + 12) / 24 * 100) + '%';
-  s.style.top = ((cy + 12) / 24 * 100) + '%';
+  s.style.left = PX(cx) + '%';
+  s.style.top = PY(cy) + '%';
   field.appendChild(s);
   setTimeout(function () { s.remove(); }, 580);
 }
@@ -7552,7 +7743,7 @@ function arenaFX(v, g) {
       if (field) {
         fxShake(field, true);
         var gx9 = g.goalInfo && g.goalInfo.team === 'do' ? 17.5 : -17.5;
-        fxSparks(field, (gx9 + 19) / 38 * 24 - 12, (6.7 + 9.6) / 19.2 * 24 - 12, '#FFE066', 18);
+        fxSparks(field, gx9, 6.7, '#FFE066', 18, 'soc');
       }
       sfxWin();
       P.goals = totNow;
@@ -7566,7 +7757,7 @@ function arenaFX(v, g) {
     var boomAt = g.boom ? g.boom.at : 0;
     if (P.boomAt === undefined) P.boomAt = boomAt;
     else if (boomAt && boomAt !== P.boomAt) {
-      if (field) { fxShake(field, true); fxSparks(field, g.boom.x, (g.boom.y + 8) * 1.5 - 12, '#FFB35C', 14); }
+      if (field) { fxShake(field, true); fxSparks(field, g.boom.x, g.boom.y, '#FFB35C', 14); }
       sfxBoom();
       P.boomAt = boomAt;
     }
@@ -7606,6 +7797,13 @@ function arenaFX(v, g) {
 // Create/move/remove the transient field entities (shells, slimes)
 // whose DOM nodes cannot be rendered once by hostStage: they are keyed
 // by server id inside #afield and pruned when the server drops them.
+// Coordinate families: 'std' games simulate in a 32x18 space
+// (x in [-16,16], y in [-9,9]); soccer ('soc') in 38x19.2.
+function PX(x) { return (x + 16) / 32 * 100; }
+function PY(y) { return (y + 9) / 18 * 100; }
+function PSX(x) { return (x + 19) / 38 * 100; }
+function PSY(y) { return (y + 9.6) / 19.2 * 100; }
+function famPct(fam, x, y) { return fam === 'soc' ? [PSX(x), PSY(y)] : [PX(x), PY(y)]; }
 function syncDyn(items, prefix, cls, decorate) {
   var field = el('afield');
   if (!field) return;
@@ -7620,38 +7818,110 @@ function syncDyn(items, prefix, cls, decorate) {
       n.classList.add('pop');
       field.appendChild(n);
     }
-    moveEl(n, (it.x + 12) / 24 * 100, (it.y + 12) / 24 * 100);
+    moveEl(n, it.x, it.y, 'std', it.vx, it.vy);
   }
   var olds = field.querySelectorAll('.' + cls);
   for (var j = 0; j < olds.length; j++) if (!seen[olds[j].id]) olds[j].remove();
 }
+// Index-keyed variant for the dodge/shared balls (no server id): nodes
+// are nball-<index>, created/pruned as the ball count changes, so the
+// host stage never rebuilds when a ball spawns.
+function syncDynIdx(items, prefix, cls) {
+  var field = el('afield');
+  if (!field) return;
+  for (var i = 0; i < items.length; i++) {
+    var id = prefix + i;
+    var n = el(id);
+    if (!n) {
+      n = document.createElement('div');
+      n.id = id; n.className = cls;
+      n.classList.add('pop');
+      field.appendChild(n);
+    }
+    moveEl(n, items[i].x, items[i].y, 'std', items[i].vx, items[i].vy);
+  }
+  var olds = field.querySelectorAll('.' + cls);
+  for (var j = 0; j < olds.length; j++) {
+    var idx = +(olds[j].id || '').slice(prefix.length);
+    if (!(idx >= 0 && idx < items.length)) olds[j].remove();
+  }
+}
+// Bomber blast cells, keyed by grid cell: created/pruned from the live
+// view so explosions no longer force a stage rebuild. Cell (c, r) of
+// the 15x9 grid spans exactly 2x2 game units.
+function syncBlasts(blasts) {
+  var field = el('afield');
+  if (!field) return;
+  var seen = {};
+  for (var i = 0; i < blasts.length; i++) {
+    var cells = blasts[i].cells || [];
+    for (var j = 0; j < cells.length; j++) {
+      var c = cells[j][0], r = cells[j][1];
+      var id = 'blast-' + c + '-' + r; seen[id] = 1;
+      if (!el(id)) {
+        var n = document.createElement('div');
+        n.id = id; n.className = 'ablast';
+        n.style.left = (c * 6.25) + '%'; n.style.top = (r * 11.1111) + '%';
+        n.style.width = '6.25%'; n.style.height = '11.1111%';
+        field.appendChild(n);
+      }
+    }
+  }
+  var olds = field.querySelectorAll('.ablast');
+  for (var k = 0; k < olds.length; k++) if (!seen[olds[k].id]) olds[k].remove();
+}
 // ---------------------------------------------------------------------
-// rAF position interpolation. patchPositions records TARGET positions
-// through moveEl; a single requestAnimationFrame loop eases each
-// element's rendered left/top toward its target with frame-rate
-// independent exponential damping (tau ~55ms), replacing the steppy
-// per-tick CSS steps. First placement of any element (spawn, phase
-// change, full re-render — anywhere the DOM node is new) SNAPS exactly
-// to target, in the same task as the render: the centre-flash guard is
-// preserved bit-for-bit. While the loop runs it stamps 'raf-on' on
-// the field, which zeroes the CSS left/top transitions on the
-// interpolated classes so the two smoothing systems never stack; the
-// loop itself reads the field's .slowmo class and stretches its time
-// constant ~6x so slow motion still reads as slow motion. If rAF is
-// unavailable, moveEl sets positions directly and the CSS transitions
-// carry the motion exactly as before.
+// rAF position interpolation, transform edition. patchPositions records
+// TARGET positions (in game units) through moveEl; one
+// requestAnimationFrame loop eases each element toward its target and
+// writes a GPU-composited transform: translate3d(...) instead of
+// left/top (no layout, no paint of the element's box). Elements sit at
+// left:0/top:0 of the field; the pixel offset comes from the field rect
+// and each element's own centring is appended (translate(-50%,-50%),
+// or the crown's -135% hover; margin-centred pieces need nothing).
+// First placement of any element SNAPS exactly to target in the same
+// task as the render: the centre-flash guard is preserved. On top of
+// easing, the loop EXTRAPOLATES: views carry vx/vy in units per tick,
+// and the rendered target leads the last server position by up to 1.6
+// ticks (200 ms), so motion runs ahead of the 125 ms tick instead of
+// trailing it. The loop still reads the field's .slowmo class and
+// stretches its time constant ~6x. Without rAF, moveEl falls back to
+// left/top percentages and the CSS transitions carry the motion.
 var RAF_OK = typeof requestAnimationFrame === 'function';
 var RAF_TAU = 55;
-function moveEl(node, xPct, yPct) {
+function moverMode(node) {
+  var c = ' ' + (node.className || '') + ' ';
+  if (c.indexOf(' acrown ') >= 0) return 'crown';
+  if (c.indexOf(' ashell ') >= 0 || c.indexOf(' aslime ') >= 0 || c.indexOf(' tgem ') >= 0 || c.indexOf(' ffly ') >= 0) return 'm';
+  return 'c';
+}
+function writePos(e, rect) {
+  var parent = e.el.parentElement;
+  if (!parent) return;
+  rect = rect || parent.getBoundingClientRect();
+  if (!rect.width) return;
+  var p = famPct(e.fam, e.x, e.y);
+  var t = 'translate3d(' + (p[0] / 100 * rect.width).toFixed(1) + 'px,' + (p[1] / 100 * rect.height).toFixed(1) + 'px,0)';
+  if (e.mode === 'c') t += ' translate(-50%,-50%)';
+  else if (e.mode === 'crown') t += ' translate(-50%,-135%)';
+  e.el.style.transform = t;
+}
+function moveEl(node, x, y, fam, vx, vy) {
   if (!node) return;
-  if (!RAF_OK || !node.id) { node.style.left = xPct + '%'; node.style.top = yPct + '%'; return; }
-  var e = S.raf[node.id];
-  if (!e || e.el !== node) {
-    node.style.left = xPct + '%'; node.style.top = yPct + '%';
-    S.raf[node.id] = { el: node, x: xPct, y: yPct, tx: xPct, ty: yPct };
+  fam = fam || 'std';
+  if (!RAF_OK || !node.id) {
+    var p = famPct(fam, x, y);
+    node.style.left = p[0] + '%'; node.style.top = p[1] + '%';
     return;
   }
-  e.tx = xPct; e.ty = yPct;
+  var e = S.raf[node.id];
+  if (!e || e.el !== node) {
+    node.style.left = '0px'; node.style.top = '0px';
+    e = S.raf[node.id] = { el: node, fam: fam, mode: moverMode(node), x: x, y: y, tx: x, ty: y, vx: vx || 0, vy: vy || 0, at: performance.now() };
+    writePos(e);
+    return;
+  }
+  e.tx = x; e.ty = y; e.vx = vx || 0; e.vy = vy || 0; e.at = performance.now(); e.fam = fam;
 }
 function rafLoop(ts) {
   requestAnimationFrame(rafLoop);
@@ -7663,18 +7933,25 @@ function rafLoop(ts) {
   var slow = !!(field && field.classList.contains('slowmo'));
   var k = 1 - Math.exp(-dt / RAF_TAU);
   var ks = 1 - Math.exp(-dt / (RAF_TAU * 6));
+  var rectCache = [];
   for (var id in S.raf) {
     var e = S.raf[id];
     if (e.el.isConnected === false) { delete S.raf[id]; continue; }
+    var parent = e.el.parentElement;
+    if (!parent) continue;
+    var rect = null;
+    for (var ci = 0; ci < rectCache.length; ci++) if (rectCache[ci][0] === parent) { rect = rectCache[ci][1]; break; }
+    if (!rect) { rect = parent.getBoundingClientRect(); rectCache.push([parent, rect]); }
+    var lead = Math.min(Math.max((nowMs - e.at) / 125, 0), 1.6);
+    var gx = e.tx + e.vx * lead, gy = e.ty + e.vy * lead;
     var kk = slow && field && field.contains(e.el) ? ks : k;
-    var dx = e.tx - e.x, dy = e.ty - e.y;
-    if (Math.abs(dx) < 0.02 && Math.abs(dy) < 0.02) {
-      if (e.x !== e.tx || e.y !== e.ty) { e.x = e.tx; e.y = e.ty; e.el.style.left = e.x + '%'; e.el.style.top = e.y + '%'; }
+    var dx = gx - e.x, dy = gy - e.y;
+    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
+      if (e.x !== gx || e.y !== gy) { e.x = gx; e.y = gy; writePos(e, rect); }
       continue;
     }
     e.x += dx * kk; e.y += dy * kk;
-    e.el.style.left = e.x.toFixed(2) + '%';
-    e.el.style.top = e.y.toFixed(2) + '%';
+    writePos(e, rect);
   }
 }
 // Position + label sync for every arena-style game (blobs, cannonballs,
@@ -7690,85 +7967,98 @@ function patchPositions(v) {
   var g = v && v.game;
   if (!g) return;
   var t = serverNow();
-  if (g && (g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) {
+  if ((g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) {
     for (var bSeat in g.blobs) {
       var bb = g.blobs[bSeat];
       var bn = el('ablob-' + bSeat);
       if (bn) {
-        moveEl(bn, (bb.x + 12) / 24 * 100, (bb.y + 12) / 24 * 100);
+        moveEl(bn, bb.x, bb.y, 'std', bb.vx, bb.vy);
         bn.style.opacity = bb.alive ? '1' : '0.25';
       }
       var lv = el('alives-' + bSeat);
-      if (lv) lv.textContent = '❤'.repeat(bb.lives);
+      if (lv) lv.textContent = '\u2764'.repeat(bb.lives);
     }
     var ring = el('aring');
-    if (ring && g.arenaR) { var pct = (g.arenaR * 2 / 24 * 100) + '%'; ring.style.width = pct; ring.style.height = pct; }
+    if (ring && g.arenaR) { var pct = (g.arenaR * 25 / 3) + '%'; ring.style.width = pct; ring.style.height = pct; }
     var ml = el('mylives');
-    if (ml && g.blobs[S.seat]) ml.textContent = '❤'.repeat(g.blobs[S.seat].lives);
+    if (ml && g.blobs[S.seat]) ml.textContent = '\u2764'.repeat(g.blobs[S.seat].lives);
   }
-  if (g && g.id === 'ne-dan' && g.balls) {
-    for (var nbi = 0; nbi < g.balls.length; nbi++) {
-      var nb = el('nball-' + nbi);
-      if (nb) {
-        moveEl(nb, (g.balls[nbi].x + 12) / 24 * 100, (g.balls[nbi].y + 12) / 24 * 100);
-      }
-    }
+  if (g.id === 'ne-dan' && g.balls) syncDynIdx(g.balls, 'nball-', 'aball');
+  if ((g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) arenaFX(v, g);
+  if (g.id === 'keo-co') {
+    var kn9 = el('tugknot');
+    if (kn9) kn9.style.left = Math.max(3, Math.min(97, 50 + (g.knot / 112) * 46)) + '%';
+    if (g.presses) for (var pSeat in g.presses) { var tp = el('tugpress-' + pSeat); if (tp) tp.textContent = g.presses[pSeat]; }
+    var mp9 = el('mypull');
+    if (mp9 && g.presses) mp9.textContent = g.presses[S.seat] || 0;
   }
-  if (g && (g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) arenaFX(v, g);
-  if (g && (g.id === 'xe-tank' || g.id === 'dat-bom' || g.id === 'thu-thanh') && g.blobs) {
+  if ((g.id === 'xe-tank' || g.id === 'dat-bom' || g.id === 'thu-thanh') && g.blobs) {
     for (var wSeat in g.blobs) {
       var wb = g.blobs[wSeat];
       var wn = el('ablob-' + wSeat);
       if (wn) {
-        moveEl(wn, (wb.x + 12) / 24 * 100, (wb.y + 12) / 24 * 100);
+        moveEl(wn, wb.x, wb.y, 'std', wb.vx, wb.vy);
         wn.style.opacity = wb.alive ? '1' : '0.25';
       }
       var lv2 = el('alives-' + wSeat);
-      if (lv2) lv2.textContent = '❤'.repeat(Math.max(0, wb.lives));
+      if (lv2) lv2.textContent = '\u2764'.repeat(Math.max(0, wb.lives));
       var brl = el('barrel-' + wSeat);
       if (brl && g.facing && g.facing[wSeat]) brl.style.transform = 'rotate(' + Math.round(Math.atan2(g.facing[wSeat].y, g.facing[wSeat].x) * 180 / Math.PI) + 'deg)';
     }
     var ml2 = el('mylives');
-    if (ml2 && g.blobs[S.seat]) ml2.textContent = '❤'.repeat(Math.max(0, g.blobs[S.seat].lives));
+    if (ml2 && g.blobs[S.seat]) ml2.textContent = '\u2764'.repeat(Math.max(0, g.blobs[S.seat].lives));
     if (g.shells) syncDyn(g.shells, 'shell-', 'ashell', null);
     if (g.id === 'xe-tank' || g.id === 'dat-bom') arenaFX(v, g);
   }
-  if (g && g.id === 'thu-thanh') {
+  if (g.id === 'dat-bom') {
+    if (g.bombs) syncDyn(g.bombs, 'abomb-', 'abomb', function (n, it) { n.textContent = '\uD83D\uDCA3'; });
+    if (g.soft) {
+      var softSet = {};
+      for (var sfI = 0; sfI < g.soft.length; sfI++) softSet[g.soft[sfI][0] + ',' + g.soft[sfI][1]] = 1;
+      var softEls = document.querySelectorAll('.bsoft');
+      for (var sfJ = 0; sfJ < softEls.length; sfJ++) {
+        var sfKey = (softEls[sfJ].id || '').slice(6);
+        softEls[sfJ].style.display = softSet[sfKey] ? '' : 'none';
+      }
+    }
+    if (g.blasts) syncBlasts(g.blasts);
+  }
+  if (g.id === 'thu-thanh') {
     if (g.slimes) syncDyn(g.slimes, 'slime-', 'aslime', function (n, it) { n.className = 'aslime' + (it.big ? ' big' : ''); n.innerHTML = '<i></i><i></i>'; });
     var ch2 = el('crystalhp'); if (ch2 && g.crystal) ch2.textContent = g.crystal.hp;
-    var chh = el('crystalhearts'); if (chh && g.crystal) chh.textContent = '❤'.repeat(Math.max(0, g.crystal.hp));
+    var chh = el('crystalhearts'); if (chh && g.crystal) chh.textContent = '\u2764'.repeat(Math.max(0, g.crystal.hp));
     var kn = el('killn'); if (kn) kn.textContent = g.kills || 0;
     var chp2 = el('crystalhp2'); if (chp2 && g.crystal) chp2.textContent = g.crystal.hp;
     var kn2 = el('killn2'); if (kn2) kn2.textContent = g.kills || 0;
   }
-  if (g && g.id === 'nguoi-que' && g.blobs) {
+  if (g.id === 'nguoi-que' && g.blobs) {
     for (var qSeat in g.blobs) {
       var qb2 = g.blobs[qSeat];
       var qn = el('ablob-' + qSeat);
       if (qn) {
-        moveEl(qn, (qb2.x + 12) / 24 * 100, (qb2.y + 12) / 24 * 100);
+        moveEl(qn, qb2.x, qb2.y, 'std', qb2.vx, qb2.vy);
         qn.style.opacity = qb2.alive ? (qb2.invuln ? '0.55' : '1') : '0.2';
       }
       var dm = el('dmg-' + qSeat);
       if (dm) { dm.textContent = (qb2.dmg || 0) + '%'; dm.style.color = dmgColor(qb2.dmg || 0); }
       var lvq = el('alives-' + qSeat);
-      if (lvq) lvq.textContent = '♥'.repeat(Math.max(0, qb2.lives));
+      if (lvq) lvq.textContent = '\u2665'.repeat(Math.max(0, qb2.lives));
       var fg = el('fig-' + qSeat);
       if (fg) {
         var poseKey = fightPose(qb2) + '|' + (qb2.face || 1);
         if (fg.dataset.pose !== poseKey) { fg.dataset.pose = poseKey; var plq = playerOf(v, +qSeat); fg.innerHTML = stickSVG(plq ? plq.color : 'blue', fightPose(qb2), qb2.face); }
       }
     }
-    var mlq = el('mylives'); if (mlq && g.blobs[S.seat]) mlq.textContent = '♥'.repeat(Math.max(0, g.blobs[S.seat].lives));
+    var mlq = el('mylives'); if (mlq && g.blobs[S.seat]) mlq.textContent = '\u2665'.repeat(Math.max(0, g.blobs[S.seat].lives));
     var mdq = el('mydmg'); if (mdq) mdq.textContent = (g.myDmg || 0) + '%';
     arenaFX(v, g);
   }
-  if (g && g.id === 'den-lua-nuoc' && g.chars) {
+  if (g.id === 'den-lua-nuoc' && g.chars) {
     for (var cSeat in g.chars) {
       var cc2 = g.chars[cSeat];
       var cn = el('achar-' + cSeat);
       if (cn) {
-        moveEl(cn, (cc2.x + 12) / 24 * 100, (cc2.y + 12) / 24 * 100);
+        moveEl(cn, cc2.x, cc2.y, 'std', cc2.vx, cc2.vy);
         cn.className = 'achar' + (cc2.home ? ' home' : '');
       }
     }
@@ -7776,27 +8066,27 @@ function patchPositions(v) {
     (g.gates || []).forEach(function (gt2, gi2) { var gn = el('gate-' + gi2); if (gn) gn.className = 'tgate' + (g.gateOpen ? ' open' : ''); });
     var gl2 = el('gemlua'); if (gl2 && g.gemCount) gl2.textContent = g.gemCount.lua;
     var gw2 = el('gemnuoc'); if (gw2 && g.gemCount) gw2.textContent = g.gemCount.nuoc;
-    var th2 = el('temphearts'); if (th2) th2.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+    var th2 = el('temphearts'); if (th2) th2.textContent = '\u2764'.repeat(Math.max(0, g.hearts || 0));
     var glp = el('gemluap'); if (glp && g.gemCount) glp.textContent = g.gemCount.lua;
     var gwp = el('gemnuocp'); if (gwp && g.gemCount) gwp.textContent = g.gemCount.nuoc;
-    var thp = el('tempheartsp'); if (thp) thp.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+    var thp = el('tempheartsp'); if (thp) thp.textContent = '\u2764'.repeat(Math.max(0, g.hearts || 0));
     arenaFX(v, g);
   }
-  if (g && g.id === 'da-bong') {
+  if (g.id === 'da-bong') {
     if (g.blobs) {
       for (var sSeat in g.blobs) {
         var sbb = g.blobs[sSeat];
         var snn = el('ablob-' + sSeat);
-        if (snn) moveEl(snn, (sbb.x + 19) / 38 * 100, (sbb.y + 9.6) / 19.2 * 100);
+        if (snn) moveEl(snn, sbb.x, sbb.y, 'soc', sbb.vx, sbb.vy);
       }
     }
     var sbl = el('sball');
-    if (sbl && g.ball) moveEl(sbl, (g.ball.x + 19) / 38 * 100, (g.ball.y + 9.6) / 19.2 * 100);
+    if (sbl && g.ball) moveEl(sbl, g.ball.x, g.ball.y, 'soc', g.ball.vx, g.ball.vy);
     var sd9 = el('scoredo'); if (sd9 && g.scoreboard) sd9.textContent = g.scoreboard.do;
     var sx9 = el('scorexanh'); if (sx9 && g.scoreboard) sx9.textContent = g.scoreboard.xanh;
     arenaFX(v, g);
   }
-  if (g && g.id === 'ech-op') {
+  if (g.id === 'ech-op') {
     if (g.frogs) {
       for (var fSeat in g.frogs) {
         var fb9 = g.frogs[fSeat];
@@ -7804,7 +8094,7 @@ function patchPositions(v) {
         if (!fn9) continue;
         if (fb9.state === 'in') { fn9.style.display = 'none'; continue; }
         fn9.style.display = '';
-        moveEl(fn9, (fb9.x + 12) / 24 * 100, (fb9.y + 12) / 24 * 100);
+        moveEl(fn9, fb9.x, fb9.y, 'std', fb9.vx, fb9.vy);
         var stKey = fb9.state + ':' + (fb9.bellySeat || '');
         if (fn9.dataset.st !== stKey) {
           fn9.dataset.st = stKey;
@@ -7823,83 +8113,79 @@ function patchPositions(v) {
         if (flN) flN.className = 'ffly' + (g.flies[flI].taken ? ' taken' : '');
       }
     }
-    var fh9 = el('froghearts'); if (fh9) fh9.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+    var fh9 = el('froghearts'); if (fh9) fh9.textContent = '\u2764'.repeat(Math.max(0, g.hearts || 0));
     var ff9 = el('frogflies'); if (ff9) ff9.textContent = g.fliesEaten || 0;
     var fc9 = el('frogcham'); if (fc9) fc9.textContent = g.chamber || 1;
-    var fhp = el('frogheartsp'); if (fhp) fhp.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+    var fhp = el('frogheartsp'); if (fhp) fhp.textContent = '\u2764'.repeat(Math.max(0, g.hearts || 0));
     var ffp = el('frogfliesp'); if (ffp) ffp.textContent = g.fliesEaten || 0;
     arenaFX(v, g);
   }
-  if (g && g.id === 'can-goc') {
+  if (g.id === 'can-goc') {
     var shp = el('shellpt');
-    if (shp && g.shell) moveEl(shp, (g.shell.x + 12) / 24 * 100, (g.shell.y + 8) / 16 * 100);
+    if (shp && g.shell) moveEl(shp, g.shell.x, g.shell.y, 'std', g.shell.vx, g.shell.vy);
     var aa9 = el('aimangle'); if (aa9 && g.myCannon) aa9.textContent = g.myCannon.angle;
     var ap9 = el('aimpower'); if (ap9 && g.myCannon) ap9.textContent = g.myCannon.power;
     arenaFX(v, g);
   }
-  if (g && (g.id === 'cuop-sao' || g.id === 'giu-vuong-mien' || g.id === 'son-san') && g.blobs) {
+  if ((g.id === 'cuop-sao' || g.id === 'giu-vuong-mien' || g.id === 'son-san') && g.blobs) {
     for (var nSeat in g.blobs) {
       var nb2 = g.blobs[nSeat];
       var nn = el('ablob-' + nSeat);
       if (nn) {
-        moveEl(nn, (nb2.x + 12) / 24 * 100, (nb2.y + 12) / 24 * 100);
+        moveEl(nn, nb2.x, nb2.y, 'std', nb2.vx, nb2.vy);
         if (g.id === 'giu-vuong-mien') nn.className = 'ablob' + (g.crown && g.crown.holder === +nSeat ? ' holder' : '');
       }
     }
     if (g.id === 'cuop-sao') {
       var mb2 = el('mybank'); if (mb2) mb2.textContent = g.mine || 0;
-      for (var sN = 0; sN < (g.stars ? g.stars.length : 0); sN++) {
-        var sEl = el('astar-' + g.stars[sN].id);
-        if (sEl) moveEl(sEl, (g.stars[sN].x + 12) / 24 * 100, (g.stars[sN].y + 12) / 24 * 100);
-      }
+      if (g.banked) for (var bkSeat in g.banked) { var bkn = el('bankn-' + bkSeat); if (bkn) bkn.textContent = g.banked[bkSeat]; }
+      if (g.stars) syncDyn(g.stars, 'astar-', 'astar', function (n, it) { n.className = 'astar' + (it.gold ? ' gold' : ''); n.textContent = '\u2605'; });
     }
     if (g.id === 'giu-vuong-mien') {
       var cr2 = el('acrown');
       if (cr2 && g.crown) {
         var cx2 = g.crown.x, cy2 = g.crown.y;
-        if (g.crown.holder && g.blobs[g.crown.holder]) { cx2 = g.blobs[g.crown.holder].x; cy2 = g.blobs[g.crown.holder].y; }
-        moveEl(cr2, (cx2 + 12) / 24 * 100, (cy2 + 12) / 24 * 100);
+        var cvx = g.crown.vx || 0, cvy = g.crown.vy || 0;
+        if (g.crown.holder && g.blobs[g.crown.holder]) { cx2 = g.blobs[g.crown.holder].x; cy2 = g.blobs[g.crown.holder].y; cvx = g.blobs[g.crown.holder].vx || 0; cvy = g.blobs[g.crown.holder].vy || 0; }
+        moveEl(cr2, cx2, cy2, 'std', cvx, cvy);
       }
       for (var hSeat in g.hold || {}) { var hn2 = el('holdn-' + hSeat); if (hn2) hn2.textContent = g.hold[hSeat]; }
       var mh2 = el('myhold'); if (mh2) mh2.textContent = g.mine || 0;
     }
     if (g.id === 'son-san' && g.grid) {
-      for (var ci2 = 0; ci2 < 144; ci2++) {
+      for (var ci2 = 0; ci2 < 180; ci2++) {
         var cell2 = el('scell-' + ci2); if (!cell2) continue;
         var own2 = g.grid[ci2]; var cp2 = own2 ? playerOf(v, own2) : null;
         cell2.style.background = cp2 ? COLORS[cp2.color] : 'rgba(255,255,255,.07)';
       }
-      for (var cSeat in g.counts || {}) { var sn2 = el('scount-' + cSeat); if (sn2) sn2.textContent = g.counts[cSeat]; }
+      for (var cSeat2 in g.counts || {}) { var sn2 = el('scount-' + cSeat2); if (sn2) sn2.textContent = g.counts[cSeat2]; }
       var mc2 = el('mycells'); if (mc2) mc2.textContent = g.mine || 0;
     }
     arenaFX(v, g);
   }
-  if (g && g.id === 'chung-mot-than' && g.shared) {
+  if (g.id === 'chung-mot-than' && g.shared) {
     var sb = el('sharedblob');
-    if (sb) moveEl(sb, (g.shared.x + 12) / 24 * 100, (g.shared.y + 12) / 24 * 100);
+    if (sb) moveEl(sb, g.shared.x, g.shared.y, 'std', g.shared.vx, g.shared.vy);
     var cs = el('cstar');
-    if (cs && g.star) moveEl(cs, (g.star.x + 12) / 24 * 100, (g.star.y + 12) / 24 * 100);
-    if (g.balls) for (var cbi = 0; cbi < g.balls.length; cbi++) {
-      var cb = el('nball-' + cbi);
-      if (cb) moveEl(cb, (g.balls[cbi].x + 12) / 24 * 100, (g.balls[cbi].y + 12) / 24 * 100);
-    }
-    var cn = el('checkn'); if (cn) cn.textContent = g.checks || 0;
-    var th = el('teamhearts'); if (th) th.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
-    var thp = el('teamheartsp'); if (thp) thp.textContent = '❤'.repeat(Math.max(0, g.hearts || 0));
+    if (cs && g.star) moveEl(cs, g.star.x, g.star.y, 'std', 0, 0);
+    if (g.balls) syncDynIdx(g.balls, 'nball-', 'aball');
+    var cn2 = el('checkn'); if (cn2) cn2.textContent = g.checks || 0;
+    var th = el('teamhearts'); if (th) th.textContent = '\u2764'.repeat(Math.max(0, g.hearts || 0));
+    var thp2 = el('teamheartsp'); if (thp2) thp2.textContent = '\u2764'.repeat(Math.max(0, g.hearts || 0));
     var cnp = el('checknp'); if (cnp) cnp.textContent = g.checks || 0;
   }
-  if (g && g.id === 'day-hop' && g.blobs) {
+  if (g.id === 'day-hop' && g.blobs) {
     for (var xSeat in g.blobs) {
       var xb = g.blobs[xSeat];
       var xn = el('ablob-' + xSeat);
-      if (xn) moveEl(xn, (xb.x + 12) / 24 * 100, (xb.y + 12) / 24 * 100);
+      if (xn) moveEl(xn, xb.x, xb.y, 'std', xb.vx, xb.vy);
     }
     var crt = el('acrate');
-    if (crt && g.crate) moveEl(crt, (g.crate.x + 12) / 24 * 100, (g.crate.y + 12) / 24 * 100);
+    if (crt && g.crate) moveEl(crt, g.crate.x, g.crate.y, 'std', g.crate.vx, g.crate.vy);
     var dv = el('delivn'); if (dv) dv.textContent = g.deliveries || 0;
     var dvp = el('delivp'); if (dvp) dvp.textContent = g.deliveries || 0;
   }
-  if (g && g.id === 'cheo-thuyen' && g.phase === 'row') {
+  if (g.id === 'cheo-thuyen' && g.phase === 'row') {
     var pctR = Math.max(0, Math.min(100, (g.distance || 0) / (g.course || 400) * 100));
     var rp4 = el('rowprog'); if (rp4) rp4.style.width = pctR + '%';
     var rd = el('rowdist'); if (rd) rd.textContent = Math.round(g.distance || 0);
@@ -7925,6 +8211,7 @@ function patchPositions(v) {
     var rpm = el('rowprogm'); if (rpm) rpm.style.width = pctR + '%';
   }
 }
+
 function tick() {
   watchdog();
   var v = S.view;
@@ -8045,7 +8332,7 @@ function playerGame(v) {
         h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'ĐẨY', 'Lướt') + '</div>';
         h += '<p class="center small">Chạm vào vương miện là đội lên đầu · Giữ càng lâu càng nhiều điểm · A: xô người giữ cho rơi</p>';
       } else {
-        h += '<div class="center baloo" style="font-size:22px">Ô của bạn: <span id="mycells">' + (g.mine || 0) + '</span>/144</div>';
+        h += '<div class="center baloo" style="font-size:22px">Ô của bạn: <span id="mycells">' + (g.mine || 0) + '</span>/180</div>';
         h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'SƠN', 'Lướt') + '</div>';
         h += '<p class="center small">Chạy qua ô nào sơn ô đó · A: sơn bùng 3×3 (hồi 2 giây) · B: lướt nhanh</p>';
       }
@@ -8069,8 +8356,8 @@ function playerGame(v) {
     var myTeam = S.seat % 2 === 1 ? 'A' : 'B';
     if (g.phase === 'pull') {
       h += '<div class="center baloo" style="font-size:24px">BẠN Ở ĐỘI ' + myTeam + ' — BẤM NÚT B LIÊN TỤC!</div>';
-      var kpct2 = Math.max(3, Math.min(97, 50 + (g.knot / 84) * 46));
-      h += '<div class="rope"><div class="mid"></div><div class="knot" style="left:' + kpct2 + '%"></div></div>';
+      var kpct2 = Math.max(3, Math.min(97, 50 + (g.knot / 112) * 46));
+      h += '<div class="rope"><div class="mid"></div><div class="knot" id="tugknot" style="left:' + kpct2 + '%"></div></div>';
       h += '<div class="center baloo" style="font-size:21px">Bạn đã kéo: <span id="mypull">' + (g.presses ? (g.presses[S.seat] || 0) : 0) + '</span> lần</div>';
       h += '<div class="padwrap">' + discHTML()
         + '<div class="abtns"><button class="abtn" data-pad="b" style="background:#E84F4F;width:92px;height:92px;font-size:30px">B<span>KÉO!</span></button></div></div>';
@@ -8741,6 +9028,7 @@ document.addEventListener('pointerdown', function (ev) {
   if (node && GAME_CMDS[node.getAttribute('data-cmd')]) {
     ev.preventDefault();
     pressFx(node);
+    vibrate(10);
     markCmdGuard(node, node.getAttribute('data-cmd'));
     runCmd(node);
   }
@@ -8793,6 +9081,7 @@ if (!window.PointerEvent) {
       if (node && GAME_CMDS[node.getAttribute('data-cmd')]) {
         ev.preventDefault();
         pressFx(node);
+        vibrate(10);
         markCmdGuard(node, node.getAttribute('data-cmd'));
         runCmd(node);
       }
