@@ -814,7 +814,7 @@ export class RoomStore {
     if (role === 'host') {
       if (token !== loaded.room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
     } else {
-      const p = loaded.room.players.find((x) => x.type === 'human' && x.seat === seat && x.token === token);
+      const p = loaded.room.players.find((x) => x.type === 'human' && !x.local && x.seat === seat && x.token === token);
       if (!p) return fail('Phiên tay cầm không hợp lệ.', 403);
     }
     const pair = new WebSocketPair();
@@ -849,14 +849,14 @@ export class RoomStore {
       if (att.role === 'host') {
         if (!att.token || att.token !== room.hostToken) { this._bye(ws); return; }
       } else {
-        player = room.players.find((p) => p.type === 'human' && p.seat === att.seat && p.token === att.token) || null;
+        player = room.players.find((p) => p.type === 'human' && !p.local && p.seat === att.seat && p.token === att.token) || null;
         if (!player) { this._bye(ws); return; }
       }
       // The HTTP action pipeline, verbatim: advance, dispatch, advance,
       // save (even on error — the first advance may have moved the sim),
       // then push the fresh personalized views to every socket.
       advance(room);
-      const err = att.role === 'host' ? hostAction(room, body) : playerAction(room, player, body);
+      const err = att.role === 'host' ? hostDispatch(room, body) : playerAction(room, player, body);
       if (err) {
         await this._saveIfChanged(loaded);
         try { ws.send(JSON.stringify({ type: 'error', error: err })); } catch (e) { /* socket dying */ }
@@ -5054,7 +5054,7 @@ function gameView(room, role, seat, t) {
     }
     if (g.phase === 'execute' || g.phase === 'wolfEnd') { v.exec = w.exec; v.voteTally = w.voteTally || {}; }
     if (g.phase === 'wolfEnd') { v.winner = w.winner; v.roles = Object.assign({}, w.roles); }
-    if (seat) {
+    if (seat && w) {
       v.myRole = w.roles[seat];
       v.myAlive = !!w.alive[seat];
       if (w.alive[seat]) {
@@ -5244,12 +5244,14 @@ function buildView(room, role, seat) {
     difficulty: p.type === 'bot' ? p.difficulty : undefined,
     diffLabel: p.type === 'bot' ? DIFF_LABELS[p.difficulty] : undefined,
     color: SEAT_COLORS[p.seat - 1], score: p.score, liveScore: liveScore(room, p), mood: moodOf(room, p),
+    local: p.local ? true : undefined,
+    scheme: p.local ? p.scheme : undefined,
   }));
   let gap = null;
   if (st.length >= 2) {
     gap = { topSeat: st[0], secondSeat: st[1], diff: liveScore(room, playerAt(room, st[0])) - liveScore(room, playerAt(room, st[1])) };
   }
-  return {
+  const view = {
     ok: true, serverNow: t, code: room.code, phase: room.phase, players, standings: st, gap,
     bubble: room.bubble && room.bubble.until > t ? { seat: room.bubble.seat, text: room.bubble.text } : null,
     games: Object.keys(GAMES).map((id) => ({ id, name: GAMES[id].name, desc: GAMES[id].desc, rounds: GAMES[id].rounds, cat: GAMES[id].cat, min: minSeats(id), max: maxSeats(id) })),
@@ -5258,6 +5260,23 @@ function buildView(room, role, seat) {
     lastGame: room.lastGame,
     you: seat ? { seat } : null,
   };
+  if (role === 'host') {
+    // Keyboard ("local") seats live on THIS screen, so the host view
+    // carries their mapping (all phases) and — while a game runs — each
+    // local seat's own player view, built by the very same gameView a
+    // phone would get: their secret question/role/legal moves are theirs
+    // to peek at on the big screen. SECRECY INVARIANT: localViews keys
+    // are exactly the local seats; a PHONE player's private view is
+    // never built for the host.
+    view.locals = room.players.filter((p) => p.local).map((p) => ({ seat: p.seat, scheme: p.scheme }));
+    if (room.game) {
+      view.localViews = {};
+      room.players.forEach((p) => {
+        if (p.local) view.localViews[p.seat] = gameView(room, 'player', p.seat, t);
+      });
+    }
+  }
+  return view;
 }
 
 // ---------------------------------------------------------------------------
@@ -5302,6 +5321,20 @@ function playlistView(room, t) {
     nextInSec: intermission ? Math.max(0, Math.ceil((room.playlistNextAt - t) / 1000)) : null,
   };
 }
+// Host-relayed input for a keyboard ("local") seat: when the host page
+// sends an action with body.forSeat set, it lands on that LOCAL seat via
+// playerAction — never on a bot (bots take no input) and NEVER on a phone
+// player's seat (their inputs are theirs alone; the host token must not
+// become a skeleton key for every seat in the room). Host actions
+// without forSeat go to hostAction exactly as before.
+function hostDispatch(room, body) {
+  if (Number.isInteger(body.forSeat)) {
+    const target = room.players.find((p) => p.seat === body.forSeat && p.local);
+    if (!target) return 'Ghế này không phải người chơi bàn phím.';
+    return playerAction(room, target, body);
+  }
+  return hostAction(room, body);
+}
 function hostAction(room, body) {
   const a = body.action;
   if (a === 'addBot') {
@@ -5313,14 +5346,33 @@ function hostAction(room, body) {
     room.players.sort((x, y) => x.seat - y.seat);
     return null;
   }
+  if (a === 'addLocal') {
+    // A keyboard seat at the host screen: a human with NO token (so no
+    // phone can ever claim it — see the !local guards on every token
+    // lookup) and a keyboard scheme (0..3, lowest unused). All input
+    // paths key on type 'human', so locals play every game untouched;
+    // the host page relays their actions with body.forSeat (hostDispatch).
+    if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Chỉ thêm người chơi bàn phím được khi đang ở sảnh chờ.';
+    const seat = body.seat;
+    if (!Number.isInteger(seat) || seat < 2 || seat > MAX_SEATS) return 'Chỉ thêm người chơi bàn phím vào các ô P2 đến P' + MAX_SEATS + '.';
+    if (playerAt(room, seat)) return 'Ô này đã có người.';
+    const locals = room.players.filter((p) => p.local);
+    if (locals.length >= 4) return 'Tối đa 4 người chơi bằng bàn phím trong một phòng.';
+    let scheme = 0;
+    while (locals.some((p) => p.scheme === scheme)) scheme += 1;
+    room.players.push({ seat, type: 'human', local: true, scheme, name: 'Phím ' + (scheme + 1), score: 0 });
+    room.players.sort((x, y) => x.seat - y.seat);
+    return null;
+  }
   if (a === 'removeBot') {
     // Same phase gate as addBot: removing a bot mid-game (or at results)
     // would strand its seat inside the running game's snapshots and break
     // the results/podium views, so seat changes are lobby-only, exactly
-    // like the buttons the UI shows.
+    // like the buttons the UI shows. Also removes LOCAL (keyboard) seats:
+    // same lobby-only seat management, same button in the UI.
     if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Chỉ xoá Máy được khi đang ở sảnh chờ.';
     const p = playerAt(room, body.seat);
-    if (!p || p.type !== 'bot') return 'Ô này không phải Máy.';
+    if (!p || (p.type !== 'bot' && !p.local)) return 'Ô này không phải Máy.';
     room.players = room.players.filter((x) => x.seat !== body.seat);
     return null;
   }
@@ -5414,6 +5466,69 @@ function hostAction(room, body) {
   }
   return 'Hành động không hợp lệ.';
 }
+// --- Onset nudge (smoothness wave) ---------------------------------------
+// A pad's first effect used to wait for the next 125ms tick boundary:
+// the pipeline advances the sim BEFORE dispatch, so a direction change
+// landing mid-tick moved nothing until (nextTickAt - t) had elapsed.
+// For the games whose movement is a clean positional step, the pad
+// handler now applies that fraction of ONE step immediately — dir *
+// step * frac, frac = elapsed fraction of the current tick — under the
+// stepper's own bounds. The nudge runs NO game logic (no collisions,
+// deaths, ring-outs, pickups, painting, scoring, bots, facing) and the
+// next regular tick proceeds from the nudged position: a one-off head
+// start of < 1 step that makes input feel instant without changing any
+// rule. Base step only: dash multipliers/cooldowns are tick business.
+const NUDGE_PHASES = {
+  'day-ra': 'arena', 'ne-dan': 'dodge', 'cuop-sao': 'steal',
+  'giu-vuong-mien': 'crown', 'son-san': 'splat', 'xe-tank': 'tank',
+  'thu-thanh': 'defend', 'chung-mot-than': 'shared',
+};
+function padNudge(room, seat, prev, np, t) {
+  const g = room.game;
+  const phase = NUDGE_PHASES[g.id];
+  if (!phase || g.phase !== phase) return; // live play phase only (never 'countdown')
+  if (g.nextTickAt == null || g.nextTickAt <= t) return; // a due tick fires in this request's trailing advance, with this pad
+  const frac = Math.min(1, Math.max(0, 1 - (g.nextTickAt - t) / TICK_MS));
+  if (frac <= 0) return;
+  const dirChanged = !!prev.u !== !!np.u || !!prev.d !== !!np.d || !!prev.l !== !!np.l || !!prev.r !== !!np.r;
+  if (!dirChanged) return;
+  const dx = (np.r ? 1 : 0) - (np.l ? 1 : 0);
+  const dy = (np.d ? 1 : 0) - (np.u ? 1 : 0);
+  if (g.id === 'chung-mot-than') {
+    // The shared blob: only the axes the SENDER owns move, gated
+    // exactly as simulateSharedTick gates them; other players' inputs
+    // are not re-applied here.
+    let mx = 0, my = 0;
+    if (dx > 0 && g.owners.r === seat) mx = 1;
+    if (dx < 0 && g.owners.l === seat) mx = -1;
+    if (dy > 0 && g.owners.d === seat) my = 1;
+    if (dy < 0 && g.owners.u === seat) my = -1;
+    if (!mx && !my) return;
+    const b = g.shared;
+    if (!b) return;
+    b.x += mx * STEP_X * frac; b.y += my * STEP_Y * frac;
+    clampRect(b);
+    b.x = Math.round(b.x * 100) / 100; b.y = Math.round(b.y * 100) / 100;
+    return;
+  }
+  if (!dx && !dy) return;
+  const b = g.blobs && g.blobs[seat];
+  if (!b || !b.alive) return;
+  if (g.id === 'xe-tank') {
+    // The stepper's own wall slide (cover blocks + rect clamp);
+    // facing deliberately untouched — ticks own it.
+    slideCircle(b, dx * STEP_X * frac, dy * STEP_Y * frac, 0.8, TANK_BLOCKS, CLAMP_X, CLAMP_Y);
+    return;
+  }
+  b.x += dx * STEP_X * frac; b.y += dy * STEP_Y * frac;
+  if (g.id === 'son-san') {
+    b.x = Math.max(-14.4, Math.min(14.4, b.x)); b.y = Math.max(-8, Math.min(8, b.y));
+  } else if (g.id !== 'day-ra') {
+    clampRect(b);
+  }
+  // day-ra mirrors its stepper exactly: no positional clamp — the
+  // ring-out verdict belongs to the next regular tick.
+}
 function playerAction(room, player, body) {
   const g = room.game;
   if (room.phase !== 'playing' || !g) return 'Chưa vào game.';
@@ -5439,6 +5554,7 @@ function playerAction(room, player, body) {
       else if (np.b && !prev.b) g.inputs[seat] = { choice: 'cuop', at: t };
     }
     g.pad[seat] = np;
+    padNudge(room, seat, prev, np, t);
     return null;
   }
   if (a === 'setAim') {
@@ -5691,7 +5807,7 @@ export default {
         if (role === 'host') {
           if (token !== room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
         } else {
-          const p = room.players.find((x) => x.type === 'human' && x.token === token);
+          const p = room.players.find((x) => x.type === 'human' && !x.local && x.token === token);
           if (!p) return fail('Phiên tay cầm không hợp lệ.', 403);
           seat = p.seat;
         }
@@ -5715,7 +5831,7 @@ export default {
         if (role === 'host') {
           if (token !== room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
         } else {
-          const p = room.players.find((x) => x.type === 'human' && x.token === token);
+          const p = room.players.find((x) => x.type === 'human' && !x.local && x.token === token);
           if (!p) return fail('Phiên tay cầm không hợp lệ.', 403);
           seat = p.seat;
         }
@@ -5741,12 +5857,12 @@ export default {
         if (body.role === 'host') {
           if (body.token !== room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
         } else {
-          player = room.players.find((x) => x.type === 'human' && x.token === body.token) || null;
+          player = room.players.find((x) => x.type === 'human' && !x.local && x.token === body.token) || null;
           if (!player) return fail('Phiên tay cầm không hợp lệ.', 403);
           seat = player.seat;
         }
         advance(room);
-        const err = body.role === 'host' ? hostAction(room, body) : playerAction(room, player, body);
+        const err = body.role === 'host' ? hostDispatch(room, body) : playerAction(room, player, body);
         if (err) { await saveRoom(env, room); pokeRoom(env, code, ctx); return fail(err); }
         advance(room);
         await saveRoom(env, room);
@@ -5757,7 +5873,7 @@ export default {
         // the controller's serial pad channel wait for a whole download
         // after every snapshot on slow links, so a successful pad gets a
         // tiny ack instead. Errors above keep the existing error JSON.
-        if (body.role !== 'host' && body.action === 'pad') return json({ ok: true, serverNow: now() });
+        if (body.action === 'pad') return json({ ok: true, serverNow: now() });
         return json(buildView(room, body.role === 'host' ? 'host' : 'player', seat));
       }
       return fail('Không tìm thấy đường dẫn.', 404);
@@ -6230,6 +6346,26 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 #app.playhud .stage > p.center { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 8; margin: 0; max-width: 94%; padding: 5px 16px; border-radius: 999px; background: rgba(10,8,20,.55); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #app.playhud .afield:not(.wide) { width: min(100%, calc((100vh - 104px) * 16 / 9)); width: min(100%, calc((100dvh - 104px) * 16 / 9)); margin: 0 auto; }
 #app.playhud .topbar { margin-bottom: 2px; }
+/* Local keyboard players: per-seat overlay panels on the host screen.
+   The container is created by JS and appended to <body> (never inside
+   #app, whose innerHTML render() rebuilds); panels are display-only —
+   pointer-events none — because input arrives via window keyboard
+   handlers, and peek/cursor state lives in the LK object, not the DOM. */
+#localpanels { position: fixed; inset: 0; pointer-events: none; z-index: 55; }
+.lpanel { position: absolute; width: 302px; max-width: 44vw; background: rgba(17,12,30,.9); color: #FFF3DC; border: 2px solid rgba(255,255,255,.16); border-radius: 14px; padding: 9px 12px 10px; font-size: 14.5px; line-height: 1.35; box-shadow: 0 10px 26px rgba(0,0,0,.5); }
+.lpanel.lp0 { left: 10px; bottom: 10px; }
+.lpanel.lp1 { right: 10px; bottom: 10px; }
+.lpanel.lp2 { left: 10px; top: 66px; }
+.lpanel.lp3 { right: 10px; top: 66px; }
+.lphead { display: flex; align-items: center; gap: 7px; font-family: 'Baloo 2', cursive; font-size: 16.5px; margin-bottom: 3px; }
+.lpdot { flex: none; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), 0 0 0 2px rgba(255,255,255,.25); }
+.lpscheme { margin-left: auto; font-size: 12px; opacity: .75; font-family: 'Quicksand', sans-serif; font-weight: 700; }
+.lpline { margin: 2px 0; }
+.lpsecret { background: rgba(255,201,61,.14); border: 1px dashed rgba(255,201,61,.55); border-radius: 9px; padding: 5px 8px; margin: 3px 0; }
+.lplist { margin: 4px 0 2px; }
+.lprow { padding: 3px 9px; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lprow.cur { background: rgba(255,201,61,.3); outline: 1.5px solid #FFC93D; }
+.lpfoot { font-size: 12px; opacity: .7; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -6717,7 +6853,11 @@ function seatCard(v, seat) {
   if (!p) {
     var h = '<div class="seat"><div style="opacity:.45">' + blobSVG('orange', 'ngu', 84) + '</div>';
     h += '<div class="nm muted">P' + seat + ' · Trống</div>';
-    if (seat >= 2 && (v.phase === 'lobby' || v.phase === 'choosing')) h += '<button class="btn small orange" data-cmd="addBot" data-seat="' + seat + '">+ Máy</button>';
+    if (seat >= 2 && (v.phase === 'lobby' || v.phase === 'choosing')) {
+      h += '<button class="btn small orange" data-cmd="addBot" data-seat="' + seat + '">+ Máy</button>';
+      var nLoc0 = 0; for (var li0 = 0; li0 < v.players.length; li0++) if (v.players[li0].local) nLoc0++;
+      if (nLoc0 < 4) h += ' <button class="btn small blue" data-cmd="addLocal" data-seat="' + seat + '">+ Phím</button>';
+    }
     return h + '</div>';
   }
   var h2 = '<div class="seat filled">';
@@ -6730,6 +6870,12 @@ function seatCard(v, seat) {
     if (v.phase === 'lobby' || v.phase === 'choosing') {
       h2 += '<div style="margin-top:6px"><button class="btn small ghost" data-cmd="cycleBot" data-seat="' + seat + '">Đổi mức máy</button> ';
       h2 += '<button class="btn small ghost" data-cmd="removeBot" data-seat="' + seat + '">Xoá máy</button></div>';
+    }
+  } else if (p.local) {
+    h2 += '<div><span class="chip cool">NGƯỜI CHƠI · BÀN PHÍM</span></div>';
+    h2 += '<div class="small muted" style="margin-top:4px">' + esc(LK_SCHEME_SUMMARY[p.scheme || 0] || '') + '</div>';
+    if (v.phase === 'lobby' || v.phase === 'choosing') {
+      h2 += '<div style="margin-top:6px"><button class="btn small ghost" data-cmd="removeBot" data-seat="' + seat + '">Xoá phím</button></div>';
     }
   } else {
     h2 += '<div><span class="chip cool">NGƯỜI CHƠI</span></div>';
@@ -6752,7 +6898,8 @@ function hostHTML(v) {
     if (humans < 1) h += '<span class="chip hot">Cần ít nhất 1 người chơi bằng điện thoại</span>';
     else if (v.players.length < 2) h += '<span class="chip hot">Thêm Máy hoặc rủ thêm bạn để đủ 2 người</span>';
     else h += '<span class="chip cool">Sẵn sàng! Chọn một game bên dưới để bắt đầu</span>';
-    h += '</p></div>';
+    h += '</p>';
+    h += '<p class="center small muted" style="margin:8px 0 0">Chơi ngay trên màn hình này: bấm + Phím để thêm người chơi bằng bàn phím — mỗi người một bộ phím, không cần điện thoại.</p></div>';
     // Game chooser, grouped by category: versus games race for
     // placement points; co-op games score the whole team one tier.
     // In playlist mode the same cards become queue toggles instead of
@@ -7518,6 +7665,11 @@ function clusterNodes(root) {
 }
 function render() {
   var app = el('app');
+  // Local keyboard panels live outside #app and must repaint even when
+  // the main view signature is unchanged (peek/cursor state), and clear
+  // themselves when the host leaves a game — so they run on EVERY
+  // render() invocation, before any early return below.
+  renderLocalPanels();
   if (!S.role) { if (app.classList) app.classList.remove('playhud'); if (S.sig !== 'home') { S.sig = 'home'; S.ctrlKey = ''; app.innerHTML = homeHTML(); } return; }
   var v = S.view;
   if (!v) { app.innerHTML = '<div class="card center"><h2>Đang nối phòng…</h2><p class="muted">Nếu chờ lâu vẫn không vào được, phòng có thể đã đóng hoặc hết hạn.</p><p><button class="btn ghost" data-cmd="reload">Về trang chính</button></p></div>'; return; }
@@ -7888,7 +8040,7 @@ function syncBlasts(blasts) {
 // stretches its time constant ~6x. Without rAF, moveEl falls back to
 // left/top percentages and the CSS transitions carry the motion.
 var RAF_OK = typeof requestAnimationFrame === 'function';
-var RAF_TAU = 55;
+var RAF_TAU = 40;
 function moverMode(node) {
   var c = ' ' + (node.className || '') + ' ';
   if (c.indexOf(' acrown ') >= 0) return 'crown';
@@ -8757,7 +8909,7 @@ function runCmd(node) {
   } else if (cmd === 'reload') {
     clearSession();
     location.reload();
-  } else if (cmd === 'addBot' || cmd === 'removeBot' || cmd === 'cycleBot') {
+  } else if (cmd === 'addBot' || cmd === 'removeBot' || cmd === 'cycleBot' || cmd === 'addLocal') {
     act({ action: cmd, seat: +node.getAttribute('data-seat') });
   } else if (cmd === 'start') {
     sfxTap();
@@ -9136,6 +9288,279 @@ if (!window.PointerEvent) {
     clearPadFx();
   });
 }
+// ---------------------------------------------------------------------
+// Local keyboard mode (host screen only): up to four players play on
+// THIS screen, each with their own keyboard scheme — no phone needed.
+// The server marks those seats local:true; the host view carries
+// locals (seat -> scheme, every phase) and, during a game,
+// localViews (each local seat's own player view — their secret
+// question / wolf role / legal moves — because this screen IS that
+// player's screen). Input relays back as host actions with forSeat.
+// Panels are display-only overlays inside #localpanels, a fixed
+// container appended to <body> (outside #app, whose innerHTML render()
+// rebuilds): peek + cursor state lives in LK keyed by seat, never in
+// the DOM, so repaints cannot lose it. Nothing here runs for the
+// phone role. NOTE (brief conflict, resolved): in Kẻ Giả Mạo the Y key
+// is both "hold to peek at your question" and "answer 4" — a quick TAP
+// of Y answers 4, a HOLD (>= 300ms) only peeks, so the question can
+// always be read before deciding.
+// ---------------------------------------------------------------------
+var LK_SCHEMES = [
+  { name: 'WASD', u: 'KeyW', d: 'KeyS', l: 'KeyA', r: 'KeyD', a: 'KeyF', b: 'KeyG', x: 'KeyQ', y: 'KeyE' },
+  { name: 'Mũi tên', u: 'ArrowUp', d: 'ArrowDown', l: 'ArrowLeft', r: 'ArrowRight', a: 'Comma', b: 'Period', x: 'KeyM', y: 'Slash' },
+  { name: 'Numpad', u: 'Numpad8', d: 'Numpad5', l: 'Numpad4', r: 'Numpad6', a: 'Numpad0', b: 'NumpadEnter', x: 'Numpad7', y: 'Numpad9' },
+  { name: 'IJKL', u: 'KeyI', d: 'KeyK', l: 'KeyJ', r: 'KeyL', a: 'KeyO', b: 'KeyP', x: 'KeyU', y: 'Semicolon' }
+];
+var LK_SCHEME_SUMMARY = ['WASD · A=F B=G X=Q Y=E', 'Mũi tên · A=, B=. X=M Y=/', 'Numpad · A=0 B=Enter X=7 Y=9', 'IJKL · A=O B=P X=U Y=;'];
+var LK_BITS = ['u', 'd', 'l', 'r', 'a', 'b', 'x', 'y'];
+var LK_PAD_GAMES = { 'day-ra': 1, 'ne-dan': 1, 'cuop-sao': 1, 'giu-vuong-mien': 1, 'son-san': 1, 'chung-mot-than': 1, 'day-hop': 1, 'xe-tank': 1, 'dat-bom': 1, 'thu-thanh': 1, 'nguoi-que': 1, 'den-lua-nuoc': 1, 'da-bong': 1, 'ech-op': 1, 'can-goc': 1 };
+var LK = {};
+function lkState(seat) {
+  if (!LK[seat]) LK[seat] = { pad: { u: false, d: false, l: false, r: false, a: false, b: false, x: false, y: false }, peek: false, yAt: 0, cur: 0, sig: '' };
+  return LK[seat];
+}
+function lkActive() {
+  var v = S.view;
+  return S.role === 'host' && !!v && v.phase === 'playing' && !!v.game && !!v.locals && v.locals.length > 0;
+}
+function lkFind(code) {
+  var v = S.view; if (!v || !v.locals) return null;
+  for (var i = 0; i < v.locals.length; i++) {
+    var sc = LK_SCHEMES[v.locals[i].scheme || 0]; if (!sc) continue;
+    for (var b = 0; b < LK_BITS.length; b++) if (sc[LK_BITS[b]] === code) return { seat: v.locals[i].seat, bit: LK_BITS[b] };
+  }
+  return null;
+}
+function lkPlayerName(v, seat) { var p = playerOf(v, seat); return p ? p.name : ''; }
+function sendLocalPad(seat) {
+  // Mirror of sendPad() for a local seat: WS bare object when the live
+  // channel is open, else the HTTP tiny-ack path; replies are ignored.
+  var st = LK[seat]; if (!st || !S.code) return;
+  if (wsOpen()) { try { wsConn.send(JSON.stringify({ action: 'pad', forSeat: seat, pad: st.pad })); return; } catch (e) {} }
+  api('/api/rooms/' + S.code + '/action', { role: 'host', token: S.token, action: 'pad', forSeat: seat, pad: st.pad }, function () {});
+}
+function localAct(seat, body) {
+  // act() for a local seat: stamps host credentials + forSeat and
+  // applies the returned host view. Deliberately NOT act() itself:
+  // act() clears the session when an error contains 'không hợp lệ',
+  // and a mistimed local press (e.g. a symbol sent a frame after the
+  // phase turned) must never kick the big screen out of its own room.
+  body.role = 'host'; body.token = S.token; body.forSeat = seat;
+  api('/api/rooms/' + S.code + '/action', body, function (v) {
+    if (v && v.ok) { S.view = v; S.serverOffset = v.serverNow - Date.now(); S.sig = ''; noteOk(); render(); }
+    else if (v && v.error) toast(v.error);
+  });
+}
+function lkOptions(v, seat) {
+  // The seat's current pick list, or null. Options carry ready-to-send
+  // action bodies (localAct stamps forSeat). Building the list also
+  // owns cursor housekeeping: a changed signature (game + phase +
+  // option actions) resets the cursor to the first row.
+  var g = v.game; if (!g || !v.localViews) return null;
+  var lv = v.localViews[seat]; if (!lv) return null;
+  var opts = null;
+  function aliveOthers() {
+    var out = [];
+    for (var i = 0; i < v.players.length; i++) { var p = v.players[i]; if (p.seat !== seat && g.aliveMap && g.aliveMap[p.seat]) out.push(p); }
+    return out;
+  }
+  if (g.id === 'ma-soi' && lv.myAlive) {
+    if (g.phase === 'night') {
+      if (lv.myRole === 'soi' && lv.myWolfVote == null) {
+        opts = aliveOthers().map(function (p) { return { label: esc(p.name) + ((lv.wolfTeam || []).indexOf(p.seat) >= 0 ? ' 🐺 đồng đội' : ''), act: { action: 'wolfVote', seat: p.seat } }; });
+      } else if (lv.myRole === 'bao-ve' && lv.myGuardPick == null) {
+        opts = [];
+        for (var gi = 0; gi < v.players.length; gi++) { var gp = v.players[gi]; if (!g.aliveMap || !g.aliveMap[gp.seat]) continue; if (gp.seat === lv.myGuardLast) continue; opts.push({ label: esc(gp.name) + (gp.seat === seat ? ' (bạn)' : ''), act: { action: 'wolfGuard', seat: gp.seat } }); }
+      } else if (lv.myRole === 'tien-tri' && lv.mySeerPick == null) {
+        opts = aliveOthers().map(function (p) { return { label: esc(p.name), act: { action: 'wolfSeer', seat: p.seat } }; });
+      } else if (lv.myRole === 'phu-thuy' && !lv.myWitchDone && lv.wolvesIn) {
+        opts = [];
+        if (lv.myVictim && (lv.mySaveLeft || 0) > 0) opts.push({ label: '🧪 Cứu ' + esc(lkPlayerName(v, lv.myVictim)) + (lv.myWitchSave ? ' ✓ đang chọn' : ''), act: { action: 'wolfWitch', save: true } });
+        if ((lv.myPoisonLeft || 0) > 0) {
+          var ao = aliveOthers();
+          for (var pi = 0; pi < ao.length; pi++) opts.push({ label: '☠️ Độc: ' + esc(ao[pi].name) + (lv.myWitchPoison === ao[pi].seat ? ' ✓ đang chọn' : ''), act: { action: 'wolfWitch', poison: ao[pi].seat } });
+        }
+        opts.push({ label: '✔ Xong — đi ngủ', act: { action: 'wolfWitch', done: true } });
+      }
+    } else if (g.phase === 'vote' && !(g.voted && g.voted[seat])) {
+      opts = aliveOthers().map(function (p) { return { label: esc(p.name), act: { action: 'vote', seat: p.seat } }; });
+    }
+  } else if (g.id === 'ke-gia-mao' && g.phase === 'vote' && lv.myVote == null) {
+    opts = [];
+    for (var vi = 0; vi < v.players.length; vi++) { var vp = v.players[vi]; if (vp.seat !== seat) opts.push({ label: esc(vp.name), act: { action: 'vote', seat: vp.seat } }); }
+  } else if (g.id === 'ca-ngua' && g.phase === 'pick' && lv.myTurn && lv.myLegal && lv.myLegal.length) {
+    opts = lv.myLegal.map(function (e) { return { label: '🐴 Ngựa ' + (e.horse + 1) + ' · ' + esc(e.hint), act: { action: 'move', horse: e.horse } }; });
+  }
+  if (!opts || !opts.length) return null;
+  var sig = g.id + '|' + g.phase + '|' + opts.map(function (o) { return JSON.stringify(o.act); }).join(',');
+  var st = lkState(seat);
+  if (st.sig !== sig) { st.sig = sig; st.cur = 0; }
+  if (st.cur >= opts.length) st.cur = opts.length - 1;
+  if (st.cur < 0) st.cur = 0;
+  return { options: opts };
+}
+function lkPickHTML(v, seat) {
+  var got = lkOptions(v, seat);
+  if (!got) return '';
+  var st = lkState(seat);
+  var h = '<div class="lplist">';
+  for (var i = 0; i < got.options.length; i++) h += '<div class="lprow' + (i === st.cur ? ' cur' : '') + '">' + got.options[i].label + '</div>';
+  h += '</div><div class="lpfoot">Phím lên/xuống: chọn · A: xác nhận</div>';
+  return h;
+}
+function lkPanelBody(v, seat) {
+  var g = v.game; var lv = (v.localViews || {})[seat] || {}; var st = lkState(seat);
+  if (g.phase === 'countdown') return '<div class="lpline">⏳ Chuẩn bị… sẵn sàng trên bộ phím của bạn!</div>';
+  if (g.id === 'ke-gia-mao') {
+    if (g.phase === 'answer') {
+      var kh = '';
+      if (lv.mine != null) kh += '<div class="lpline">✅ Đã trả lời — đợi mọi người…</div>';
+      if (st.peek && lv.myQuestion) {
+        kh += '<div class="lpsecret"><b>' + esc(lv.myQuestion) + '</b>';
+        if (lv.options) for (var oi = 0; oi < lv.options.length; oi++) kh += '<div>' + (oi + 1) + '. ' + esc(lv.options[oi]) + '</div>';
+        kh += '</div><div class="lpfoot">A/B/X: đáp án 1–3 · chạm nhanh Y: đáp án 4</div>';
+      } else if (lv.mine == null) kh += '<div class="lpline">🤫 Giữ phím Y của bạn để xem câu hỏi</div>';
+      return kh;
+    }
+    if (g.phase === 'discuss') return '<div class="lpline">🗣️ Thảo luận trực tiếp với nhau!</div>';
+    if (g.phase === 'vote') {
+      if (lv.myVote != null) return '<div class="lpline">✅ Đã tố cáo — đợi kết quả…</div>';
+      return '<div class="lpline">🕵️ Tố cáo ai là kẻ giả mạo?</div>' + lkPickHTML(v, seat);
+    }
+    if (g.phase === 'reveal') return '<div class="lpline">🧐 Xem kẻ giả mạo lộ diện trên màn hình!</div>';
+    return '';
+  }
+  if (g.id === 'ma-soi') {
+    if (lv.myAlive === false) return '<div class="lpline">💀 Bạn đã chết — theo dõi trên TV</div>';
+    var mh = '';
+    if (lv.myRole) {
+      if (st.peek) {
+        mh += '<div class="lpsecret">Vai của bạn: <b>' + (WOLF_ROLE_NAMES[lv.myRole] || '') + '</b>';
+        if (lv.myRole === 'soi' && lv.wolfTeam) mh += '<div>Bầy sói: ' + lv.wolfTeam.map(function (s2) { return esc(lkPlayerName(v, s2)); }).join(', ') + '</div>';
+        if (lv.myRole === 'tien-tri' && lv.mySeerNotes && lv.mySeerNotes.length) mh += '<div>Sổ tay: ' + lv.mySeerNotes.map(function (n2) { return esc(lkPlayerName(v, n2.seat)) + (n2.wolf ? ' 🐺' : ' ✅'); }).join(' · ') + '</div>';
+        mh += '</div>';
+      } else mh += '<div class="lpline">🤫 Giữ phím Y để xem vai trò</div>';
+    }
+    if (g.phase === 'night' && lv.myAlive) {
+      if (lv.myRole === 'soi') mh += (lv.myWolfVote != null) ? '<div class="lpline">✅ Đã chọn con mồi: ' + esc(lkPlayerName(v, lv.myWolfVote)) + '</div>' : '<div class="lpline">🐺 Chọn con mồi đêm nay:</div>' + lkPickHTML(v, seat);
+      else if (lv.myRole === 'bao-ve') mh += (lv.myGuardPick != null) ? '<div class="lpline">🛡️ Đang bảo vệ: ' + esc(lkPlayerName(v, lv.myGuardPick)) + '</div>' : '<div class="lpline">🛡️ Đêm nay bạn bảo vệ ai?</div>' + lkPickHTML(v, seat);
+      else if (lv.myRole === 'tien-tri') {
+        if (lv.mySeerPick != null) { var seen1 = (lv.mySeerNotes || []).filter(function (n3) { return n3.seat === lv.mySeerPick; })[0]; mh += '<div class="lpline">🔮 ' + esc(lkPlayerName(v, lv.mySeerPick)) + (seen1 && seen1.wolf ? ' LÀ SÓI! 🐺' : ' là dân lành ✅') + '</div>'; }
+        else mh += '<div class="lpline">🔮 Đêm nay bạn soi ai?</div>' + lkPickHTML(v, seat);
+      } else if (lv.myRole === 'phu-thuy') {
+        if (lv.myWitchDone) mh += '<div class="lpline">🧙 Đã quyết định xong — đi ngủ thôi!</div>';
+        else if (!lv.wolvesIn) mh += '<div class="lpline">🧙 Đợi bầy sói chọn xong con mồi…</div>';
+        else mh += '<div class="lpline">Con mồi của sói: ' + (lv.myVictim ? esc(lkPlayerName(v, lv.myVictim)) : '—') + ' · 🧪 cứu ×' + (lv.mySaveLeft || 0) + ' · ☠️ độc ×' + (lv.myPoisonLeft || 0) + '</div>' + lkPickHTML(v, seat);
+      } else if (lv.myRole === 'dan') mh += '<div class="lpline">😴 Bạn là dân làng — ngủ ngon, đợi trời sáng…</div>';
+    } else if (g.phase === 'vote' && lv.myAlive) {
+      if (g.voted && g.voted[seat]) mh += '<div class="lpline">✅ Đã bỏ phiếu! Đợi kết quả…</div>';
+      else mh += '<div class="lpline">⚖️ Treo cổ ai? Chọn người bạn nghi là sói:</div>' + lkPickHTML(v, seat);
+    } else if (g.phase === 'discuss') {
+      mh += '<div class="lpline">🗣️ Bàn luận trực tiếp: ai là sói?</div>';
+    }
+    return mh;
+  }
+  if (g.id === 'ca-ngua') {
+    if (g.phase === 'roll') return lv.myTurn ? '<div class="lpline">🎲 Lượt của bạn — nhấn phím A để thảy xúc xắc!</div>' : '';
+    if (g.phase === 'pick') {
+      if (!lv.myTurn) return '';
+      return '<div class="lpline">🎲 Bạn thảy được ' + (g.dice || '') + ' chấm — chọn ngựa để đi:</div>' + lkPickHTML(v, seat);
+    }
+    return '';
+  }
+  if (g.id === 'do-vui') {
+    if (g.phase === 'question') return '<div class="lpline">' + (lv.mine != null ? '✅ Đã trả lời — đợi kết quả…' : '⌨️ A/B/X/Y = chọn đáp án 1–4') + '</div>';
+    return '';
+  }
+  if (g.id === 'giai-ma-chung') return '<div class="lpline">⌨️ A/B/X/Y = bấm ký hiệu của bạn</div>';
+  if (g.id === 'cao-boi') return '<div class="lpline">🔫 Nghe hiệu lệnh… phím A = BẮN!</div>';
+  if (g.id === 'chia-cuop') {
+    if (g.phase === 'choose') return '<div class="lpline">🤝 Phím A = Chia · B = Cướp (chọn bí mật)</div>';
+    if (g.phase === 'talk') return '<div class="lpline">🗣️ Thương lượng trực tiếp với nhau!</div>';
+    return '';
+  }
+  if (g.id === 'cheo-thuyen' && g.phase === 'row') return '<div class="lpline">🚣 Phím A = chèo theo nhịp!</div>';
+  if (g.id === 'keo-co') return '<div class="lpline">🪢 Nhấn liên tục phím B để KÉO!</div>';
+  if (LK_PAD_GAMES[g.id]) return '<div class="lpline">🎮 Di chuyển + A/B/X/Y bằng bộ phím của bạn</div>';
+  return '';
+}
+function lkPanelHTML(v, loc, idx) {
+  var p = playerOf(v, loc.seat);
+  var sc = LK_SCHEMES[loc.scheme || 0] || LK_SCHEMES[0];
+  var h = '<div class="lpanel lp' + idx + '">';
+  h += '<div class="lphead"><span class="lpdot" style="background:' + (COLORS[p ? p.color : 'blue'] || '#888888') + '"></span><b>' + esc(p ? p.name : '') + '</b><span class="lpscheme">' + esc(sc.name) + '</span></div>';
+  h += lkPanelBody(v, loc.seat);
+  return h + '</div>';
+}
+function renderLocalPanels() {
+  var box = el('localpanels');
+  if (!box) { box = document.createElement('div'); box.id = 'localpanels'; document.body.appendChild(box); }
+  var v = S.view;
+  if (S.role !== 'host' || !v || v.phase !== 'playing' || !v.game || !v.locals || !v.locals.length) { if (box.innerHTML) box.innerHTML = ''; return; }
+  var h = '';
+  for (var i = 0; i < v.locals.length && i < 4; i++) h += lkPanelHTML(v, v.locals[i], i);
+  if (box.innerHTML !== h) box.innerHTML = h;
+}
+function lkTranslate(seat, bit) {
+  var v = S.view; var g = v.game; if (!g) return;
+  var lv = (v.localViews || {})[seat] || {};
+  var ci = bit === 'a' ? 0 : bit === 'b' ? 1 : bit === 'x' ? 2 : bit === 'y' ? 3 : -1;
+  if (g.id === 'do-vui' && g.phase === 'question') { if (ci >= 0 && lv.mine == null) localAct(seat, { action: 'answer', choice: ci }); }
+  else if (g.id === 'ke-gia-mao' && g.phase === 'answer') { if (ci >= 0 && ci < 3 && lv.mine == null) localAct(seat, { action: 'answer', choice: ci }); }
+  else if (g.id === 'giai-ma-chung') { if (ci >= 0) localAct(seat, { action: 'symbol', sym: ci }); }
+  else if (g.id === 'cao-boi') { if (bit === 'a') localAct(seat, { action: 'tap' }); }
+  else if (g.id === 'cheo-thuyen' && g.phase === 'row') { if (bit === 'a') localAct(seat, { action: 'tap' }); }
+  else if (g.id === 'ca-ngua' && g.phase === 'roll') { if (bit === 'a' && lv.myTurn) localAct(seat, { action: 'roll' }); }
+}
+window.addEventListener('keydown', function (ev) {
+  if (!lkActive()) return;
+  var t = ev.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+  var hit = lkFind(ev.code); if (!hit) return;
+  ev.preventDefault();
+  var seat = hit.seat, bit = hit.bit, st = lkState(seat);
+  var fresh = !st.pad[bit];
+  if (bit === 'y' && fresh) { st.peek = true; st.yAt = Date.now(); renderLocalPanels(); }
+  // A visible pick list claims up/down (cursor, repeats welcome) and A
+  // (confirm, fresh presses only); every other fresh press falls to
+  // the per-game discrete translations. Pad state below tracks ALL
+  // mapped keys regardless — the server ignores pads in list games.
+  var opts = lkOptions(S.view, seat);
+  if (opts && (bit === 'u' || bit === 'd')) {
+    if (fresh || ev.repeat) { st.cur = (st.cur + (bit === 'u' ? opts.options.length - 1 : 1)) % opts.options.length; renderLocalPanels(); }
+  } else if (opts && bit === 'a') {
+    if (fresh && !ev.repeat) { var o = opts.options[st.cur]; if (o) localAct(seat, o.act); }
+  } else if (fresh && !ev.repeat) {
+    lkTranslate(seat, bit);
+  }
+  if (!st.pad[bit]) { st.pad[bit] = true; sendLocalPad(seat); }
+});
+window.addEventListener('keyup', function (ev) {
+  if (S.role !== 'host') return;
+  var hit = lkFind(ev.code); if (!hit) return;
+  var seat = hit.seat, bit = hit.bit, st = lkState(seat);
+  if (st.pad[bit]) { st.pad[bit] = false; sendLocalPad(seat); }
+  if (bit === 'y' && st.peek) {
+    st.peek = false;
+    var v = S.view;
+    if (v && v.game && v.game.id === 'ke-gia-mao' && v.game.phase === 'answer' && Date.now() - st.yAt < 300) {
+      var lv = (v.localViews || {})[seat] || {};
+      if (lv.mine == null) localAct(seat, { action: 'answer', choice: 3 });
+    }
+    renderLocalPanels();
+  }
+});
+window.addEventListener('blur', function () {
+  // Never leave a local pad bit stuck on the server when the TV window
+  // loses focus mid-hold: clear every seat's snapshot and push it.
+  for (var seat in LK) {
+    var st = LK[seat]; var dirty = false;
+    for (var b = 0; b < LK_BITS.length; b++) if (st.pad[LK_BITS[b]]) { st.pad[LK_BITS[b]] = false; dirty = true; }
+    st.peek = false;
+    if (dirty && S.role === 'host' && S.view && S.view.locals) sendLocalPad(+seat);
+  }
+  renderLocalPanels();
+});
 (function init() {
   try {
     var raw = sessionStorage.getItem('np_session');

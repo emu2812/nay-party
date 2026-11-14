@@ -3238,6 +3238,312 @@ async function main() {
     }
   }
 
+  // ---------- Audit V: local keyboard mode --------------------------------
+  // Keyboard ("local") seats at the host screen: tokenless humans the
+  // host page drives via forSeat actions. The server half was probe-
+  // verified during development; these are the formal assertions.
+  console.log('Audit V: local keyboard seats — play on the host screen, no phone needed');
+  {
+    const lkHome = await call('GET', '/');
+    assert(lkHome.text.indexOf('function renderLocalPanels(') >= 0 && lkHome.text.indexOf('function lkOptions(') >= 0
+      && lkHome.text.indexOf('function lkTranslate(') >= 0,
+      'local: the served page ships the keyboard engine + local panels');
+    assert(lkHome.text.indexOf('LK_SCHEMES') >= 0 && lkHome.text.indexOf('Chơi ngay trên màn hình này') >= 0
+      && lkHome.text.indexOf('data-cmd="addLocal"') >= 0,
+      'local: the served page ships the schemes table, the lobby help line and the + Phím button');
+    const storedRoom = async (code) => JSON.parse((await doFake.records.get(code).state.storage.get('room')).json);
+
+    // --- Seat management: schemes, cap, removal, gates ----------------
+    const lkDrv = await newDrv();
+    await lkDrv.join('Dien Thoai');
+    let lv = await lkDrv.state();
+    assert(Array.isArray(lv.locals) && lv.locals.length === 0, 'local: a fresh room lists no keyboard seats');
+    const add1 = await lkDrv.act({ action: 'addLocal', seat: 2 });
+    assert(add1.ok === true, 'local: addLocal succeeds in the lobby');
+    const occ = await lkDrv.act({ action: 'addLocal', seat: 2 });
+    assert(occ.ok === false && occ.error === 'Ô này đã có người.', 'local: addLocal on an occupied seat is rejected, got ' + JSON.stringify(occ));
+    lv = await lkDrv.state();
+    const lp2 = lv.players.find((p) => p.seat === 2);
+    assert(lp2 && lp2.type === 'human' && lp2.local === true && lp2.scheme === 0 && lp2.name === 'Phím 1',
+      'local: seat 2 is a human flagged local, scheme 0, named Phím 1, got ' + JSON.stringify(lp2));
+    assert(JSON.stringify(lv.locals) === JSON.stringify([{ seat: 2, scheme: 0 }]),
+      'local: the host view lists locals as [{seat, scheme}], got ' + JSON.stringify(lv.locals));
+    const lkStored = await storedRoom(lkDrv.code);
+    const lkStoredP = lkStored.players.find((p) => p.seat === 2);
+    assert(lkStoredP && lkStoredP.local === true && !('token' in lkStoredP),
+      'local: the stored seat carries NO token field at all');
+    await lkDrv.act({ action: 'addLocal', seat: 3 });
+    await lkDrv.act({ action: 'addLocal', seat: 4 });
+    await lkDrv.act({ action: 'addLocal', seat: 5 });
+    lv = await lkDrv.state();
+    assert(JSON.stringify(lv.locals.map((l) => l.scheme)) === JSON.stringify([0, 1, 2, 3]),
+      'local: four locals take schemes 0,1,2,3 in order, got ' + JSON.stringify(lv.locals));
+    const fifth = await lkDrv.act({ action: 'addLocal', seat: 6 });
+    assert(fifth.ok === false && fifth.error === 'Tối đa 4 người chơi bằng bàn phím trong một phòng.',
+      'local: the 5th keyboard seat is rejected with the exact cap error, got ' + JSON.stringify(fifth));
+    const rmL = await lkDrv.act({ action: 'removeBot', seat: 3 });
+    assert(rmL.ok === true && !(await lkDrv.state()).players.some((p) => p.seat === 3),
+      'local: removeBot also removes a local seat in the lobby');
+    await lkDrv.act({ action: 'addLocal', seat: 3 });
+    lv = await lkDrv.state();
+    const lp3 = lv.players.find((p) => p.seat === 3);
+    assert(lp3 && lp3.scheme === 1 && lp3.name === 'Phím 2',
+      'local: re-adding after removal takes the lowest unused scheme (1), got ' + JSON.stringify(lp3));
+    // Forgery: the tokenless seat can never be claimed as a phone.
+    for (const q of ['role=player', 'role=player&token=', 'role=player&token=null', 'role=player&seat=2&token=undefined']) {
+      const fr = await call('GET', '/api/rooms/' + lkDrv.code + '/state?' + q);
+      assert(fr.status === 403, 'local: player /state with ' + q + ' cannot claim the tokenless seat (403), got ' + fr.status);
+    }
+    const fa1 = await call('POST', '/api/rooms/' + lkDrv.code + '/action', { role: 'player', action: 'pad', pad: { r: true } });
+    assert(fa1.status === 403, 'local: player /action with NO token is 403, got ' + fa1.status);
+    const fa2 = await call('POST', '/api/rooms/' + lkDrv.code + '/action', { role: 'player', token: null, action: 'pad', pad: {} });
+    assert(fa2.status === 403, 'local: player /action with a null token is 403, got ' + fa2.status);
+    const fa3 = await call('POST', '/api/rooms/' + lkDrv.code + '/action', { role: 'player', token: '', action: 'pad', pad: {} });
+    assert(fa3.status === 403, 'local: player /action with an empty token is 403, got ' + fa3.status);
+    // Mid-game gate: seat changes are lobby-only, exactly like bots.
+    const lkStart = await lkDrv.act({ action: 'startGame', game: 'day-ra' });
+    assert(lkStart.ok === true && lkStart.game.id === 'day-ra', 'local: a room mixing phone + 4 locals starts a game');
+    const midAdd = await lkDrv.act({ action: 'addLocal', seat: 7 });
+    assert(midAdd.ok === false && midAdd.error === 'Chỉ thêm người chơi bàn phím được khi đang ở sảnh chờ.',
+      'local: addLocal mid-game is rejected, got ' + JSON.stringify(midAdd));
+
+    // --- forSeat discipline in a live arena (phone + local + bot) -----
+    const pfDrv = await newDrv();
+    const pfPhone = await pfDrv.join('Chu Phong');
+    await pfDrv.act({ action: 'addLocal', seat: 2 });
+    await pfDrv.act({ action: 'addBot', seat: 3 });
+    await pfDrv.act({ action: 'startGame', game: 'day-ra' });
+    await pumpD(pfDrv, 200, (s) => s.game && s.game.phase === 'arena', 'local pf arena begins');
+    const forPhone = await pfDrv.act({ action: 'pad', forSeat: 1, pad: { r: true } });
+    assert(forPhone.ok === false && forPhone.error === 'Ghế này không phải người chơi bàn phím.',
+      'local: forSeat aimed at a PHONE seat is rejected, got ' + JSON.stringify(forPhone));
+    const forBot = await pfDrv.act({ action: 'pad', forSeat: 3, pad: { r: true } });
+    assert(forBot.ok === false && forBot.error === 'Ghế này không phải người chơi bàn phím.',
+      'local: forSeat aimed at a BOT seat is rejected, got ' + JSON.stringify(forBot));
+    const plainPad = await pfDrv.act({ action: 'pad', pad: { r: true } });
+    assert(plainPad.ok === false, 'local: a plain host pad (no forSeat) is not a host action and changes nothing');
+    tick(500); await pfDrv.state();
+    let pfStored = await storedRoom(pfDrv.code);
+    assert(!pfStored.game.pad[1] && !pfStored.game.pad[2],
+      'local: neither the rejected forSeat nor the plain host pad wrote any pad state');
+    const pfView = await pfDrv.pState(pfPhone.playerToken);
+    assert(pfView.ok === true && pfView.you && pfView.you.seat === 1,
+      'local: the phone session is untouched by the host relay attempts');
+    const pfRes = await pumpD(pfDrv, 1000, (s) => s.phase === 'results', 'local pf arena results', 300);
+    assert(pfRes.lastGame && pfRes.lastGame.id === 'day-ra',
+      'local: an arena match completes in a room containing an idle local seat');
+
+    // --- No phone at all: local + bots starts; forSeat pad moves it ---
+    const lcDrv = await newDrv();
+    await lcDrv.act({ action: 'addLocal', seat: 2 });
+    await lcDrv.act({ action: 'addBot', seat: 3 });
+    await lcDrv.act({ action: 'addBot', seat: 4 });
+    const lcStart = await lcDrv.act({ action: 'startGame', game: 'day-ra' });
+    assert(lcStart.ok === true && lcStart.game && lcStart.game.id === 'day-ra',
+      'local: a room whose ONLY human is a keyboard seat starts a game (no phone in the room)');
+    let cv = await pumpD(lcDrv, 200, (s) => s.game && s.game.phase === 'arena', 'local lc arena begins');
+    const blob0 = cv.game.blobs[2];
+    const lcPad = await lcDrv.act({ action: 'pad', forSeat: 2, pad: { r: true } });
+    assert(lcPad.ok === true, 'local: host pad with forSeat is accepted (tiny ack)');
+    const lcStored = await storedRoom(lcDrv.code);
+    assert(lcStored.game.pad[2] && lcStored.game.pad[2].r === true,
+      'local: the forSeat pad lands in the sim pad state for the local seat');
+    for (let i = 0; i < 6; i++) { tick(250); await lcDrv.state(); }
+    cv = await lcDrv.state();
+    const blob1 = cv.game.blobs[2];
+    const lcMoved = Math.abs(blob1.x - blob0.x) + Math.abs(blob1.y - blob0.y);
+    assert(lcMoved >= 1, 'local: holding RIGHT on the keyboard moves the local blob (moved ' + lcMoved + ')');
+    await lcDrv.act({ action: 'pad', forSeat: 2, pad: {} });
+    const lcRes = await pumpD(lcDrv, 1000, (s) => s.phase === 'results', 'local lc arena results', 300);
+    assert(lcRes.lastGame && lcRes.lastGame.id === 'day-ra',
+      'local: the no-phone room plays its arena match to completion');
+
+    // --- Đố Vui: a relayed answer scores exactly like a phone's -------
+    const qzDrv = await newDrv();
+    const qzPhone = await qzDrv.join('Dien Thoai');
+    await qzDrv.act({ action: 'addLocal', seat: 2 });
+    await qzDrv.act({ action: 'addBot', seat: 3 });
+    await qzDrv.act({ action: 'startGame', game: 'do-vui' });
+    await pumpD(qzDrv, 250, (s) => s.game && s.game.phase === 'question' && s.game.round === 1, 'local quiz q1');
+    const qzPhoneView = await qzDrv.pState(qzPhone.playerToken);
+    const qzBank = QUIZ_BANK.find((b) => b.q === qzPhoneView.game.question);
+    const qzIdx = qzPhoneView.game.options.indexOf(qzBank.options[qzBank.answer]);
+    assert(qzIdx >= 0, 'local quiz: the correct option is identified from the bank');
+    await qzDrv.pAct(qzPhone.playerToken, { action: 'answer', choice: qzIdx });
+    const qzAns = await qzDrv.act({ action: 'answer', forSeat: 2, choice: qzIdx });
+    assert(qzAns.ok === true, 'local quiz: the relayed answer is accepted');
+    const qzMid = await qzDrv.state();
+    assert(qzMid.game.answered[2] === true && qzMid.localViews[2].mine === qzIdx,
+      'local quiz: the local answer is recorded (answered flag + own view mine)');
+    const qzRev = await pumpD(qzDrv, 500, (s) => s.game && s.game.phase === 'reveal' && s.game.round === 1, 'local quiz reveal');
+    assert(qzRev.game.reveal.points[1] > 0 && qzRev.game.reveal.points[1] === qzRev.game.reveal.points[2],
+      'local quiz: same answer at the same instant scores identical points for phone and keyboard, got '
+      + JSON.stringify(qzRev.game.reveal.points));
+
+    // --- Kẻ Giả Mạo secrecy: the phone's secret never reaches the host -
+    // Force the draw: impostor pick 0.1 -> players[0] (the PHONE seat),
+    // pair pick 0.0 -> IMPOSTOR_BANK[0]. The phone holds the FAKE
+    // question; the local seat holds the REAL one.
+    const kgDrv = await newDrv();
+    const kgPhone = await kgDrv.join('Bi Mat');
+    await kgDrv.act({ action: 'addLocal', seat: 2 });
+    await kgDrv.act({ action: 'addBot', seat: 3 });
+    await kgDrv.act({ action: 'addBot', seat: 4 });
+    await withRandomQueue([0.1, 0.0], async () => {
+      await kgDrv.act({ action: 'startGame', game: 'ke-gia-mao' });
+      const kv = await pumpD(kgDrv, 250, (s) => s.game && s.game.phase === 'answer' && s.game.round === 1, 'local impostor answer phase');
+      const kgPhoneView = await kgDrv.pState(kgPhone.playerToken);
+      assert(kgPhoneView.game.myQuestion === IMPOSTOR_BANK[0].fake,
+        'local impostor: the phone is the impostor and sees only the FAKE question');
+      assert(kgPhoneView.localViews === undefined && kgPhoneView.locals === undefined,
+        'local impostor: a phone view never carries locals/localViews');
+      assert(kv.localViews[2].myQuestion === IMPOSTOR_BANK[0].real,
+        'local impostor: the local seat sees the REAL question in its localView');
+      assert(JSON.stringify(Object.keys(kv.localViews)) === JSON.stringify(['2']),
+        'local impostor: localViews keys are exactly the local seats, got ' + JSON.stringify(Object.keys(kv.localViews)));
+      const kgHostJSON = JSON.stringify(kv);
+      assert(kgHostJSON.indexOf(IMPOSTOR_BANK[0].fake) === -1,
+        'local impostor: the PHONE question text is ABSENT from the whole host view');
+      assert(kgHostJSON.indexOf(IMPOSTOR_BANK[0].real) >= 0,
+        'local impostor: the LOCAL question text is present (inside localViews only)');
+    });
+
+    // --- Ma Sói: structure + a full match with an idle local ----------
+    const wfDrv = await newDrv();
+    const wfPhone = await wfDrv.join('Dan Lang');
+    await wfDrv.act({ action: 'addLocal', seat: 2 });
+    for (let ws2 = 3; ws2 <= 6; ws2++) await wfDrv.act({ action: 'addBot', seat: ws2 });
+    const wfStart = await wfDrv.act({ action: 'startGame', game: 'ma-soi' });
+    assert(wfStart.ok === true && wfStart.game.id === 'ma-soi', 'local wolf: ma-soi starts with phone + local + 4 bots');
+    const wfNight = await pumpD(wfDrv, 250, (s) => s.game && s.game.phase === 'night', 'local wolf night 1', 300);
+    assert(JSON.stringify(Object.keys(wfNight.localViews)) === JSON.stringify(['2']),
+      'local wolf: localViews keys are exactly the local seat, got ' + JSON.stringify(Object.keys(wfNight.localViews)));
+    assert(!('myRole' in wfNight.game), 'local wolf: the host game view itself carries no myRole');
+    const wfStored = await storedRoom(wfDrv.code);
+    const wfRoles = wfStored.game.wolf.roles;
+    assert(wfNight.localViews[2].myRole === wfRoles[2],
+      'local wolf: the local seat sees exactly its own role in localViews');
+    const wfPhoneView = await wfDrv.pState(wfPhone.playerToken);
+    assert(wfPhoneView.game.myRole === wfRoles[1] && wfPhoneView.localViews === undefined,
+      'local wolf: the phone still sees only its own role, and no localViews');
+    if (wfRoles[1] !== 'soi') {
+      assert(JSON.stringify(wfNight.localViews).indexOf('"soi"') === -1 || wfRoles[2] === 'soi',
+        'local wolf: no wolf role leaks into localViews beyond the local seat itself');
+    }
+    const wfEnd = await pumpD(wfDrv, 1000, (s) => s.game && s.game.phase === 'wolfEnd', 'local wolf end', 6000);
+    assert(wfEnd.game.winner === 'soi' || wfEnd.game.winner === 'dan',
+      'local wolf: the full match reaches wolfEnd with an idle local seat (winner: ' + wfEnd.game.winner + ')');
+    const wfRes = await pumpD(wfDrv, 1000, (s) => s.phase === 'results', 'local wolf results', 600);
+    assert(wfRes.lastGame && wfRes.lastGame.id === 'ma-soi',
+      'local wolf: the ma-soi match completes to results with a local seat in the room');
+  }
+
+  // =====================================================================
+  // Smoothness wave: the onset nudge. A direction change landing
+  // mid-tick moves the entity by dir * STEP * frac inside the pad
+  // request itself. frac is arranged deterministically: sync to a tick
+  // boundary (one 125ms step + state read, so nextTickAt = now + 125),
+  // then advance the fake clock 62ms -> frac = 1 - 63/125 = 0.496.
+  console.log('Smoothness wave: onset nudge');
+  const STEP_X_T = 0.25 * 4 / 3; // mirror of the engine's STEP_X (MOVE_STEP 0.25)
+  const FRAC_T = 1 - 63 / 125;
+  {
+    // --- day-ra: frac movement; button-only and same-direction no-ops
+    const nDrv = await newDrv();
+    const n1 = await nDrv.join('NudgeMot');
+    await nDrv.join('NudgeHai');
+    await nDrv.act({ action: 'startGame', game: 'day-ra' });
+    let nv = await pumpD(nDrv, 125, (s) => s.game && s.game.phase === 'arena', 'nudge arena begins');
+    const spawnX = nv.game.blobs[1].x;
+    tick(125); nv = await nDrv.state(); // one exact tick: sync with nextTickAt
+    assert(nv.game.blobs[1].x === spawnX, 'nudge: the idle blob is stationary before the test pads');
+    tick(62); // mid-tick: frac = 0.496 at dispatch
+    await nDrv.pAct(n1.playerToken, { action: 'pad', pad: { a: true } });
+    nv = await nDrv.state();
+    assert(nv.game.blobs[1].x === spawnX, 'nudge: a button-only pad change does not move the blob');
+    await nDrv.pAct(n1.playerToken, { action: 'pad', pad: { r: true } });
+    nv = await nDrv.state();
+    const gotN = nv.game.blobs[1].x - spawnX;
+    assert(Math.abs(gotN - STEP_X_T * FRAC_T) < 0.02,
+      'nudge: day-ra blob moved dir*step*frac inside the pad request (' + gotN.toFixed(3) + ' vs ' + (STEP_X_T * FRAC_T).toFixed(3) + ')');
+    const nudgedX = nv.game.blobs[1].x;
+    await nDrv.pAct(n1.playerToken, { action: 'pad', pad: { r: true, a: true } });
+    nv = await nDrv.state();
+    assert(nv.game.blobs[1].x === nudgedX, 'nudge: same direction + a button does not nudge a second time');
+  }
+  {
+    // --- countdown: a pad held through the countdown is never nudged;
+    // the first tick after begin moves exactly one full step.
+    const cDrv = await newDrv();
+    const c1 = await cDrv.join('DemMot');
+    await cDrv.join('DemHai');
+    await cDrv.act({ action: 'startGame', game: 'day-ra' });
+    await cDrv.pAct(c1.playerToken, { action: 'pad', pad: { r: true } }); // held through countdown
+    let cv = await pumpD(cDrv, 125, (s) => s.game && s.game.phase === 'arena', 'countdown arena begins');
+    const csx = cv.game.blobs[1].x;
+    tick(125); cv = await cDrv.state(); // exactly one tick with the held pad
+    const cdx = cv.game.blobs[1].x - csx;
+    assert(Math.abs(cdx - STEP_X_T) < 0.02,
+      'nudge: no countdown nudge — the first tick moves exactly one step (' + cdx.toFixed(3) + ')');
+  }
+  {
+    // --- da-bong is EXCLUDED (velocity physics): the pad is stored but
+    // nothing moves until a tick consumes it.
+    const sDrv = await newDrv();
+    const s1 = await sDrv.join('BongMot');
+    await sDrv.join('BongHai');
+    await sDrv.act({ action: 'startGame', game: 'da-bong' });
+    let sv = await pumpD(sDrv, 125, (s) => s.game && s.game.phase === 'soccer', 'nudge soccer begins');
+    tick(125); sv = await sDrv.state(); // sync tick (settles the spawn)
+    const sbx = sv.game.blobs[1].x, sby = sv.game.blobs[1].y;
+    tick(62);
+    await sDrv.pAct(s1.playerToken, { action: 'pad', pad: { r: true } });
+    sv = await sDrv.state();
+    assert(sv.game.blobs[1].x === sbx && sv.game.blobs[1].y === sby,
+      'nudge: excluded da-bong does not move inside the pad request');
+    tick(125); tick(125); tick(125); sv = await sDrv.state();
+    assert(sv.game.blobs[1].x > sbx + 0.02, 'nudge: the stored da-bong pad still drives the following ticks normally');
+  }
+  {
+    // --- son-san: the nudge clamps to the paint-grid box (14.4 x 8),
+    // not to the wider field rect.
+    const pDrv = await newDrv();
+    const p1 = await pDrv.join('SonMot');
+    await pDrv.join('SonHai');
+    await pDrv.act({ action: 'startGame', game: 'son-san' });
+    let pv = await pumpD(pDrv, 125, (s) => s.game && s.game.phase === 'splat', 'nudge splat begins');
+    await pDrv.pAct(p1.playerToken, { action: 'pad', pad: { r: true } });
+    for (let i = 0; i < 200 && pv.game.blobs[1].x < 14.39; i++) { tick(125); pv = await pDrv.state(); }
+    assert(pv.game.blobs[1].x >= 14.39, 'nudge: the splat blob reached the paint-box edge (x=' + pv.game.blobs[1].x + ')');
+    await pDrv.pAct(p1.playerToken, { action: 'pad', pad: {} });
+    tick(125); pv = await pDrv.state(); // sync: nextTickAt = now + 125
+    tick(62);
+    await pDrv.pAct(p1.playerToken, { action: 'pad', pad: { r: true } }); // direction change -> nudge into the wall
+    pv = await pDrv.state();
+    assert(pv.game.blobs[1].x <= 14.4 + 1e-9, 'nudge: the splat nudge clamps at the paint-box edge (x=' + pv.game.blobs[1].x + ')');
+  }
+  {
+    // --- chung-mot-than: the shared blob nudges only on the axis the
+    // sender owns. 2 seats -> owners dealt u->1, r->2, d->1, l->2.
+    const shDrv = await newDrv();
+    const sh1 = await shDrv.join('ThanMot');
+    const sh2 = await shDrv.join('ThanHai');
+    await shDrv.act({ action: 'startGame', game: 'chung-mot-than' });
+    let hv = await pumpD(shDrv, 125, (s) => s.game && s.game.phase === 'shared', 'nudge shared begins');
+    assert(hv.game.owners && hv.game.owners.r === 2, 'nudge: shared owners dealt as expected (r -> seat 2)');
+    tick(125); hv = await shDrv.state(); // sync tick
+    const gx0 = hv.game.shared.x;
+    tick(62);
+    await shDrv.pAct(sh1.playerToken, { action: 'pad', pad: { r: true } }); // seat 1 does not own r
+    hv = await shDrv.state();
+    assert(hv.game.shared.x === gx0, 'nudge: a non-owner direction press does not move the shared blob');
+    await shDrv.pAct(sh2.playerToken, { action: 'pad', pad: { r: true } }); // seat 2 owns r
+    hv = await shDrv.state();
+    const gdx = hv.game.shared.x - gx0;
+    assert(Math.abs(gdx - STEP_X_T * FRAC_T) < 0.02,
+      'nudge: the r-owner nudges the shared blob by step*frac (' + gdx.toFixed(3) + ' vs ' + (STEP_X_T * FRAC_T).toFixed(3) + ')');
+  }
+
   // --- Storage routing: with ROOMS_DO bound, everything above must have
   console.log('Storage: Durable Object routing + expiry');
   assert(env.ROOMS.putCount === 0 && env.ROOMS.getCount === 0,
