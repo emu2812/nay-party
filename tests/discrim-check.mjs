@@ -92,7 +92,7 @@ async function step125(drv, n) {
   await drv.join('TankHai');
   await drv.act({ action: 'startGame', game: 'xe-tank' });
   await drv.pAct(p1.playerToken, { action: 'pad', pad: { r: true } }); // held through countdown
-  let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'tank', 'tank begins');
+  let v = await pumpD(drv, 125, (s) => s.game && s.game.phase === 'tank', 'tank begins');
   const x0 = v.game.blobs[1].x;
   v = await step125(drv, 2000);
   const dx = v.game.blobs[1].x - x0;
@@ -105,7 +105,7 @@ async function step125(drv, n) {
   const p1 = await drv.join('BomMot');
   await drv.join('BomHai');
   await drv.act({ action: 'startGame', game: 'dat-bom' });
-  let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'bomber', 'bomber begins');
+  let v = await pumpD(drv, 125, (s) => s.game && s.game.phase === 'bomber', 'bomber begins');
   await drv.pAct(p1.playerToken, { action: 'pad', pad: { a: true } });
   let tPlaced = null, tBoom = null;
   for (let i = 0; i < 80; i++) {
@@ -128,7 +128,7 @@ async function step125(drv, n) {
   const p1 = await drv.join('VuongMot');
   await drv.join('VuongHai');
   await drv.act({ action: 'startGame', game: 'giu-vuong-mien' });
-  let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'crown', 'crown begins');
+  let v = await pumpD(drv, 125, (s) => s.game && s.game.phase === 'crown', 'crown begins');
   // walk seat 1 left onto the crown at (0,0): 7.33u at 1/3u/tick
   await drv.pAct(p1.playerToken, { action: 'pad', pad: { l: true } });
   for (let i = 0; i < 200 && !(v.game.crown && v.game.crown.holder === 1); i++) { tick(125); v = await drv.state(); }
@@ -145,7 +145,7 @@ async function step125(drv, n) {
   await drv.join('QueMot');
   const p2 = await drv.join('QueHai');
   await drv.act({ action: 'startGame', game: 'nguoi-que' });
-  let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'fight', 'fight begins');
+  let v = await pumpD(drv, 125, (s) => s.game && s.game.phase === 'fight', 'fight begins');
   // Seat 2 at (-2.7, 3.6): no platform intersects its vertical arc (the
   // left floater ends at x -3.5; the top platform's top is above the
   // jump apex), so the jump runs the full floor-to-floor arc.
@@ -171,7 +171,7 @@ async function step125(drv, n) {
   const p1 = await drv.join('DenMot');
   await drv.join('DenHai');
   await drv.act({ action: 'startGame', game: 'den-lua-nuoc' });
-  let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'temple', 'temple begins');
+  let v = await pumpD(drv, 125, (s) => s.game && s.game.phase === 'temple', 'temple begins');
   // Lửa walks right to x -7.55: clear of the left step ledge (ends at
   // -8.7) and short of the red pool (starts -6.2), so the jump arc is
   // a clean floor-to-floor arc with nothing overhead but one-ways.
@@ -199,7 +199,7 @@ async function step125(drv, n) {
   await drv.join('ChayHai');
   await drv.act({ action: 'startGame', game: 'den-lua-nuoc' });
   await drv.pAct(p1.playerToken, { action: 'pad', pad: { r: true } }); // held through countdown
-  let v = await pumpD(drv, 250, (s) => s.game && s.game.phase === 'temple', 'temple run begins');
+  let v = await pumpD(drv, 125, (s) => s.game && s.game.phase === 'temple', 'temple run begins');
   const x0 = v.game.chars[1].x;
   v = await step125(drv, 2000);
   const dx = v.game.chars[1].x - x0;

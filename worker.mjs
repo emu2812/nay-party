@@ -116,6 +116,7 @@ export const GAMES = {
   'ke-gia-mao': { name: 'Kẻ Giả Mạo', desc: 'Một người nhận câu hỏi giả — bàn luận và tố cáo cho đúng!', rounds: 3, cat: 'versus', min: 3, max: 12 },
   'ma-soi': { name: 'Ma Sói', desc: 'Suy luận xã hội: sói trà trộn trong làng — bảo vệ dân, tìm và treo cổ sói trước khi quá muộn!', rounds: 1, cat: 'versus', min: 4, max: 12 },
   'ca-ngua': { name: 'Cờ Cá Ngựa', desc: 'Thảy xúc xắc, xuất chuồng, đá ngựa đối thủ — đưa cả 4 ngựa về chuồng trước!', rounds: 1, cat: 'versus', min: 2, max: 4 },
+  'tien-len': { name: 'Tiến Lên Miền Nam', desc: 'Đánh bài miền Nam: chặn bài, chặt heo bằng tứ quý & đôi thông — hết bài trước thắng!', rounds: 1, cat: 'versus', min: 2, max: 4 },
   'chung-mot-than': { name: 'Chung Một Thân', desc: 'Hợp tác: cả đội lái chung một quả bóng, mỗi người giữ một hướng!', rounds: 1, cat: 'coop', min: 2, max: 8 },
   'day-hop': { name: 'Đẩy Hộp Về Đích', desc: 'Hợp tác: cùng đẩy hộp qua mê cung về ô đích!', rounds: 1, cat: 'coop', min: 2, max: 6 },
   'cheo-thuyen': { name: 'Chèo Thuyền', desc: 'Hợp tác: chèo thuyền theo nhịp, cả đội cùng trúng nhịp mới đi xa!', rounds: 1, cat: 'coop', min: 2, max: 12 },
@@ -292,6 +293,9 @@ const WOLF_CHAT_LINES = [
 // No blockade rule: passing over any horse is always allowed.
 // Three sixes in a row forfeit the third roll's move (classic rule).
 const NGUA_TURN_MS = 30000, NGUA_BOT_MS = 900, NGUA_BEAT_MS = 1500, NGUA_WIN_MS = 4000;
+// Tiến Lên Miền Nam: 30s per turn (wall clock, like Cá Ngựa); bots act
+// ~1s into their turn; the winner banner holds 5s before results.
+const TL_TURN_MS = 30000, TL_BOT_MS = 900, TL_WIN_MS = 5000;
 const NGUA_OFFSETS = [0, 13, 26, 39];
 const NGUA_SAFE = new Set([0, 13, 26, 39, 50, 11, 24, 37]);
 // The 52-cell loop on a 15x15 board as [col, row] pairs, starting at
@@ -814,7 +818,7 @@ export class RoomStore {
     if (role === 'host') {
       if (token !== loaded.room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
     } else {
-      const p = loaded.room.players.find((x) => x.type === 'human' && !x.local && x.seat === seat && x.token === token);
+      const p = loaded.room.players.find((x) => x.type === 'human' && !x.local && !x.hostSeat && x.seat === seat && x.token === token);
       if (!p) return fail('Phiên tay cầm không hợp lệ.', 403);
     }
     const pair = new WebSocketPair();
@@ -849,7 +853,7 @@ export class RoomStore {
       if (att.role === 'host') {
         if (!att.token || att.token !== room.hostToken) { this._bye(ws); return; }
       } else {
-        player = room.players.find((p) => p.type === 'human' && !p.local && p.seat === att.seat && p.token === att.token) || null;
+        player = room.players.find((p) => p.type === 'human' && !p.local && !p.hostSeat && p.seat === att.seat && p.token === att.token) || null;
         if (!player) { this._bye(ws); return; }
       }
       // The HTTP action pipeline, verbatim: advance, dispatch, advance,
@@ -969,7 +973,7 @@ function createGame(room, gameId) {
     level: 0, levelsDone: 0, stepIdx: 0, botPressAt: 0, decodeAt: 0,
     vel: {}, dmg: {}, face: {}, jumps: {}, atkCd: {}, hitT: {}, atkT: {}, dashT: {}, dashDir: {}, hvyCd: {}, hvyT: {},
     chars: null, gems: null, gemCount: {}, gateOpen: false, elOf: {}, wpIdx: {}, wpAt: {},
-    wolf: null, ng: null,
+    wolf: null, ng: null, tl: null,
     ball: null, score: {}, lastTouch: null, goalInfo: null, goalieSeat: {}, kickCd: {}, remainMs: 0,
     frogs: null, chamber: 0, chambersDone: 0, fliesEaten: 0, flies: [], crates: [],
     heights: null, cannons: null, turnSeat: null, wind: 0, shell: null, boomFx: null,
@@ -1364,6 +1368,39 @@ function beginRound(room) {
       g.ng.horses[p.seat] = [0, 0, 0, 0];
     });
     g.phase = 'roll'; g.endsAt = t + NGUA_TURN_MS;
+  } else if (g.id === 'tien-len') {
+    const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
+    const deck = shuffle(Array.from({ length: 52 }, (_, i) => i));
+    const hands = {};
+    seats.forEach((s, i) => { hands[s] = tlSort(deck.slice(i * 13, i * 13 + 13)); });
+    let first = seats[0];
+    seats.forEach((s) => { if (hands[s].indexOf(0) >= 0) first = s; });
+    // With fewer than 4 players the 3♠ can stay in the undealt pile;
+    // the must-include-3♠ opening rule only applies when the card is
+    // actually in a hand — otherwise the fallback leader (seats[0])
+    // could never legally open and would sit locked until the timeout.
+    const threeDealt = seats.some((s) => hands[s].indexOf(0) >= 0);
+    g.tl = {
+      hands, table: null, passed: {}, turn: first, leader: first,
+      finished: [], firstPlay: threeDealt, turnEndsAt: t + TL_TURN_MS, actAt: t + TL_BOT_MS,
+      log: [], instantWin: null, winner: null,
+    };
+    // Tới trắng: an unbeatable dealt hand ends the match on the spot —
+    // lowest qualifying seat wins; everyone else still holds 13 cards,
+    // so the remaining placements fall back to seat order.
+    let iwSeat = null, iwKind = null;
+    for (const s of seats) { const k = tlInstantWin(hands[s]); if (k) { iwSeat = s; iwKind = k; break; } }
+    if (iwSeat != null) {
+      g.tl.instantWin = { seat: iwSeat, kind: iwKind };
+      const rest = seats.filter((s) => s !== iwSeat)
+        .sort((a, b) => (hands[a].length - hands[b].length) || (a - b));
+      g.tl.finished = [iwSeat].concat(rest);
+      tlLog(room, playerAt(room, iwSeat).name + ' TỚI TRẮNG — thắng ngay khi chia bài!');
+      finishTienLen(room, t);
+    } else {
+      g.phase = 'cards'; g.endsAt = g.tl.turnEndsAt;
+      tlLog(room, playerAt(room, first).name + (threeDealt ? ' có lá 3♠ — đánh trước!' : ' đánh trước!'));
+    }
   } else if (g.id === 'da-bong') {
     g.phase = 'soccer';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + SOCCER_MS;
@@ -1472,6 +1509,7 @@ function step(room) {
   if (g.id === 'den-lua-nuoc') return stepTemple(room, t);
   if (g.id === 'ma-soi') return stepWolf(room, t);
   if (g.id === 'ca-ngua') return stepNgua(room, t);
+  if (g.id === 'tien-len') return stepTienLen(room, t);
   if (g.id === 'da-bong') return stepSoccer(room, t);
   if (g.id === 'ech-op') return stepFrog(room, t);
   if (g.id === 'can-goc') return stepCannon(room, t);
@@ -1537,9 +1575,19 @@ function stepArena(room, t) {
   if (g.phase !== 'arena') return false;
   if (t >= g.endsAt) { finishArena(room); return true; }
   if (t >= g.nextTickAt) {
-    simulateTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // long poll gap: resync instead of spiralling
+    // Catch-up: a caller arriving k>=2 ticks late simulates up to 4
+    // of the missed ticks in this call instead of dropping all but
+    // one; any deeper backlog still resyncs (snap below), so a long
+    // sleep can never spiral. Behind by <=1 the loop runs exactly
+    // once — bit-identical to the old 1-tick-per-call semantics.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'arena') {
+      simulateTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -1713,9 +1761,15 @@ function stepDodge(room, t) {
   if (g.phase !== 'dodge') return false;
   if (t >= g.endsAt) { finishDodge(room); return true; }
   if (t >= g.nextTickAt) {
-    simulateDodgeTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync after long gaps
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'dodge') {
+      simulateDodgeTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -2139,9 +2193,15 @@ function stepSteal(room, t) {
   if (g.phase !== 'steal') return false;
   if (t >= g.endsAt) { finishByValue(room, g.banked, 'banked'); return true; }
   if (t >= g.nextTickAt) {
-    simulateStealTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'steal') {
+      simulateStealTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -2226,9 +2286,15 @@ function stepCrown(room, t) {
   if (g.phase !== 'crown') return false;
   if (t >= g.endsAt) { finishByValue(room, g.hold, 'hold'); return true; }
   if (t >= g.nextTickAt) {
-    simulateCrownTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'crown') {
+      simulateCrownTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -2322,9 +2388,15 @@ function stepSplat(room, t) {
   if (g.phase !== 'splat') return false;
   if (t >= g.endsAt) { finishByValue(room, splatCounts(room), 'cells'); return true; }
   if (t >= g.nextTickAt) {
-    simulateSplatTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'splat') {
+      simulateSplatTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -2450,10 +2522,15 @@ function stepShared(room, t) {
   if (g.phase !== 'shared') return false;
   if (t >= g.endsAt) { finishShared(room); return true; }
   if (t >= g.nextTickAt) {
-    simulateSharedTick(room);
-    if (room.game !== g) return true; // hearts ran out mid-tick
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync after long gaps
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'shared') {
+      simulateSharedTick(room);
+      if (room.game !== g) return true; // hearts ran out mid-tick
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -2585,9 +2662,15 @@ function stepBox(room, t) {
   if (g.phase !== 'box') return false;
   if (t >= g.endsAt) { finishBox(room); return true; }
   if (t >= g.nextTickAt) {
-    simulateBoxTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync after long gaps
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'box') {
+      simulateBoxTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -2817,9 +2900,15 @@ function stepTank(room, t) {
   if (g.phase !== 'tank') return false;
   if (t >= g.endsAt) { finishArena(room); return true; }
   if (t >= g.nextTickAt) {
-    simulateTankTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'tank') {
+      simulateTankTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -2960,9 +3049,15 @@ function stepBomber(room, t) {
   if (g.phase !== 'bomber') return false;
   if (t >= g.endsAt) { finishArena(room); return true; }
   if (t >= g.nextTickAt) {
-    simulateBomberTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'bomber') {
+      simulateBomberTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -3571,6 +3666,341 @@ function finishNgua(room, winnerSeat, t) {
   finishTimedRound(room, 'ngWin', t + NGUA_WIN_MS);
 }
 
+// --- Game: Tiến Lên Miền Nam (Vietnamese Thirteen) --------------------------
+// Cards are ids 0..51: rankValue r = id % 13 maps to the ranks
+// 3,4,5,6,7,8,9,10,J,Q,K,A,2 (2 is highest, r = 12); suit
+// s = floor(id / 13) runs ♠ ♣ ♦ ♥ (♥ highest). Strength compares rank
+// first, then suit, so r * 4 + s orders any two cards with one number.
+const TL_RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
+const TL_SUITS = ['♠', '♣', '♦', '♥'];
+function tlRank(id) { return id % 13; }
+function tlSuit(id) { return Math.floor(id / 13); }
+function tlStrength(id) { return tlRank(id) * 4 + tlSuit(id); }
+function tlLabel(id) { return TL_RANKS[tlRank(id)] + TL_SUITS[tlSuit(id)]; }
+function tlSort(ids) { return ids.slice().sort((a, b) => tlStrength(a) - tlStrength(b)); }
+function tlComboOf(cards) {
+  if (!Array.isArray(cards) || cards.length === 0) return null;
+  const seen = new Set();
+  for (const c of cards) {
+    if (!Number.isInteger(c) || c < 0 || c > 51 || seen.has(c)) return null;
+    seen.add(c);
+  }
+  const cs = tlSort(cards);
+  const n = cs.length;
+  const counts = {};
+  cs.forEach((c) => { const r = tlRank(c); counts[r] = (counts[r] || 0) + 1; });
+  const distinct = Object.keys(counts).map(Number).sort((a, b) => a - b);
+  const top = cs[n - 1];
+  // (cards ride along so the exported TL.beats can recompute a table
+  // combo's tier from them; g.tl.table stores only the contracted
+  // fields and carries the same cards.)
+  if (distinct.length === 1) {
+    if (n === 1) return { kind: 'single', len: 1, top, tier: 0, cards: cs };
+    if (n === 2) return { kind: 'pair', len: 2, top, tier: 0, cards: cs };
+    if (n === 3) return { kind: 'triple', len: 3, top, tier: 0, cards: cs };
+    if (n === 4) return { kind: 'quad', len: 4, top, tier: 2, cards: cs };
+    return null;
+  }
+  const consecutive = distinct[distinct.length - 1] - distinct[0] === distinct.length - 1;
+  if (!consecutive || distinct[distinct.length - 1] > 11) return null;
+  if (n >= 3 && distinct.length === n) return { kind: 'seq', len: n, top, tier: 0, cards: cs };
+  if (n % 2 === 0 && n >= 6 && distinct.every((r) => counts[r] === 2)) {
+    const pairs = n / 2;
+    return { kind: 'dseq', len: n, top, tier: pairs === 3 ? 1 : 3, cards: cs };
+  }
+  return null;
+}
+// Can `play` (a comboOf result) be laid over `table` (the stored
+// {seat, cards, kind, len, top} or null)? Ordinary plays must match
+// kind AND card count with a strictly higher top card. Bombs (quad,
+// double sequences) additionally chop 2s and lower bombs: tiers run
+// dseq-3 = 1, quad = 2, dseq-4+ = 3; a single 2 falls to any bomb, a
+// pair of 2s only to tier >= 2; a bomb never chops anything else.
+function tlBeats(play, table) {
+  if (!play) return false;
+  if (!table) return true;
+  const tc = tlComboOf(table.cards);
+  if (!tc) return false;
+  const pBomb = play.tier > 0, tBomb = tc.tier > 0;
+  if (pBomb && tBomb) {
+    if (play.tier !== tc.tier) return play.tier > tc.tier;
+    if (play.kind !== tc.kind) return false;
+    if (play.kind === 'dseq' && play.len !== tc.len) return play.len > tc.len;
+    return tlStrength(play.top) > tlStrength(tc.top);
+  }
+  if (pBomb) {
+    if (tc.kind === 'single' && tlRank(tc.top) === 12) return true;
+    if (tc.kind === 'pair' && tlRank(tc.top) === 12) return play.tier >= 2;
+    return false;
+  }
+  if (tBomb) return false;
+  if (play.kind !== tc.kind || play.len !== tc.len) return false;
+  return tlStrength(play.top) > tlStrength(tc.top);
+}
+// Tới trắng — an unbeatable dealt hand. Returns the kind key or null.
+function tlInstantWin(hand) {
+  const counts = {};
+  hand.forEach((c) => { const r = tlRank(c); counts[r] = (counts[r] || 0) + 1; });
+  let dragon = true;
+  for (let r = 0; r <= 11; r++) if (!counts[r]) { dragon = false; break; }
+  if (dragon) return 'dragon';
+  let pairs = 0;
+  for (let r = 0; r <= 12; r++) if ((counts[r] || 0) >= 2) pairs += 1;
+  if (pairs >= 6) return 'sixpairs';
+  if (counts[0] === 4) return 'quad3';
+  for (let r = 0; r + 3 <= 11; r++) {
+    if ((counts[r] || 0) >= 2 && (counts[r + 1] || 0) >= 2 && (counts[r + 2] || 0) >= 2 && (counts[r + 3] || 0) >= 2) return 'dseq4';
+  }
+  return null;
+}
+export const TL = { comboOf: tlComboOf, beats: tlBeats, instantWin: tlInstantWin };
+function tlComboName(combo) {
+  if (!combo) return '';
+  if (combo.kind === 'single') return 'lá ' + tlLabel(combo.top);
+  if (combo.kind === 'pair') return 'Đôi ' + TL_RANKS[tlRank(combo.top)];
+  if (combo.kind === 'triple') return 'Ba ' + TL_RANKS[tlRank(combo.top)];
+  if (combo.kind === 'quad') return 'Tứ quý ' + TL_RANKS[tlRank(combo.top)];
+  if (combo.kind === 'seq') return 'Sảnh ' + combo.len + ' lá';
+  if (combo.kind === 'dseq') return (combo.len / 2) + ' đôi thông';
+  return '';
+}
+function tlLog(room, text) {
+  const tl = room.game.tl;
+  tl.log.push(text);
+  if (tl.log.length > 8) tl.log = tl.log.slice(-8);
+}
+function tlSeats(room) { return room.players.map((p) => p.seat).sort((a, b) => a - b); }
+function tlActive(room, seat) { return room.game.tl.finished.indexOf(seat) < 0; }
+function tlNextActive(room, fromSeat) {
+  const seats = tlSeats(room);
+  const i = seats.indexOf(fromSeat);
+  for (let k = 1; k <= seats.length; k++) {
+    const s = seats[(i + k) % seats.length];
+    if (tlActive(room, s)) return s;
+  }
+  return fromSeat;
+}
+function tlArmTurn(room, t) {
+  const g = room.game; const tl = g.tl;
+  tl.turnEndsAt = t + TL_TURN_MS; tl.actAt = t + TL_BOT_MS; g.endsAt = tl.turnEndsAt;
+}
+// After any play or pass: close the trick when every other active
+// player has passed (the last play maker leads again — or the next
+// active player after them, if that play finished them); otherwise
+// hand the turn to the next active player who has not passed.
+function tlCloseOrAdvance(room, t) {
+  const tl = room.game.tl;
+  const holder = tl.table ? tl.table.seat : tl.leader;
+  const others = tlSeats(room).filter((s) => s !== holder && tlActive(room, s));
+  if (tl.table && others.every((s) => tl.passed[s])) {
+    tl.table = null; tl.passed = {};
+    tl.turn = tlActive(room, holder) ? holder : tlNextActive(room, holder);
+    tl.leader = tl.turn;
+  } else {
+    const seats = tlSeats(room);
+    const i = seats.indexOf(tl.turn);
+    let nxt = null;
+    for (let k = 1; k <= seats.length; k++) {
+      const s = seats[(i + k) % seats.length];
+      if (s !== holder && tlActive(room, s) && !tl.passed[s]) { nxt = s; break; }
+    }
+    tl.turn = nxt != null ? nxt : holder;
+  }
+  tlArmTurn(room, t);
+}
+function tlPlayCards(room, seat, cards, t) {
+  const g = room.game; const tl = g.tl;
+  const combo = tlComboOf(cards);
+  tl.hands[seat] = tl.hands[seat].filter((c) => cards.indexOf(c) < 0);
+  tl.table = { seat, cards: tlSort(cards), kind: combo.kind, len: combo.len, top: combo.top };
+  tl.leader = seat;
+  tl.firstPlay = false;
+  tlLog(room, playerAt(room, seat).name + ' đánh ' + tlComboName(combo));
+  if (tl.hands[seat].length === 0 && tl.finished.indexOf(seat) < 0) {
+    tl.finished.push(seat);
+    tlLog(room, playerAt(room, seat).name + ' HẾT BÀI — về hạng ' + tl.finished.length + '!');
+  }
+  const activeLeft = tlSeats(room).filter((s) => tlActive(room, s));
+  if (activeLeft.length === 1) {
+    tl.finished.push(activeLeft[0]);
+    finishTienLen(room, t);
+    return;
+  }
+  tlCloseOrAdvance(room, t);
+}
+function tlPassTurn(room, seat, t) {
+  const tl = room.game.tl;
+  tl.passed[seat] = true;
+  tlLog(room, playerAt(room, seat).name + ' bỏ lượt');
+  tlCloseOrAdvance(room, t);
+}
+function finishTienLen(room, t) {
+  const g = room.game; const tl = g.tl;
+  tl.winner = tl.finished[0];
+  const entries = tl.finished.map((s, i) => ({ seat: s, points: placementAt(i) }));
+  entries.forEach((e) => { g.points[e.seat] = e.points; });
+  g.lastRound = { round: 1, entries };
+  finishTimedRound(room, 'tlWin', t + TL_WIN_MS);
+}
+function tlTimeout(room, t) {
+  const tl = room.game.tl;
+  const seat = tl.turn;
+  if (!tl.table) {
+    // Must lead: the server plays the lowest single. For the 3♠
+    // holder that lowest card IS card 0 (hands sort by rank, suit),
+    // so the first-play rule satisfies itself.
+    const lead = tl.firstPlay && tl.hands[seat].indexOf(0) >= 0 ? [0] : [tl.hands[seat][0]];
+    tlPlayCards(room, seat, lead, t);
+  } else {
+    tlPassTurn(room, seat, t);
+  }
+}
+function stepTienLen(room, t) {
+  const g = room.game; const tl = g.tl;
+  if (g.phase === 'tlWin') {
+    if (t >= g.endsAt) { endGame(room); return true; }
+    return false;
+  }
+  if (g.phase !== 'cards' || !tl) return false;
+  const cur = playerAt(room, tl.turn);
+  if (cur && cur.type === 'bot' && t >= tl.actAt) { tlBotTurn(room, t); return true; }
+  if (t >= tl.turnEndsAt) { tlTimeout(room, t); return true; }
+  return false;
+}
+// --- Tiến Lên bots -----------------------------------------------------------
+// Candidates are enumerated from the hand: every suit subset of each
+// rank group (single/pair/triple/quad in every suit flavour), plus two
+// suit variants — cheapest and strongest-top — of every sequence and
+// double-sequence window. Beats() then filters what may be played.
+function tlRankGroups(hand) {
+  const byRank = {};
+  hand.forEach((c) => { const r = tlRank(c); (byRank[r] = byRank[r] || []).push(c); });
+  Object.keys(byRank).forEach((r) => byRank[r].sort((a, b) => tlSuit(a) - tlSuit(b)));
+  return byRank;
+}
+function tlSubsets(arr) {
+  const out = [];
+  for (let mask = 1; mask < (1 << arr.length); mask++) {
+    const sub = [];
+    for (let i = 0; i < arr.length; i++) if (mask & (1 << i)) sub.push(arr[i]);
+    out.push(sub);
+  }
+  return out;
+}
+function tlCombosOf(hand) {
+  const byRank = tlRankGroups(hand);
+  const ranks = Object.keys(byRank).map(Number).sort((a, b) => a - b);
+  const out = [];
+  const seen = new Set();
+  function push(cards) {
+    const sorted = tlSort(cards);
+    const key = sorted.join(',');
+    if (seen.has(key)) return;
+    const combo = tlComboOf(sorted);
+    if (!combo) return;
+    seen.add(key);
+    out.push({ cards: sorted, combo });
+  }
+  ranks.forEach((r) => { tlSubsets(byRank[r]).forEach(push); });
+  for (let a = 0; a <= 11; a++) {
+    for (let b = a + 2; b <= 11; b++) {
+      const win = [];
+      for (let r = a; r <= b; r++) win.push(r);
+      if (win.every((r) => byRank[r])) {
+        push(win.map((r) => byRank[r][0]));
+        push(win.map((r) => (r === b ? byRank[r][byRank[r].length - 1] : byRank[r][0])));
+      }
+      if (win.every((r) => (byRank[r] || []).length >= 2)) {
+        const cheap = []; win.forEach((r) => { cheap.push(byRank[r][0], byRank[r][1]); });
+        push(cheap);
+        const strong = [];
+        win.forEach((r) => {
+          if (r === b) { const gr = byRank[r]; strong.push(gr[gr.length - 2], gr[gr.length - 1]); }
+          else strong.push(byRank[r][0], byRank[r][1]);
+        });
+        push(strong);
+      }
+    }
+  }
+  return out;
+}
+// A candidate "breaks a bomb" when it spends some — but not all — of
+// a held quad's cards, or pair-cards of a held double-sequence run,
+// without being that bomb itself. Vừa/Khó sort such candidates last:
+// a human guards their hàng the same way.
+function tlBreaksBomb(hand, candCards) {
+  const byRank = tlRankGroups(hand);
+  const cand = new Set(candCards);
+  const ranks = Object.keys(byRank).map(Number);
+  for (const r of ranks) {
+    if (byRank[r].length === 4) {
+      const used = byRank[r].filter((c) => cand.has(c)).length;
+      if (used > 0 && used < 4) return true;
+    }
+  }
+  const pairRanks = ranks.filter((r) => byRank[r].length >= 2 && r <= 11).sort((a, b) => a - b);
+  let run = [];
+  const runs = [];
+  pairRanks.forEach((r) => {
+    if (run.length && r === run[run.length - 1] + 1) run.push(r);
+    else { if (run.length >= 3) runs.push(run); run = [r]; }
+  });
+  if (run.length >= 3) runs.push(run);
+  for (const rn of runs) {
+    const bombCards = [];
+    rn.forEach((r) => { bombCards.push(byRank[r][0], byRank[r][1]); });
+    const used = bombCards.filter((c) => cand.has(c)).length;
+    if (used > 0 && used < bombCards.length) return true;
+  }
+  return false;
+}
+function tlBotFollow(room, seat, diff) {
+  const tl = room.game.tl;
+  const hand = tl.hands[seat];
+  const beaters = tlCombosOf(hand).filter((c) => tlBeats(c.combo, tl.table));
+  if (!beaters.length) return null;
+  const nonBombs = beaters.filter((c) => c.combo.tier === 0);
+  if (diff === 'de') {
+    if (Math.random() < 0.25) return null;
+    return pick(nonBombs.length ? nonBombs : beaters);
+  }
+  const key = (c) => (tlBreaksBomb(hand, c.cards) ? 1000000 : 0) + tlStrength(c.combo.top);
+  if (diff === 'vua') return beaters.slice().sort((a, b) => key(a) - key(b))[0];
+  // kho: cheapest ordinary beater first; bombs are a last resort with
+  // discipline (see TIEN_LEN_NOTES.md).
+  if (nonBombs.length) return nonBombs.slice().sort((a, b) => key(a) - key(b))[0];
+  const tableCount = tl.hands[tl.table.seat].length;
+  const isTwo = tlRank(tl.table.top) === 12 && (tl.table.kind === 'single' || tl.table.kind === 'pair');
+  if (isTwo) {
+    if (hand.length <= 6 || tableCount <= 2) {
+      return beaters.slice().sort((a, b) => (a.combo.tier - b.combo.tier) || (tlStrength(a.combo.top) - tlStrength(b.combo.top)))[0];
+    }
+    return null;
+  }
+  if (hand.length <= 4 || tableCount <= 2) return beaters.slice().sort((a, b) => key(a) - key(b))[0];
+  return null;
+}
+function tlBotLead(room, seat, diff) {
+  const tl = room.game.tl;
+  const hand = tl.hands[seat];
+  let all = tlCombosOf(hand);
+  if (tl.firstPlay) all = all.filter((c) => c.cards.indexOf(0) >= 0);
+  if (!all.length) return null;
+  if (diff === 'de') return pick(all);
+  const twoLead = (c) => (tlRank(c.combo.top) === 12 && (c.combo.kind === 'single' || c.combo.kind === 'pair')) ? 1 : 0;
+  return all.slice().sort((a, b) =>
+    (twoLead(a) - twoLead(b)) || (b.cards.length - a.cards.length) || (tlStrength(a.combo.top) - tlStrength(b.combo.top)))[0];
+}
+function tlBotTurn(room, t) {
+  const tl = room.game.tl;
+  const seat = tl.turn;
+  const p = playerAt(room, seat);
+  if (!p || p.type !== 'bot') return;
+  const chosen = tl.table ? tlBotFollow(room, seat, p.difficulty) : tlBotLead(room, seat, p.difficulty);
+  if (chosen) tlPlayCards(room, seat, chosen.cards, t);
+  else tlPassTurn(room, seat, t);
+}
+
 // --- Game 20: Thủ Thành (COOP tick arena defence) --------------------------
 // Slimes spawn at the rim and march straight at the crystal; players
 // shoot them with the shared shell sim. Surviving DEF_MS pays the tier
@@ -3581,9 +4011,15 @@ function stepDefend(room, t) {
   if (g.phase !== 'defend') return false;
   if (t >= g.endsAt) { finishCoop(room, g.kills, coopTier(g.crystal.hp, DEF_TIERS), 'slime bị hạ'); return true; }
   if (t >= g.nextTickAt) {
-    simulateDefendTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'defend') {
+      simulateDefendTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -3766,9 +4202,15 @@ function stepFight(room, t) {
   if (g.phase !== 'fight') return false;
   if (t >= g.endsAt) { finishFight(room); return true; }
   if (t >= g.nextTickAt) {
-    simulateFightTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'fight') {
+      simulateFightTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -3974,9 +4416,15 @@ function stepTemple(room, t) {
   if (g.phase !== 'temple') return false;
   if (t >= g.endsAt) { finishTemple(room, false); return true; }
   if (t >= g.nextTickAt) {
-    simulateTempleTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'temple') {
+      simulateTempleTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -4126,9 +4574,15 @@ function stepSoccer(room, t) {
   if (g.phase !== 'soccer') return false;
   if (t >= g.endsAt) { finishSoccer(room); return true; }
   if (t >= g.nextTickAt) {
-    simulateSoccerTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'soccer') {
+      simulateSoccerTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -4361,9 +4815,15 @@ function stepFrog(room, t) {
   if (g.phase !== 'frog') return false;
   if (t >= g.endsAt) { finishFrog(room); return true; }
   if (t >= g.nextTickAt) {
-    simulateFrogTick(room);
-    g.nextTickAt += TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    let nCU = 0;
+    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'frog') {
+      simulateFrogTick(room);
+      if (room.game !== g) return true; // the tick ended the game
+      g.nextTickAt += TICK_MS;
+      nCU++;
+    }
+    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
     return true;
   }
   return false;
@@ -4661,26 +5121,40 @@ function stepCannon(room, t) {
     }
     if (t >= g.endsAt) { cannonNextTurn(room, t, seat); return true; } // idle: the turn passes
     if (t >= g.nextTickAt) {
-      const pad = g.pad[seat] || {};
-      const prev = g.padPrev[seat] || {};
-      if (pad.u) c.angle = Math.min(85, c.angle + 2.5);
-      if (pad.d) c.angle = Math.max(5, c.angle - 2.5);
-      if (pad.l) c.power = Math.max(0, c.power - 3);
-      if (pad.r) c.power = Math.min(100, c.power + 3);
-      if (pad.x && !prev.x) c.face = -c.face;
-      g.padPrev[seat] = Object.assign({}, pad);
-      g.nextTickAt += TICK_MS;
-      if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
-      if (pad.a && !prev.a) { cannonFire(room, seat); return true; }
+      // Catch-up (see stepArena): a held pad applies once per missed
+      // tick, up to 4 — exactly what four on-time ticks would do.
+      // Edges still fire once: padPrev tracks the pad after the first
+      // sub-tick, so the A fire / X flip cannot repeat inside the loop.
+      let nCU = 0;
+      while (nCU < 4 && t >= g.nextTickAt && g.phase === 'aim') {
+        const pad = g.pad[seat] || {};
+        const prev = g.padPrev[seat] || {};
+        if (pad.u) c.angle = Math.min(85, c.angle + 2.5);
+        if (pad.d) c.angle = Math.max(5, c.angle - 2.5);
+        if (pad.l) c.power = Math.max(0, c.power - 3);
+        if (pad.r) c.power = Math.min(100, c.power + 3);
+        if (pad.x && !prev.x) c.face = -c.face;
+        g.padPrev[seat] = Object.assign({}, pad);
+        g.nextTickAt += TICK_MS;
+        nCU++;
+        if (pad.a && !prev.a) { cannonFire(room, seat); return true; }
+      }
+      if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
       return true;
     }
     return false;
   }
   if (g.phase === 'shell') {
     if (t >= g.nextTickAt) {
-      simulateShellTick(room);
-      g.nextTickAt += TICK_MS;
-      if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS;
+      // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+      let nCU = 0;
+      while (nCU < 4 && t >= g.nextTickAt && g.phase === 'shell') {
+        simulateShellTick(room);
+        if (room.game !== g) return true; // the tick ended the game
+        g.nextTickAt += TICK_MS;
+        nCU++;
+      }
+      if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
       return true;
     }
     return false;
@@ -5099,6 +5573,33 @@ function gameView(room, role, seat, t) {
         ? ng.legal.map((h) => ({ horse: h, hint: nguaHint(room, seat, h), from: ng.horses[seat][h] }))
         : [];
     }
+  } else if (g.id === 'tien-len') {
+    // SECRECY: hand contents exist ONLY in the seat's own branch
+    // below. Every other field is public table talk: how many cards
+    // each player holds, the face-up table play, who passed, who
+    // finished, and the log.
+    const tl = g.tl;
+    v.phaseDur = TL_TURN_MS;
+    v.counts = {};
+    if (tl) room.players.forEach((p) => { v.counts[p.seat] = (tl.hands[p.seat] || []).length; });
+    v.table = tl && tl.table ? { seat: tl.table.seat, cards: tl.table.cards.slice(), kind: tl.table.kind, len: tl.table.len, top: tl.table.top } : null;
+    v.turn = tl ? tl.turn : null;
+    v.leader = tl ? tl.leader : null;
+    v.passed = tl ? Object.assign({}, tl.passed) : {};
+    v.finished = tl ? tl.finished.slice() : [];
+    v.log = tl ? tl.log.slice() : [];
+    v.firstPlay = tl ? !!tl.firstPlay : false;
+    v.turnEndsAt = tl ? tl.turnEndsAt : 0;
+    v.instantWin = tl && tl.instantWin ? { seat: tl.instantWin.seat, kind: tl.instantWin.kind } : null;
+    v.winner = tl ? tl.winner : null;
+    if (seat) {
+      v.myHand = tl && tl.hands[seat] ? tl.hands[seat].slice() : [];
+      v.myTurn = !!tl && g.phase === 'cards' && tl.turn === seat;
+      v.myPassed = !!tl && !!tl.passed[seat];
+      v.mustInclude3 = !!tl && tl.firstPlay && tl.turn === seat && (tl.hands[seat] || []).indexOf(0) >= 0;
+      const fi = tl ? tl.finished.indexOf(seat) : -1;
+      v.myRank = fi >= 0 ? fi + 1 : null;
+    }
   } else if (g.id === 'thu-thanh') {
     v.arenaR = ARENA_R0;
     v.blobs = blobsView(room);
@@ -5246,6 +5747,7 @@ function buildView(room, role, seat) {
     color: SEAT_COLORS[p.seat - 1], score: p.score, liveScore: liveScore(room, p), mood: moodOf(room, p),
     local: p.local ? true : undefined,
     scheme: p.local ? p.scheme : undefined,
+    hostSeat: p.hostSeat ? true : undefined,
   }));
   let gap = null;
   if (st.length >= 2) {
@@ -5274,6 +5776,14 @@ function buildView(room, role, seat) {
       room.players.forEach((p) => {
         if (p.local) view.localViews[p.seat] = gameView(room, 'player', p.seat, t);
       });
+      // Phone mode: the host may also SIT in the room (hostSeat — the
+      // room was created on their phone and they play from the same
+      // screen). Their own player view rides along under the same
+      // gating as localViews, so the host page can render a "my seat"
+      // section. SECRECY INVARIANT: myView is built for the hostSeat
+      // ONLY — no other player's private view is ever attached here.
+      const hs = room.players.find((p) => p.hostSeat);
+      if (hs) view.myView = gameView(room, 'player', hs.seat, t);
     }
   }
   return view;
@@ -5321,15 +5831,19 @@ function playlistView(room, t) {
     nextInSec: intermission ? Math.max(0, Math.ceil((room.playlistNextAt - t) / 1000)) : null,
   };
 }
-// Host-relayed input for a keyboard ("local") seat: when the host page
-// sends an action with body.forSeat set, it lands on that LOCAL seat via
-// playerAction — never on a bot (bots take no input) and NEVER on a phone
-// player's seat (their inputs are theirs alone; the host token must not
-// become a skeleton key for every seat in the room). Host actions
-// without forSeat go to hostAction exactly as before.
+// Host-relayed input for a seat that lives on the host screen: when
+// the host page sends an action with body.forSeat set, it lands on that
+// seat via playerAction. Relayable seats are the keyboard ("local")
+// seats and the host's OWN seat (hostSeat, phone mode) — never a bot
+// (bots take no input) and NEVER a phone player's seat (their inputs
+// are theirs alone; the host token must not become a skeleton key for
+// every seat in the room). Host actions without forSeat go to
+// hostAction exactly as before. The rejection text mentions keyboards
+// because that is the original relay; it only ever fires for
+// phone/bot/empty targets, never for the host's own seat.
 function hostDispatch(room, body) {
   if (Number.isInteger(body.forSeat)) {
-    const target = room.players.find((p) => p.seat === body.forSeat && p.local);
+    const target = room.players.find((p) => p.seat === body.forSeat && (p.local || p.hostSeat));
     if (!target) return 'Ghế này không phải người chơi bàn phím.';
     return playerAction(room, target, body);
   }
@@ -5364,6 +5878,38 @@ function hostAction(room, body) {
     room.players.sort((x, y) => x.seat - y.seat);
     return null;
   }
+  if (a === 'hostJoin') {
+    // Phone mode: the host sits down in their own room. The seat is a
+    // human with NO token — exactly the local-seat shape discipline, so
+    // no phone can ever claim it (every token lookup rejects tokenless
+    // seats via the !local / !hostSeat guards) — and the host page
+    // drives it through the same forSeat relay the keyboard seats use
+    // (hostDispatch). At most ONE host seat per room: it is the room
+    // owner's own chair, not a batch of seats.
+    if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Chỉ nhận ghế chủ phòng được khi đang ở sảnh chờ.';
+    if (room.players.some((p) => p.hostSeat)) return 'Chủ phòng đã có ghế rồi.';
+    if (room.players.length >= MAX_SEATS) return 'Phòng đã đủ ' + MAX_SEATS + ' người.';
+    let name = typeof body.name === 'string' ? body.name.trim().slice(0, 14) : '';
+    if (!name) name = 'Chủ phòng';
+    let seat = 1;
+    while (playerAt(room, seat)) seat += 1;
+    room.players.push({ seat, type: 'human', hostSeat: true, name, score: 0 });
+    room.players.sort((x, y) => x.seat - y.seat);
+    return null;
+  }
+  if (a === 'hostLeave') {
+    // The host gives their own seat back (lobby only, like every seat
+    // change). Deliberately a separate action from removeBot: that
+    // wire is for bots/keyboard seats and structurally refuses human
+    // phone seats, and the host seat must only ever be removable by
+    // this path — it names no seat, so it can only ever free the one
+    // hostSeat in the room.
+    if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Chỉ rời ghế được khi đang ở sảnh chờ.';
+    const hs = room.players.find((p) => p.hostSeat);
+    if (!hs) return 'Chủ phòng chưa có ghế.';
+    room.players = room.players.filter((x) => x.seat !== hs.seat);
+    return null;
+  }
   if (a === 'removeBot') {
     // Same phase gate as addBot: removing a bot mid-game (or at results)
     // would strand its seat inside the running game's snapshots and break
@@ -5382,6 +5928,22 @@ function hostAction(room, body) {
     if (!p || p.type !== 'bot') return 'Ô này không phải Máy.';
     p.difficulty = DIFFS[(DIFFS.indexOf(p.difficulty) + 1) % DIFFS.length];
     return null;
+  }
+  if (a === 'cycleScheme') {
+    // A local seat's keyboard layout rotates to the next scheme no
+    // other local seat uses, so two people at the big screen never
+    // share a key set. The seat's NAME is creation-order naming and
+    // deliberately does NOT follow the scheme (Phím 2 keeps its name
+    // even on scheme 0).
+    if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Chỉ đổi bộ phím được khi đang ở sảnh chờ.';
+    const p = playerAt(room, body.seat);
+    if (!p || !p.local) return 'Ghế này không phải người chơi bàn phím.';
+    const used = new Set(room.players.filter((x) => x.local && x.seat !== p.seat).map((x) => x.scheme || 0));
+    for (let k = 1; k <= 3; k++) {
+      const cand = ((p.scheme || 0) + k) % 4;
+      if (!used.has(cand)) { p.scheme = cand; return null; }
+    }
+    return 'Cả 3 bộ phím còn lại đều đang có người dùng.';
   }
   if (a === 'startGame') {
     if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Đang chơi, không chọn game khác được.';
@@ -5733,6 +6295,37 @@ function playerAction(room, player, body) {
     nguaMove(room, seat, h, t);
     return null;
   }
+  if (a === 'play') {
+    if (g.id !== 'tien-len' || g.phase !== 'cards') return 'Chưa tới lượt bạn.';
+    const tl = g.tl;
+    if (tl.finished.indexOf(seat) >= 0) return 'Chưa tới lượt bạn.';
+    if (tl.passed[seat]) return 'Bạn đã bỏ lượt vòng này rồi.';
+    if (tl.turn !== seat) return 'Chưa tới lượt bạn.';
+    const cards = body.cards;
+    if (!Array.isArray(cards) || !cards.length) return 'Bài không hợp lệ.';
+    const hand = tl.hands[seat] || [];
+    const seenC = new Set();
+    for (const c of cards) {
+      if (!Number.isInteger(c) || c < 0 || c > 51 || seenC.has(c) || hand.indexOf(c) < 0) return 'Bài không hợp lệ.';
+      seenC.add(c);
+    }
+    if (tl.firstPlay && cards.indexOf(0) < 0) return 'Lượt đầu phải có lá 3♠.';
+    const combo = tlComboOf(cards);
+    if (!combo) return 'Bộ bài này không hợp lệ.';
+    if (tl.table && !tlBeats(combo, tl.table)) return 'Chưa chặn được. Đánh bộ mạnh hơn hoặc bỏ lượt.';
+    tlPlayCards(room, seat, cards, t);
+    return null;
+  }
+  if (a === 'pass') {
+    if (g.id !== 'tien-len' || g.phase !== 'cards') return 'Chưa tới lượt bạn.';
+    const tl = g.tl;
+    if (tl.finished.indexOf(seat) >= 0) return 'Chưa tới lượt bạn.';
+    if (tl.passed[seat]) return 'Bạn đã bỏ lượt vòng này rồi.';
+    if (tl.turn !== seat) return 'Chưa tới lượt bạn.';
+    if (!tl.table) return 'Bạn đang cầm cái, phải đánh bài.';
+    tlPassTurn(room, seat, t);
+    return null;
+  }
   if (a === 'symbol') {
     if (g.id !== 'giai-ma-chung' || g.phase !== 'decode') return 'Chưa đến lúc bấm ký hiệu.';
     const sym = body.sym;
@@ -5807,7 +6400,7 @@ export default {
         if (role === 'host') {
           if (token !== room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
         } else {
-          const p = room.players.find((x) => x.type === 'human' && !x.local && x.token === token);
+          const p = room.players.find((x) => x.type === 'human' && !x.local && !x.hostSeat && x.token === token);
           if (!p) return fail('Phiên tay cầm không hợp lệ.', 403);
           seat = p.seat;
         }
@@ -5831,7 +6424,7 @@ export default {
         if (role === 'host') {
           if (token !== room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
         } else {
-          const p = room.players.find((x) => x.type === 'human' && !x.local && x.token === token);
+          const p = room.players.find((x) => x.type === 'human' && !x.local && !x.hostSeat && x.token === token);
           if (!p) return fail('Phiên tay cầm không hợp lệ.', 403);
           seat = p.seat;
         }
@@ -5857,7 +6450,7 @@ export default {
         if (body.role === 'host') {
           if (body.token !== room.hostToken) return fail('Phiên màn hình lớn không hợp lệ.', 403);
         } else {
-          player = room.players.find((x) => x.type === 'human' && !x.local && x.token === body.token) || null;
+          player = room.players.find((x) => x.type === 'human' && !x.local && !x.hostSeat && x.token === body.token) || null;
           if (!player) return fail('Phiên tay cầm không hợp lệ.', 403);
           seat = player.seat;
         }
@@ -5954,6 +6547,21 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .g-do-vui { background: linear-gradient(160deg, #6BCBFF, #4F7BE8); }
 .g-ma-soi { background: linear-gradient(160deg, #1E1B4B, #6D28A8); }
 .g-ca-ngua { background: linear-gradient(160deg, #78350F, #D97706); }
+.g-tien-len { background: linear-gradient(160deg, #134E4A, #0F766E); }
+.tlchips { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; margin: 8px 0; }
+.tlcard2 { display: inline-block; background: #FFFDF5; color: #26314A; border-radius: 9px; padding: 7px 10px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 21px; line-height: 1.1; box-shadow: 0 3px 0 rgba(0,0,0,.25); }
+.tlcard2.red { color: #D81F3C; }
+.tlcard2.sm { font-size: 15px; padding: 4px 7px; border-radius: 7px; }
+.tltable { background: rgba(0,0,0,.22); border: 2px dashed rgba(255,255,255,.35); border-radius: 20px; padding: 12px 10px; margin: 8px auto; max-width: 860px; }
+.tlhand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 10px 0; }
+button.tlcard { background: #FFFDF5; color: #26314A; border: none; border-radius: 9px; min-width: 50px; padding: 10px 4px 8px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 19px; line-height: 1.05; cursor: pointer; box-shadow: 0 3px 0 rgba(0,0,0,.3); transition: transform .07s; }
+button.tlcard.red { color: #D81F3C; }
+button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; box-shadow: 0 8px 0 rgba(0,0,0,.3); background: #FFF3C4; }
+.tlp { display: inline-block; padding: 1px 5px; margin: 1px 1px; border-radius: 6px; background: rgba(255,255,255,.1); font-weight: 700; }
+.tlp.red { color: #FF9DB0; }
+.tlp.sel { background: #FFC93D; color: #26314A; }
+.tlp.sel.red { color: #B3122F; }
+.tlp.cur { outline: 2px solid #7BE0B8; }
 .wolfgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 12px; }
 .wolfcard { background: rgba(255,255,255,.92); color: #4A3226; border-radius: 18px; padding: 10px 6px; text-align: center; font-weight: 700; }
 .wolfcard.dead { opacity: .62; filter: grayscale(.8); }
@@ -6366,6 +6974,13 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 .lprow { padding: 3px 9px; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lprow.cur { background: rgba(255,201,61,.3); outline: 1.5px solid #FFC93D; }
 .lpfoot { font-size: 12px; opacity: .7; margin-top: 2px; }
+/* Phone mode (hostSeat): the invite-link row in the lobby, the
+   my-seat section under the stage on the host page, and the recent
+   room chips on the home screen. */
+.shareurl { width: min(88vw, 520px); text-align: center; font-size: 15px; font-weight: 700; padding: 9px 10px; border-radius: 12px; border: 2px solid #EBD9BE; background: #FFFDF8; color: #4A3226; }
+#myseat { border: 3px solid #FFD98E; margin-top: 12px; }
+#myseat.phonemode { border-color: #58C472; box-shadow: 0 14px 34px rgba(55,154,84,.28); }
+button.recentchip { cursor: pointer; border: none; font-family: inherit; }
 </style>
 </head>
 <body>
@@ -6381,10 +6996,22 @@ var SYMCOLORS = ['#FF4757', '#3FA9F5', '#FFC93D', '#F77FB0'];
 var LETTERS = ['A', 'B', 'C', 'D'];
 var WOLF_ROLE_NAMES = { soi: 'Sói 🐺', 'tien-tri': 'Tiên Tri 🔮', 'bao-ve': 'Bảo Vệ 🛡️', 'phu-thuy': 'Phù Thủy 🧙', dan: 'Dân Làng 🧑‍🌾' };
 var DICE_FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+var TL_RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
+var TL_SUITS = ['♠', '♣', '♦', '♥'];
+var TL_KIND_NAMES = { single: 'Đơn', pair: 'Đôi', triple: 'Ba con', quad: 'TỨ QUÝ', seq: 'Sảnh', dseq: 'ĐÔI THÔNG' };
+var TL_IW_NAMES = { dragon: 'SẢNH RỒNG', sixpairs: 'SÁU ĐÔI', quad3: 'TỨ QUÝ 3', dseq4: 'BỐN ĐÔI THÔNG' };
+function tlCardLabel(id) { return TL_RANKS[id % 13] + TL_SUITS[Math.floor(id / 13)]; }
+function tlCardRed(id) { var s = Math.floor(id / 13); return s === 2 || s === 3; }
+function tlChipsHTML(cards, sm) {
+  var h = '';
+  for (var i = 0; i < cards.length; i++) h += '<span class="tlcard2' + (sm ? ' sm' : '') + (tlCardRed(cards[i]) ? ' red' : '') + '">' + tlCardLabel(cards[i]) + '</span>';
+  return h;
+}
 var S = { role: null, code: null, token: null, seat: null, view: null, sig: '', serverOffset: 0,
   audio: null, muted: localStorage.getItem('np_muted') === '1', lastCd: -1, lastTickSec: -1,
   fxReveal: '', fxRound: '', fxConfetti: '', blobN: 0, fxP: null, _nb: null, _koT: 0, _smT: 0,
   plMode: false, plQueue: [], raf: {}, rafLast: 0,
+  phoneMode: false, mySeatSig: '', myTlSel: [], myTlSig: '',
   lastOkAt: 0 };
 function el(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
@@ -6739,6 +7366,18 @@ function act(body, cb) {
     if (cb) cb(v);
   });
 }
+// Tiến Lên sends: like act(), but a rejected play must NEVER clear
+// the session — act() drops the session on errors containing
+// 'không hợp lệ', which is exactly the wording of this game's rules
+// errors ('Bài không hợp lệ.'). Errors only toast, and the player's
+// card selection (S.tlSel) survives the rejection untouched.
+function tlSend(body) {
+  body.role = S.role; body.token = S.token;
+  api('/api/rooms/' + S.code + '/action', body, function (v) {
+    if (v && v.ok) { S.view = v; S.serverOffset = v.serverNow - Date.now(); S.sig = ''; noteOk(); render(); }
+    else if (v && v.error) toast(v.error);
+  });
+}
 // ---------------------------------------------------------------------
 // WebSocket live channel. Once a session exists the page also opens a
 // socket to the room: the server pushes the personalized view the
@@ -6805,6 +7444,7 @@ var DUR = { 'do-vui': 15000, 'keo-co': 20000 };
 var GCOLORS = {
   'do-vui': 'linear-gradient(160deg,#6BCBFF,#4F7BE8)',
   'ma-soi': 'linear-gradient(160deg,#1E1B4B,#6D28A8)', 'ca-ngua': 'linear-gradient(160deg,#78350F,#D97706)',
+  'tien-len': 'linear-gradient(160deg,#134E4A,#0F766E)',
   'day-ra': 'linear-gradient(160deg,#4A0E24,#A4133C)',
   'ne-dan': 'linear-gradient(160deg,#2A0A54,#6D28A8)', 'keo-co': 'linear-gradient(160deg,#064A38,#0B7A55)',
   'chia-cuop': 'linear-gradient(160deg,#241457,#4C2FA8)',
@@ -6819,7 +7459,7 @@ var GCOLORS = {
   'da-bong': 'linear-gradient(160deg,#14532D,#22C55E)', 'ech-op': 'linear-gradient(160deg,#713F12,#A3C14A)',
   'can-goc': 'linear-gradient(160deg,#0C4A6E,#38BDF8)'
 };
-function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'giai-ma-chung' || id === 'nguoi-que' || id === 'den-lua-nuoc' || id === 'da-bong' || id === 'ech-op' || id === 'can-goc'; }
+function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'giai-ma-chung' || id === 'nguoi-que' || id === 'den-lua-nuoc' || id === 'da-bong' || id === 'ech-op' || id === 'can-goc' || id === 'tien-len'; }
 function isActionGame(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'chia-cuop' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'nguoi-que' || id === 'den-lua-nuoc' || id === 'da-bong' || id === 'ech-op'; }
 function topbarHTML(v, isHost) {
   var h = '<div class="topbar"><span class="baloo" style="font-size:24px">Nảy Party</span>';
@@ -6848,6 +7488,283 @@ function scoreStrip(v) {
   }
   return h;
 }
+// Tiến Lên hand chips + action buttons, shared by the phone page
+// (prefix 'tl', selection in S.tlSel, sends via tlSend) and the host
+// page's my-seat section (prefix 'myTl', selection in S.myTlSel,
+// sends via the forSeat relay): the same chips and buttons — only
+// the command names and the selection store differ.
+function tlHandHTML(hand, sel, pfx) {
+  var h = '<div class="tlhand">';
+  for (var i = 0; i < hand.length; i++) {
+    var cid = hand[i];
+    h += '<button class="tlcard' + (tlCardRed(cid) ? ' red' : '') + (sel.indexOf(cid) >= 0 ? ' sel' : '') + '" data-cmd="' + pfx + 'Card" data-i="' + cid + '">' + tlCardLabel(cid) + '</button>';
+  }
+  return h + '</div>';
+}
+function tlBtnsHTML(g, sel, pfx) {
+  return '<p class="center">'
+    + '<button class="btn green" data-cmd="' + pfx + 'Play"' + ((g.myTurn && sel.length) ? '' : ' disabled style="opacity:.45"') + '>Đánh bài (' + sel.length + ')</button> '
+    + ((g.myTurn && g.table && !g.myPassed) ? '<button class="btn orange" data-cmd="' + pfx + 'Pass">Bỏ lượt</button> ' : '')
+    + (sel.length ? '<button class="btn ghost" data-cmd="' + pfx + 'Clear">Bỏ chọn</button>' : '')
+    + '</p>';
+}
+// The host's own Tiến Lên selection, keyed by the myHand signature —
+// the same discipline as the phone's S.tlSel: it survives re-renders
+// and rejected plays, and resets only when the hand itself changes.
+function myTlSync(g) {
+  var hand = (g && g.myHand) || [];
+  var sig = hand.join(',');
+  if (S.myTlSig !== sig) { S.myTlSig = sig; S.myTlSel = []; }
+  if (!S.myTlSel) S.myTlSel = [];
+  return hand;
+}
+// ---------------------------------------------------------------------
+// My-seat section (phone mode). When the host also sits in the room
+// (hostSeat), buildView attaches their own player view as v.myView;
+// the host page renders it as a control block directly under the
+// stage. Every send goes through localAct() with forSeat = the host's
+// seat — the same relay the keyboard seats use, and never act(): a
+// rules error ('Bài không hợp lệ.' and friends) must never clear the
+// host's session. renderMySeat() repaints the block on its own
+// signature from every render() call, because the private view can
+// change while the public stage signature stands still.
+// ---------------------------------------------------------------------
+function mySeatHTML(v) {
+  return '<div id="myseat" class="card' + (S.phoneMode ? ' phonemode' : '') + '">' + mySeatInner(v) + '</div>';
+}
+var MYSEAT_INTER = { 'tien-len': 1, 'ma-soi': 1, 'ca-ngua': 1, 'ke-gia-mao': 1, 'do-vui': 1, 'giai-ma-chung': 1, 'chia-cuop': 1 };
+function renderMySeat() {
+  var box = el('myseat');
+  if (!box) { S.mySeatSig = ''; return; }
+  var v = S.view;
+  if (S.role !== 'host' || !v || !v.myView || v.phase !== 'playing' || !v.game) {
+    if (S.mySeatSig !== '') { S.mySeatSig = ''; box.style.display = 'none'; }
+    return;
+  }
+  box.style.display = '';
+  var g = v.game;
+  var sig = MYSEAT_INTER[g.id]
+    ? g.id + '|' + g.phase + '|' + JSON.stringify(v.myView) + '|' + (S.myTlSel || []).join(',')
+    : g.id + '|' + g.phase;
+  if (sig === S.mySeatSig) return;
+  var ci = el('myChatText');
+  var cval = ci ? ci.value : null;
+  var cfocus = !!ci && document.activeElement === ci;
+  var caret = -1;
+  if (cfocus) { try { caret = ci.selectionStart; } catch (e) {} }
+  S.mySeatSig = sig;
+  box.innerHTML = mySeatInner(v);
+  if (cval !== null) {
+    var ni = el('myChatText');
+    if (ni) {
+      ni.value = cval;
+      if (cfocus) { ni.focus(); try { ni.setSelectionRange(caret < 0 ? cval.length : caret, caret < 0 ? cval.length : caret); } catch (e) {} }
+    }
+  }
+}
+function mySeatInner(v) {
+  var g = v.myView;
+  var seat = mySeatOf(v);
+  if (!g || seat == null) return '';
+  var me = playerOf(v, seat);
+  var h = '<div class="baloo" style="font-size:21px">🎮 Ghế của tôi — ' + esc(me ? me.name : '') + '</div>';
+  if (!v.game || v.game.phase === 'countdown') return h + '<p class="center" style="margin:6px 0 0">⏳ Chuẩn bị…</p>';
+  function nm(s2) { var p = playerOf(v, s2); return p ? p.name : ''; }
+  function pickBtns(cmd, kind, excludeSelf, guardSeat) {
+    var out = '<div class="optgrid">';
+    for (var i = 0; i < v.players.length; i++) {
+      var p = v.players[i];
+      if (g.aliveMap && !g.aliveMap[p.seat]) continue;
+      if (excludeSelf && p.seat === seat) continue;
+      var dis = guardSeat != null && p.seat === guardSeat;
+      out += '<button class="opt" data-cmd="' + cmd + '"' + (kind ? ' data-kind="' + kind + '"' : '') + ' data-i="' + p.seat + '"' + (dis ? ' disabled style="opacity:.45"' : '') + '>' + esc(p.name)
+        + (p.seat === seat ? ' (bạn)' : '')
+        + (kind === 'wolfVote' && (g.wolfTeam || []).indexOf(p.seat) >= 0 ? ' 🐺 (đồng đội)' : '')
+        + (dis ? ' · đêm qua đã bảo vệ' : '') + '</button>';
+    }
+    return out + '</div>';
+  }
+  if (g.id === 'tien-len') {
+    if (g.phase === 'tlWin') {
+      h += '<p class="center baloo" style="font-size:19px">🏆 ' + esc(nm(g.winner)) + ' thắng!' + (g.instantWin ? ' ⚡ TỚI TRẮNG — ' + (TL_IW_NAMES[g.instantWin.kind] || '') + '!' : '') + (g.myRank ? ' Bạn về hạng ' + g.myRank + ' · +' + fmt(g.points ? (g.points[seat] || 0) : 0) + ' điểm' : '') + '</p>';
+      return h;
+    }
+    if (g.phase === 'cards') {
+      var handT = myTlSync(g);
+      if (g.table) {
+        h += '<p class="center" style="margin:4px 0">Trên bàn — ' + esc(nm(g.table.seat)) + ' · ' + (TL_KIND_NAMES[g.table.kind] || '') + '</p>';
+        h += '<div class="tlchips">' + tlChipsHTML(g.table.cards, true) + '</div>';
+      } else h += '<p class="center" style="margin:4px 0">🃏 Bàn trống</p>';
+      if (g.myRank) {
+        h += '<p class="center baloo" style="font-size:19px">🏆 Bạn đã hết bài — về hạng ' + g.myRank + '!</p>';
+      } else {
+        if (g.myTurn) {
+          h += '<p class="center baloo" style="font-size:19px">' + (g.table ? '⚔️ LƯỢT CỦA BẠN — chọn bài để CHẶN!' : '👑 LƯỢT CỦA BẠN — bạn cầm cái, chọn bài để đánh!') + '</p>';
+          if (g.mustInclude3) h += '<p class="center"><span class="chip hot">Lượt đầu tiên của trận: bộ bạn đánh phải có lá 3♠!</span></p>';
+        } else if (g.myPassed) {
+          h += '<p class="center">✋ Bạn đã bỏ lượt vòng này — đợi vòng mới…</p>';
+        } else {
+          h += '<p class="center">Lượt của ' + esc(nm(g.turn)) + ' — chuẩn bị bài của bạn…</p>';
+        }
+        h += tlHandHTML(handT, S.myTlSel, 'myTl');
+        h += tlBtnsHTML(g, S.myTlSel, 'myTl');
+        h += '<p class="center small">Chạm vào lá bài để chọn / bỏ chọn — bộ không hợp lệ sẽ bị báo lỗi và lựa chọn vẫn được giữ nguyên.</p>';
+      }
+    }
+    return h;
+  }
+  if (g.id === 'ma-soi') {
+    h += '<div class="center"><span class="chip ' + (g.myRole === 'soi' ? 'hot' : 'cool') + '" style="font-size:16px">Vai của bạn: ' + (WOLF_ROLE_NAMES[g.myRole] || '') + '</span></div>';
+    if (!g.myAlive) {
+      h += '<p class="center">💀 Bạn đã chết — theo dõi tiếp trên bàn chung nhé!</p>';
+    } else if (g.phase === 'night') {
+      if (g.myRole === 'soi') {
+        if (g.myWolfVote == null) { h += '<div class="baloo" style="font-size:19px">🐺 Chọn con mồi đêm nay:</div>' + pickBtns('myWolf', 'wolfVote', true, null); }
+        else h += '<p class="center baloo" style="font-size:19px">Đã chọn con mồi: ' + esc(nm(g.myWolfVote)) + '<br><span style="font-size:16px">Phiếu sói đã vào: ' + (g.wolfVotesIn || 0) + '/' + (g.wolfTeam || []).length + '</span></p>';
+      } else if (g.myRole === 'bao-ve') {
+        if (g.myGuardPick == null) { h += '<div class="baloo" style="font-size:19px">🛡️ Đêm nay bạn bảo vệ ai?</div>' + pickBtns('myWolf', 'wolfGuard', false, g.myGuardLast); }
+        else h += '<p class="center baloo" style="font-size:19px">🛡️ Đang bảo vệ: ' + esc(nm(g.myGuardPick)) + '</p>';
+      } else if (g.myRole === 'tien-tri') {
+        if (g.mySeerPick == null) { h += '<div class="baloo" style="font-size:19px">🔮 Đêm nay bạn soi ai?</div>' + pickBtns('myWolf', 'wolfSeer', true, null); }
+        else { var seenW = (g.mySeerNotes || []).some(function (n2) { return n2.seat === g.mySeerPick && n2.wolf; }); h += '<p class="center baloo" style="font-size:19px">🔮 ' + esc(nm(g.mySeerPick)) + (seenW ? ' LÀ SÓI! 🐺' : ' là dân lành ✅') + '</p>'; }
+        if (g.mySeerNotes && g.mySeerNotes.length) {
+          h += '<p class="center small" style="margin:4px 0 0">📖 Sổ tay: ';
+          for (var sn2 = 0; sn2 < g.mySeerNotes.length; sn2++) h += esc(nm(g.mySeerNotes[sn2].seat)) + (g.mySeerNotes[sn2].wolf ? ' 🐺' : ' ✅') + (sn2 < g.mySeerNotes.length - 1 ? ' · ' : '');
+          h += '</p>';
+        }
+      } else if (g.myRole === 'phu-thuy') {
+        if (g.myWitchDone) h += '<p class="center baloo" style="font-size:19px">🧙 Đã quyết định xong — đi ngủ thôi!</p>';
+        else if (!g.wolvesIn) h += '<p class="center">🧙 Đợi bầy sói chọn xong con mồi… · 🧪 cứu ×' + (g.mySaveLeft || 0) + ' · ☠️ độc ×' + (g.myPoisonLeft || 0) + '</p>';
+        else {
+          h += '<p class="center baloo" style="font-size:19px">Con mồi của sói đêm nay: ' + (g.myVictim ? esc(nm(g.myVictim)) + (g.myVictim === seat ? ' (CHÍNH LÀ BẠN!)' : '') : '—') + '</p>';
+          if ((g.mySaveLeft || 0) > 0) h += '<p class="center"><button class="btn ' + (g.myWitchSave ? 'green' : 'ghost') + '" data-cmd="myWitchSave">' + (g.myWitchSave ? '🧪 ĐÃ CHỌN CỨU — bấm để huỷ' : '🧪 Dùng thuốc cứu người này') + '</button></p>';
+          else h += '<p class="center muted">Thuốc cứu đã dùng hết.</p>';
+          if ((g.myPoisonLeft || 0) > 0) {
+            h += '<div class="baloo" style="font-size:18px">☠️ Đầu độc ai? ' + (g.myWitchPoison ? '(đang chọn: ' + esc(nm(g.myWitchPoison)) + ')' : '(chưa chọn)') + '</div>' + pickBtns('myWolf', 'wolfPoison', true, null);
+            if (g.myWitchPoison) h += '<p class="center"><button class="btn small ghost" data-cmd="myWitchClear">Bỏ chọn đầu độc</button></p>';
+          } else h += '<p class="center muted">Thuốc độc đã dùng hết.</p>';
+          h += '<p class="center"><button class="btn pink" data-cmd="myWitchDone">Xác nhận — đi ngủ</button></p>';
+        }
+      } else {
+        h += '<p class="center">😴 Bạn là dân làng — ngủ ngon, đợi trời sáng…</p>';
+      }
+    } else if (g.phase === 'dawn') {
+      h += '<p class="center baloo" style="font-size:19px">' + (g.dawnDeaths && g.dawnDeaths.length ? '☀️ Đêm qua làng mất: ' + g.dawnDeaths.map(function (d3) { return esc(nm(d3.seat)); }).join(', ') : '☀️ Đêm qua bình yên — không ai ra đi!') + '</p>';
+    } else if (g.phase === 'discuss') {
+      h += '<p class="center">🗣️ Bàn luận: ai là sói? (xem bàn chung ở trên)</p>';
+    } else if (g.phase === 'vote') {
+      if (g.voted && g.voted[seat]) h += '<p class="center baloo" style="font-size:19px">Đã bỏ phiếu! Đợi kết quả…</p>';
+      else { h += '<div class="baloo" style="font-size:19px">⚖️ Treo cổ ai? Chọn người bạn nghi là sói:</div>' + pickBtns('myVote', null, true, null); }
+    } else if (g.phase === 'execute') {
+      h += '<p class="center baloo" style="font-size:19px">' + (g.exec && g.exec.seat ? '⚖️ ' + esc(nm(g.exec.seat)) + ' bị treo cổ — là ' + (WOLF_ROLE_NAMES[g.exec.role] || '') : '⚖️ Hôm nay không ai bị treo cổ.') + '</p>';
+    } else if (g.phase === 'wolfEnd') {
+      h += '<p class="center baloo" style="font-size:19px">' + (g.winner === 'soi' ? '🐺 Bầy sói thắng!' : '🎉 Dân làng thắng!') + ' · Bạn +' + fmt(g.points ? (g.points[seat] || 0) : 0) + ' điểm</p>';
+    }
+    return h;
+  }
+  if (g.id === 'ca-ngua') {
+    if (g.phase === 'ngWin') {
+      h += '<p class="center baloo" style="font-size:19px">🏆 ' + esc(nm(g.winner)) + ' thắng!</p>';
+    } else if (g.myTurn && g.phase === 'roll') {
+      h += '<p class="center baloo" style="font-size:19px">🎲 LƯỢT CỦA BẠN!</p>';
+      h += '<p class="center"><button class="btn pink" data-cmd="myRoll" style="font-size:22px;padding:14px 30px">THẢY XÚC XẮC</button></p>';
+      h += '<p class="center small">Thảy 6 để xuất chuồng và được thảy tiếp · Ba lần 6 liên tiếp là mất lượt!</p>';
+    } else if (g.myTurn && g.phase === 'pick') {
+      h += '<p class="center baloo" style="font-size:19px">Bạn thảy được: ' + (g.dice || '') + ' chấm — chọn ngựa để đi:</p>';
+      if (g.myLegal && g.myLegal.length) {
+        h += '<div class="optgrid">';
+        for (var ml2 = 0; ml2 < g.myLegal.length; ml2++) h += '<button class="opt" data-cmd="myMove" data-i="' + g.myLegal[ml2].horse + '">🐴 Ngựa ' + (g.myLegal[ml2].horse + 1) + '<br><span style="font-size:15px">' + esc(g.myLegal[ml2].hint) + '</span></button>';
+        h += '</div>';
+      } else h += '<p class="center">Không có nước đi nào — đợi qua lượt…</p>';
+    } else {
+      h += '<p class="center">Lượt của ' + esc(nm(g.turn)) + (g.dice ? ' · vừa thảy ' + g.dice + ' chấm' : '') + ' — xem bàn cờ ở bàn chung.</p>';
+    }
+    return h;
+  }
+  if (g.id === 'ke-gia-mao') {
+    if (g.phase === 'answer') {
+      h += '<div class="center"><span class="chip cool">Chủ đề: ' + esc(g.category || '') + '</span></div>';
+      h += '<div class="baloo" style="font-size:20px">' + esc(g.myQuestion || '') + '</div>';
+      if (g.mine == null) {
+        h += '<div class="optgrid">';
+        for (var a3 = 0; a3 < 4; a3++) h += '<button class="opt" data-cmd="myAnswer" data-i="' + a3 + '">' + LETTERS[a3] + '. ' + esc(g.options ? g.options[a3] : '') + '</button>';
+        h += '</div>';
+        h += '<p class="center small">Trả lời bí mật — đừng đọc to câu hỏi hay đáp án của bạn!</p>';
+      } else h += '<p class="center baloo" style="font-size:19px">Đã trả lời! Đợi mọi người…</p>';
+    } else if (g.phase === 'discuss') {
+      h += '<p class="center">🗣️ Bàn luận: ai đang giả vờ? (xem bàn chung ở trên)</p>';
+    } else if (g.phase === 'vote') {
+      if (g.myVote == null) {
+        h += '<div class="baloo" style="font-size:19px">Bạn tố cáo ai là kẻ giả mạo?</div><div class="optgrid">';
+        for (var v3 = 0; v3 < v.players.length; v3++) { if (v.players[v3].seat === seat) continue; h += '<button class="opt" data-cmd="myVote" data-i="' + v.players[v3].seat + '">' + esc(v.players[v3].name) + '</button>'; }
+        h += '</div>';
+      } else h += '<p class="center baloo" style="font-size:19px">Đã tố cáo! Đợi công bố…</p>';
+    } else if (g.phase === 'reveal' && g.reveal) {
+      h += '<p class="center baloo" style="font-size:19px">' + (g.reveal.caught ? 'Bắt được kẻ giả mạo!' : 'Kẻ giả mạo đã thoát!') + ' Kẻ giả mạo: ' + esc(nm(g.reveal.impostor)) + (g.reveal.impostor === seat ? ' — chính là BẠN!' : '') + ' · +' + fmt(g.reveal.points[seat] || 0) + ' điểm</p>';
+    }
+    return h;
+  }
+  if (g.id === 'do-vui') {
+    if (g.phase === 'question') {
+      h += '<div class="baloo" style="font-size:19px">' + esc(g.question || '') + '</div>';
+      if (g.mine == null) {
+        h += '<div class="optgrid">';
+        for (var a4 = 0; a4 < 4; a4++) h += '<button class="opt" data-cmd="myAnswer" data-i="' + a4 + '">' + LETTERS[a4] + '. ' + esc(g.options[a4]) + '</button>';
+        h += '</div>';
+      } else h += '<p class="center baloo" style="font-size:19px">Đã trả lời! Đợi mọi người…</p>';
+    } else if (g.phase === 'reveal' && g.reveal) {
+      var okA = g.mine != null && g.mine === g.reveal.correct;
+      h += '<p class="center baloo" style="font-size:19px">' + (okA ? 'ĐÚNG RỒI!' : 'Chưa đúng!') + ' Đáp án đúng: ' + LETTERS[g.reveal.correct] + '. ' + esc(g.options[g.reveal.correct]) + ' · +' + fmt(g.reveal.points[seat] || 0) + ' điểm</p>';
+    }
+    return h;
+  }
+  if (g.id === 'giai-ma-chung') {
+    if (g.phase === 'decode' || g.phase === 'levelup') {
+      h += '<p class="center">Màn ' + (g.level || 1) + ' · Tim đội: ' + '❤'.repeat(Math.max(0, g.hearts || 0)) + ' · Tiến độ: ' + (g.done || 0) + '/' + (g.total || 0) + ' bước · Đã qua ' + (g.levelsDone || 0) + ' màn</p>';
+      if (g.phase === 'levelup') h += '<p class="center baloo" style="font-size:19px">QUA MÀN! 🎉</p>';
+      var ms3 = g.mySteps || [];
+      h += '<p class="center" style="margin:4px 0"><b>Phần mật mã của bạn:</b> ';
+      if (!ms3.length) h += 'Màn này bạn không giữ bước nào — cổ vũ đồng đội nhé!';
+      for (var s3 = 0; s3 < ms3.length; s3++) h += '<span class="mystep">Bước ' + ms3[s3].pos + ': <span style="color:' + SYMCOLORS[ms3[s3].sym] + '">' + ms3[s3].name + '</span></span> ';
+      h += '</p>';
+      h += '<div class="symgrid">';
+      for (var y3 = 0; y3 < 4; y3++) h += '<button class="symbtn" data-cmd="mySymbol" data-i="' + y3 + '" style="background:' + SYMCOLORS[y3] + '">' + SYMNAMES[y3] + '</button>';
+      h += '</div>';
+      h += '<p class="center small">Chỉ bấm khi tới lượt bước của bạn và đúng ký hiệu của bước đó — bấm sai cả đội mất 1 tim!</p>';
+    }
+    return h;
+  }
+  if (g.id === 'chia-cuop') {
+    var inPair2 = g.pair && g.pair.indexOf(seat) >= 0;
+    if (g.phase === 'talk') {
+      h += '<p class="center baloo" style="font-size:19px">Nồi ' + fmt(g.pot || 400) + ' điểm' + (g.finalRound ? ' · VÒNG CUỐI ×2' : '') + '</p>';
+      if (g.chat) for (var c3 = 0; c3 < g.chat.length; c3++) { var cp3 = playerOf(v, g.chat[c3].seat); h += '<div class="chatrow">' + blobSVG(cp3 ? cp3.color : 'blue', 'cuoi', 24) + ' <b>' + esc(cp3 ? cp3.name : '') + ':</b> ' + esc(g.chat[c3].text) + '</div>'; }
+      if (inPair2) {
+        h += '<p class="center">Bạn đấu với <b>' + esc(nm(g.pair[g.pair[0] === seat ? 1 : 0])) + '</b>. Nói gì cũng được — lát nữa chọn mới là thật!</p>';
+        h += '<p class="center"><input type="text" id="myChatText" maxlength="60" placeholder="Lời thương lượng…" style="width:min(70vw,300px)"> <button class="btn small blue" data-cmd="myChatSend">Gửi</button></p>';
+      } else {
+        h += '<p class="center">Vòng này hai người khác thương lượng — bạn ngồi ngoài xem.</p>';
+      }
+    } else if (g.phase === 'choose') {
+      if (!inPair2) h += '<p class="center">Hai người kia đang chọn bí mật…</p>';
+      else if (g.mineChosen) h += '<p class="center baloo" style="font-size:19px">Đã khoá lựa chọn! Đợi đối thủ…</p>';
+      else {
+        h += '<p class="center baloo" style="font-size:19px">CHỌN BÍ MẬT ĐI!</p>';
+        h += '<p class="center">Cả hai CHIA: mỗi người một nửa nồi · Một người CƯỚP: cướp hết · Cả hai CƯỚP: mất trắng!</p>';
+        h += '<p class="center"><button class="btn green" data-cmd="myChoose" data-c="chia" style="font-size:20px">CHIA</button> <button class="btn pink" data-cmd="myChoose" data-c="cuop" style="font-size:20px">CƯỚP</button></p>';
+      }
+    } else if (g.phase === 'reveal' && g.reveal) {
+      var myE3 = null;
+      for (var q3 = 0; q3 < g.reveal.entries.length; q3++) if (g.reveal.entries[q3].seat === seat) myE3 = g.reveal.entries[q3];
+      h += '<p class="center baloo" style="font-size:19px">' + (myE3 ? 'Bạn đã ' + (myE3.choice === 'cuop' ? 'CƯỚP' : 'CHIA') + ' · +' + fmt(myE3.points) + ' điểm' : 'Xem kết quả ở bàn chung!') + '</p>';
+    }
+    return h;
+  }
+  // Any other game (real-time pads and friends): the host's own seat
+  // has no touch controls on this screen — say so plainly instead of
+  // rendering dead buttons.
+  return h + '<p class="center" style="margin:6px 0 0">Game hành động cần màn hình lớn — mở link mời trên một máy khác để vào ghế chơi game này.</p>';
+}
 function seatCard(v, seat) {
   var p = playerOf(v, seat);
   if (!p) {
@@ -6875,7 +7792,13 @@ function seatCard(v, seat) {
     h2 += '<div><span class="chip cool">NGƯỜI CHƠI · BÀN PHÍM</span></div>';
     h2 += '<div class="small muted" style="margin-top:4px">' + esc(LK_SCHEME_SUMMARY[p.scheme || 0] || '') + '</div>';
     if (v.phase === 'lobby' || v.phase === 'choosing') {
-      h2 += '<div style="margin-top:6px"><button class="btn small ghost" data-cmd="removeBot" data-seat="' + seat + '">Xoá phím</button></div>';
+      h2 += '<div style="margin-top:6px"><button class="btn small ghost" data-cmd="cycleScheme" data-seat="' + seat + '">Đổi bộ phím</button> ';
+      h2 += '<button class="btn small ghost" data-cmd="removeBot" data-seat="' + seat + '">Xoá phím</button></div>';
+    }
+  } else if (p.hostSeat) {
+    h2 += '<div><span class="chip hot">CHỦ PHÒNG · ĐANG CHƠI</span></div>';
+    if (v.phase === 'lobby' || v.phase === 'choosing') {
+      h2 += '<div style="margin-top:6px"><button class="btn small ghost" data-cmd="hostLeave">Rời ghế</button></div>';
     }
   } else {
     h2 += '<div><span class="chip cool">NGƯỜI CHƠI</span></div>';
@@ -6890,6 +7813,7 @@ function hostHTML(v) {
     h += '<div class="codeboxes">';
     for (var i = 0; i < v.code.length; i++) h += '<div class="codebox">' + esc(v.code[i]) + '</div>';
     h += '</div>';
+    h += '<p class="center" style="margin:10px 0 0">🔗 Link mời bạn bè: <input class="shareurl" id="shareLink" readonly value="' + esc((location.origin || (location.protocol + '//' + location.host)) + '/?code=' + v.code) + '"> <button class="btn small blue" data-cmd="copyLink">Sao chép link</button></p>';
     h += '<div class="seats">';
     for (var s = 1; s <= 12; s++) h += seatCard(v, s);
     h += '</div>';
@@ -6899,7 +7823,9 @@ function hostHTML(v) {
     else if (v.players.length < 2) h += '<span class="chip hot">Thêm Máy hoặc rủ thêm bạn để đủ 2 người</span>';
     else h += '<span class="chip cool">Sẵn sàng! Chọn một game bên dưới để bắt đầu</span>';
     h += '</p>';
-    h += '<p class="center small muted" style="margin:8px 0 0">Chơi ngay trên màn hình này: bấm + Phím để thêm người chơi bằng bàn phím — mỗi người một bộ phím, không cần điện thoại.</p></div>';
+    h += '<p class="center small muted" style="margin:8px 0 0">Chơi ngay trên màn hình này: bấm + Phím để thêm người chơi bằng bàn phím — mỗi người một bộ phím, không cần điện thoại.</p>';
+    if (!mySeatOf(v)) h += '<p class="center" style="margin:10px 0 0"><button class="btn green" data-cmd="hostJoinBtn">🎮 Chủ phòng cũng chơi — ngồi vào một ghế</button></p>';
+    h += '</div>';
     // Game chooser, grouped by category: versus games race for
     // placement points; co-op games score the whole team one tier.
     // In playlist mode the same cards become queue toggles instead of
@@ -6958,6 +7884,7 @@ function hostHTML(v) {
     h += scoreStrip(v);
     h += '<p style="text-align:right;margin:2px 0 0"><button class="btn small ghost" data-cmd="quitGame" title="Bỏ game đang chơi, về màn hình chọn game — điểm ván này không tính">Đổi game ✕</button></p>';
     h += '<div class="stage g-' + v.game.id + (isActionGame(v.game.id) ? ' neon-stage' : '') + '">' + hostStage(v) + '</div>';
+    if (v.myView) h += mySeatHTML(v);
     return h;
   }
   if (v.phase === 'results') return h + resultsHTML(v, true);
@@ -6966,7 +7893,7 @@ function hostHTML(v) {
   return h + '<div class="card center"><h2>Đang tải…</h2></div>';
 }
 function countdownHTML(g) {
-  var title = g.id === 'ma-soi' ? 'Đêm ' + g.round : g.id === 'ca-ngua' ? 'Bắt đầu nào!' : 'Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · VÒNG QUYẾT ĐỊNH ×2' : '');
+  var title = g.id === 'ma-soi' ? 'Đêm ' + g.round : (g.id === 'ca-ngua' || g.id === 'tien-len') ? 'Bắt đầu nào!' : 'Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · VÒNG QUYẾT ĐỊNH ×2' : '');
   return '<div class="cdwrap"><div class="baloo" style="font-size:30px">' + title + '</div>'
     + '<div class="cdnum" id="cdnum">3</div><div class="baloo" style="font-size:24px">Chuẩn bị…</div></div>';
 }
@@ -6990,7 +7917,7 @@ function dmgColor(d) { return d >= 100 ? '#FF5A3C' : d >= 50 ? '#FFC93D' : '#7BE
 function hostStage(v) {
   var g = v.game;
   if (g.phase === 'countdown') return countdownHTML(g);
-  var h = '<h2>' + esc(g.name) + (g.id === 'ma-soi' ? ' · Đêm ' + (g.night || g.round) : g.id === 'ca-ngua' ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
+  var h = '<h2>' + esc(g.name) + (g.id === 'ma-soi' ? ' · Đêm ' + (g.night || g.round) : (g.id === 'ca-ngua' || g.id === 'tien-len') ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
   var t = serverNow();
   if (g.id === 'do-vui') {
     if (g.phase === 'question' || g.phase === 'reveal') {
@@ -7333,6 +8260,41 @@ function hostStage(v) {
     else h += '<p class="muted">Chưa có diễn biến nào…</p>';
     h += '</div></div>';
     h += '<p class="center">Ô vàng là ô an toàn — ngựa đứng đó không bị đá. Thảy 6 được đi tiếp; 6 ba lần liên tiếp thì mất lượt!</p>';
+  } else if (g.id === 'tien-len') {
+    if (g.phase === 'tlWin' && g.winner) {
+      var winT = playerOf(v, g.winner);
+      h += '<div class="center baloo" style="font-size:30px">🏆 ' + esc(winT ? winT.name : '') + ' THẮNG TIẾN LÊN!</div>';
+      if (g.instantWin) h += '<div class="center baloo" style="font-size:24px;color:#FFC93D">⚡ TỚI TRẮNG — ' + (TL_IW_NAMES[g.instantWin.kind] || '') + '!</div>';
+      h += '<div class="rows">';
+      for (var fI = 0; fI < (g.finished || []).length; fI++) { var fp9 = playerOf(v, g.finished[fI]); h += '<div class="rrow">' + blobSVG(fp9.color, fp9.mood, 32) + ' ' + esc(fp9.name) + '<span class="chip cool">Hạng ' + (fI + 1) + '</span><span class="pts">+' + fmt(g.points[fp9.seat] || 0) + '</span></div>'; }
+      h += '</div>';
+    } else if (g.phase === 'cards') {
+      var turnT = g.turn ? playerOf(v, g.turn) : null;
+      h += '<div class="center baloo" style="font-size:24px">Lượt của: ' + (turnT ? esc(turnT.name) : '') + (g.table ? ' · cần chặn bài trên bàn' : ' · đang cầm cái') + '</div>';
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      h += '<div class="tltable">';
+      if (g.table) {
+        var tabP = playerOf(v, g.table.seat);
+        h += '<div class="center baloo" style="font-size:19px">' + esc(tabP ? tabP.name : '') + ' vừa đánh · ' + (TL_KIND_NAMES[g.table.kind] || '') + '</div>';
+        h += '<div class="tlchips">' + tlChipsHTML(g.table.cards, false) + '</div>';
+      } else {
+        h += '<div class="center baloo" style="font-size:20px">🃏 Bàn trống — ' + (turnT ? esc(turnT.name) : '') + ' cầm cái, đánh bộ bất kỳ!</div>';
+      }
+      h += '</div>';
+      h += '<div class="scorebar">';
+      for (var pI9 = 0; pI9 < v.players.length; pI9++) {
+        var pp9 = v.players[pI9];
+        var fin9 = (g.finished || []).indexOf(pp9.seat);
+        h += '<span class="scorechip"' + (g.turn === pp9.seat ? ' style="outline:3px solid #FFC93D"' : '') + '>' + blobSVG(pp9.color, pp9.mood, 28) + ' ' + esc(pp9.name)
+          + ' · 🂠 × ' + (g.counts ? (g.counts[pp9.seat] || 0) : 0)
+          + (g.leader === pp9.seat ? ' · <b>Cái</b>' : '')
+          + (g.passed && g.passed[pp9.seat] ? ' · ✋ Bỏ' : '')
+          + (fin9 >= 0 ? ' · 🏆 ' + (fin9 + 1) : '') + '</span>';
+      }
+      h += '</div>';
+      if (g.log && g.log.length) { h += '<div style="margin-top:8px">'; for (var lI9 = 0; lI9 < g.log.length; lI9++) h += '<div class="chatrow">🃏 ' + esc(g.log[lI9]) + '</div>'; h += '</div>'; }
+      h += '<p class="center">Chặt heo: tứ quý & đôi thông chặt được lá 2; đôi heo chỉ bị chặt bởi tứ quý và 4 đôi thông. Hết bài trước là thắng!</p>';
+    }
   } else if (g.id === 'da-bong') {
     var sb = g.scoreboard || { do: 0, xanh: 0 };
     h += '<div class="scorebar"><span class="scorechip" style="background:#FBD5D5">🔴 Đội Đỏ: <b id="scoredo">' + sb.do + '</b></span><span class="scorechip" style="background:#CFE8FB">🔵 Đội Xanh: <b id="scorexanh">' + sb.xanh + '</b></span></div>';
@@ -7580,6 +8542,9 @@ function viewSig(v) {
     } else if (g.id === 'ca-ngua') {
       gp = pl ? [g.id, g.phase, g.turn, g.dice, g.horses, g.last, g.winner, g.myLegal, g.myTurn]
         : [g.id, g.phase, g.turn, g.dice, g.horses, g.last, g.winner, g.log];
+    } else if (g.id === 'tien-len') {
+      gp = pl ? [g.id, g.phase, g.counts, g.table, g.turn, g.leader, g.passed, g.finished, g.log, g.myHand, g.myTurn, g.myPassed, g.myRank, g.lastRound]
+        : [g.id, g.phase, g.counts, g.table, g.turn, g.leader, g.passed, g.finished, g.log, g.winner, g.instantWin, g.lastRound];
     } else if (g.id === 'da-bong') {
       gp = pl ? [g.id, g.phase, g.scoreboard, g.myTeam, g.lastRound]
         : [g.id, g.phase, g.scoreboard, g.goalInfo, g.lastRound];
@@ -7670,7 +8635,12 @@ function render() {
   // themselves when the host leaves a game — so they run on EVERY
   // render() invocation, before any early return below.
   renderLocalPanels();
-  if (!S.role) { if (app.classList) app.classList.remove('playhud'); if (S.sig !== 'home') { S.sig = 'home'; S.ctrlKey = ''; app.innerHTML = homeHTML(); } return; }
+  // The my-seat section (phone mode) lives inside #app but, exactly
+  // like the local panels, must repaint on its own signature — the
+  // host's private view can change (a dealt hand, a witch toggle)
+  // while the public stage signature stands still.
+  renderMySeat();
+  if (!S.role) { if (app.classList) app.classList.remove('playhud'); if (S.sig !== 'home') { S.sig = 'home'; S.ctrlKey = ''; app.innerHTML = homeHTML(); fillHomeDefaults(); } return; }
   var v = S.view;
   if (!v) { app.innerHTML = '<div class="card center"><h2>Đang nối phòng…</h2><p class="muted">Nếu chờ lâu vẫn không vào được, phòng có thể đã đóng hoặc hết hạn.</p><p><button class="btn ghost" data-cmd="reload">Về trang chính</button></p></div>'; return; }
   if (app.classList) app.classList.toggle('playhud', !!(S.role === 'host' && v.phase === 'playing' && v.game && FIELD_GAMES[v.game.id]));
@@ -8408,13 +9378,24 @@ function homeHTML() {
   h += '<p><button class="btn blue" data-cmd="create" style="font-size:23px">Mở trên màn hình lớn (TV)</button></p>';
   h += '<p class="muted">Màn hình lớn tạo phòng và hiện mã 6 số. Bạn bè mở trang này trên điện thoại, nhập mã là chơi — không cần cài app, không cần tài khoản.</p>';
   h += '</div>';
+  h += '<div class="card center" style="margin-top:16px"><h2 style="margin:0 0 8px">📱 Tạo phòng chơi trên điện thoại</h2>';
+  h += '<p class="muted" style="margin:4px 0">Không cần TV — mỗi người chơi ngay trên điện thoại của mình. Bạn tạo phòng, ngồi vào một ghế chơi luôn, rồi gửi link mời cho bạn bè.</p>';
+  h += '<p><input type="text" id="pmName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
+  h += '<p><button class="btn green" data-cmd="createPhone" style="font-size:22px">Tạo phòng điện thoại</button></p></div>';
+  var rec = npRecents();
+  if (rec.length) {
+    h += '<div class="card center" style="margin-top:16px"><h3 style="margin:0 0 8px">Phòng gần đây của máy này</h3><p style="margin:0">';
+    for (var ri = 0; ri < rec.length; ri++) h += '<button class="chip cool recentchip" data-cmd="recent" data-i="' + ri + '">Vào lại phòng ' + esc(rec[ri].code) + (rec[ri].name ? ' · ' + esc(rec[ri].name) : '') + '</button> ';
+    h += '</p></div>';
+  }
   h += '<div class="card center" style="margin-top:16px"><h2 style="margin:0 0 8px">Vào bằng điện thoại (tay cầm)</h2>';
   h += '<div class="digits">';
   for (var i = 0; i < 6; i++) h += '<input class="digit" id="d' + i + '" type="tel" maxlength="1" inputmode="numeric">';
   h += '</div>';
   h += '<p><input type="text" id="joinName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
+  h += '<p id="idNote" class="small" style="display:none;margin:2px 0 0"></p>';
   h += '<p><button class="btn pink" data-cmd="join" style="font-size:22px">Vào phòng</button></p></div>';
-  h += '<p class="center muted small" style="margin-top:14px">24 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Ma Sói · Cờ Cá Ngựa · Người Que Đại Chiến · Đá Bóng Đầu To · Đại Bác Căn Góc · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước · Ếch Ộp Phiêu Lưu — 17 game đấu + 7 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
+  h += '<p class="center muted small" style="margin-top:14px">25 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Ma Sói · Cờ Cá Ngựa · Tiến Lên Miền Nam · Người Que Đại Chiến · Đá Bóng Đầu To · Đại Bác Căn Góc · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước · Ếch Ộp Phiêu Lưu — 18 game đấu + 7 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
   return h;
 }
 function playerHTML(v) {
@@ -8428,7 +9409,7 @@ function playerHTML(v) {
     h += '</p></div>';
     return h;
   }
-  if (v.phase === 'playing' && v.game) return h + playerGame(v);
+  if (v.phase === 'playing' && v.game) return h + playerGame(v) + kbHintHTML();
   if (v.phase === 'results') return h + resultsHTML(v, false);
   if (v.phase === 'podium') return h + podiumHTML(v, false);
   if (v.phase === 'final') return h + finalHTML(v, false);
@@ -8439,7 +9420,7 @@ function playerGame(v) {
   var me = playerOf(v, S.seat);
   var h = '<div class="stage pstage g-' + g.id + (isActionGame(g.id) ? ' neon-stage' : '') + '">';
   if (g.phase === 'countdown') { h += '<div class="center baloo" style="font-size:26px">' + esc(g.name) + '</div>' + countdownHTML(g) + '</div>'; return h; }
-  h += '<h2>' + esc(g.name) + (g.id === 'ma-soi' ? ' · Đêm ' + (g.night || g.round) : g.id === 'ca-ngua' ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
+  h += '<h2>' + esc(g.name) + (g.id === 'ma-soi' ? ' · Đêm ' + (g.night || g.round) : (g.id === 'ca-ngua' || g.id === 'tien-len') ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
   if (g.id === 'do-vui') {
     if (g.phase === 'question') {
       h += '<div class="baloo" style="font-size:22px">' + esc(g.question) + '</div>';
@@ -8776,6 +9757,46 @@ function playerGame(v) {
       h += '</div>';
       h += '<p class="center">Xem bàn cờ trên TV nhé!</p>';
     }
+  } else if (g.id === 'tien-len') {
+    if (!S.tlSel) S.tlSel = [];
+    var hand9 = g.myHand || [];
+    var hsig = hand9.join(',');
+    if (S.tlSig !== hsig) { S.tlSig = hsig; S.tlSel = []; }
+    var turnP9 = g.turn ? playerOf(v, g.turn) : null;
+    if (g.phase === 'tlWin') {
+      var winP9 = g.winner ? playerOf(v, g.winner) : null;
+      h += '<div class="center"><div class="baloo" style="font-size:27px">🏆 ' + esc(winP9 ? winP9.name : '') + ' thắng!</div>'
+        + (g.instantWin ? '<p class="baloo" style="font-size:20px;color:#FFC93D">⚡ TỚI TRẮNG — ' + (TL_IW_NAMES[g.instantWin.kind] || '') + '!</p>' : '')
+        + (g.myRank ? '<p>Bạn về hạng ' + g.myRank + ' · +' + fmt(g.points[S.seat] || 0) + ' điểm</p>' : '')
+        + '<p>Xem bảng điểm trên TV nhé.</p></div>';
+    } else if (g.phase === 'cards') {
+      if (g.table) {
+        var tabP9 = playerOf(v, g.table.seat);
+        h += '<div class="center baloo" style="font-size:18px">Trên bàn — ' + esc(tabP9 ? tabP9.name : '') + ' · ' + (TL_KIND_NAMES[g.table.kind] || '') + '</div>';
+        h += '<div class="tlchips">' + tlChipsHTML(g.table.cards, true) + '</div>';
+      } else {
+        h += '<div class="center baloo" style="font-size:18px">🃏 Bàn trống</div>';
+      }
+      if (g.myRank) {
+        h += '<div class="center baloo" style="font-size:24px">🏆 Bạn đã hết bài — về hạng ' + g.myRank + '!</div><p class="center">Xem mọi người đánh tiếp trên TV nhé…</p>';
+      } else {
+        if (g.myTurn) {
+          h += '<div class="center baloo" style="font-size:22px">' + (g.table ? '⚔️ LƯỢT CỦA BẠN — chọn bài để CHẶN!' : '👑 LƯỢT CỦA BẠN — bạn cầm cái, chọn bài để đánh!') + '</div>';
+          if (g.mustInclude3) h += '<p class="center"><span class="chip hot">Lượt đầu tiên của trận: bộ bạn đánh phải có lá 3♠!</span></p>';
+        } else if (g.myPassed) {
+          h += '<div class="center baloo" style="font-size:20px">✋ Bạn đã bỏ lượt vòng này — đợi vòng mới…</div>';
+        } else {
+          h += '<div class="center baloo" style="font-size:20px">Lượt của ' + esc(turnP9 ? turnP9.name : '') + ' — chuẩn bị bài của bạn…</div>';
+        }
+        h += tlHandHTML(hand9, S.tlSel, 'tl');
+        h += tlBtnsHTML(g, S.tlSel, 'tl');
+        h += '<p class="center small">Chạm vào lá bài để chọn / bỏ chọn — lá được chọn sẽ nhô lên. Bộ không hợp lệ sẽ bị báo lỗi và lựa chọn của bạn vẫn được giữ nguyên.</p>';
+      }
+      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
+      h += '<div class="scorebar">';
+      for (var sI9 = 0; sI9 < v.players.length; sI9++) { var sp9 = v.players[sI9]; h += '<span class="scorechip">' + blobSVG(sp9.color, sp9.mood, 24) + ' ' + esc(sp9.name) + ' · 🂠 × ' + (g.counts ? (g.counts[sp9.seat] || 0) : 0) + ((g.finished || []).indexOf(sp9.seat) >= 0 ? ' 🏆' : '') + '</span>'; }
+      h += '</div>';
+    }
   } else if (g.id === 'da-bong') {
     var sbp = g.scoreboard || { do: 0, xanh: 0 };
     h += '<div class="center baloo" style="font-size:21px">Bạn: ' + (g.myTeam === 'do' ? '🔴 ĐỘI ĐỎ' : '🔵 ĐỘI XANH') + ' · Đỏ ' + sbp.do + ' — ' + sbp.xanh + ' Xanh</div>';
@@ -8822,13 +9843,71 @@ function playerGame(v) {
   }
   return h + '</div>';
 }
+// ---------------------------------------------------------------------
+// Device identity + recent rooms (phone mode convenience). The web
+// remembers WHO this device is (np_identity: the name it last played
+// under) so the join form is prefilled and friends recognize each
+// other by name + seat colour with zero accounts; np_recent keeps up
+// to 5 rooms this device created or joined (with the session token —
+// this device's own credential, the same thing sessionStorage already
+// holds) so rejoining is one tap.
+// ---------------------------------------------------------------------
+function npIdentity() {
+  try { var o = JSON.parse(localStorage.getItem('np_identity') || 'null'); if (o && typeof o.name === 'string' && o.name) return o; } catch (e) {}
+  return null;
+}
+function npSaveIdentity(name) {
+  if (!name) return;
+  try { localStorage.setItem('np_identity', JSON.stringify({ name: name })); } catch (e) {}
+}
+function npRecents() {
+  try { var a = JSON.parse(localStorage.getItem('np_recent') || '[]'); if (Array.isArray(a)) return a.filter(function (r) { return r && r.code && r.token; }); } catch (e) {}
+  return [];
+}
+function npSaveRecent(entry) {
+  try {
+    var a = npRecents().filter(function (r) { return !(r.code === entry.code && r.role === entry.role); });
+    entry.at = Date.now();
+    a.unshift(entry);
+    localStorage.setItem('np_recent', JSON.stringify(a.slice(0, 5)));
+  } catch (e) {}
+}
+function npDropRecent(code) {
+  try { localStorage.setItem('np_recent', JSON.stringify(npRecents().filter(function (r) { return r.code !== code; }))); } catch (e) {}
+}
+// The host's own seat number in this view, or null. The hostSeat flag
+// rides the players list (additive view field), so every client can
+// find it; only the host page acts on it.
+function mySeatOf(v) {
+  if (!v || !v.players) return null;
+  for (var i = 0; i < v.players.length; i++) if (v.players[i].hostSeat) return v.players[i].seat;
+  return null;
+}
+// Home-screen defaults, applied right after homeHTML() paints: the
+// remembered name fills both name inputs, a code= in the URL fills the
+// join digits (friends tap the invite link and land one tap from the
+// room — no auto-join without that tap), and the recognition note
+// shows when this device is already known.
+function fillHomeDefaults() {
+  var idn = npIdentity();
+  var jn = el('joinName'); if (jn && idn && !jn.value) jn.value = idn.name;
+  var pm = el('pmName'); if (pm && idn && !pm.value) pm.value = idn.name;
+  var note = el('idNote');
+  if (note && idn) { note.textContent = 'Máy này đã nhớ bạn là ' + idn.name + ' 👋'; note.style.display = ''; }
+  var qs = location.search || ''; var qi = qs.indexOf('code=');
+  if (qi >= 0) {
+    var cd = qs.slice(qi + 5, qi + 11); var cdOk = cd.length === 6;
+    for (var ci = 0; ci < cd.length; ci++) if ('0123456789'.indexOf(cd.charAt(ci)) < 0) cdOk = false;
+    if (cdOk) { for (var i = 0; i < 6; i++) { var d = el('d' + i); if (d) d.value = cd.charAt(i); } }
+  }
+}
 function saveSession() {
-  try { sessionStorage.setItem('np_session', JSON.stringify({ role: S.role, code: S.code, token: S.token, seat: S.seat })); } catch (e) {}
+  try { sessionStorage.setItem('np_session', JSON.stringify({ role: S.role, code: S.code, token: S.token, seat: S.seat, phoneMode: S.phoneMode ? true : undefined })); } catch (e) {}
 }
 function clearSession() {
   wsDrop();
   try { sessionStorage.removeItem('np_session'); } catch (e) {}
-  S.role = null; S.code = null; S.token = null; S.seat = null; S.view = null; S.sig = ''; render();
+  S.role = null; S.code = null; S.token = null; S.seat = null; S.view = null; S.sig = ''; S.phoneMode = false; render();
 }
 // A room created seconds ago may briefly be invisible to a phone whose
 // request lands somewhere the fresh room has not reached yet, and the
@@ -8838,7 +9917,7 @@ function clearSession() {
 var JOIN_RETRY_MS = 2000, JOIN_RETRY_MAX = 10;
 function tryJoin(code, name, attempt) {
   api('/api/rooms/' + code + '/join', { name: name }, function (v) {
-    if (v && v.ok) { S.role = 'player'; S.code = code; S.token = v.playerToken; S.seat = v.seat; noteOk(); saveSession(); S.sig = ''; poll(); return; }
+    if (v && v.ok) { S.role = 'player'; S.code = code; S.token = v.playerToken; S.seat = v.seat; npSaveIdentity(name); npSaveRecent({ code: code, role: 'player', name: name, token: v.playerToken, seat: v.seat }); noteOk(); saveSession(); S.sig = ''; poll(); return; }
     var err = v && v.error ? v.error : '';
     if (err.indexOf('Không thấy phòng này') >= 0 && attempt < JOIN_RETRY_MAX) {
       toast('Đang tìm phòng…');
@@ -8859,7 +9938,7 @@ function tryJoin(code, name, attempt) {
 // navigation) keep the plain click path, as do clicks with no press
 // before them (keyboard / assistive tech).
 // ---------------------------------------------------------------------
-var GAME_CMDS = { tap: 1, answer: 1, choose: 1, vote: 1, symbol: 1, roll: 1, move: 1, wolfPick: 1, witchSave: 1, witchDone: 1, witchPoisonClear: 1 };
+var GAME_CMDS = { tap: 1, answer: 1, choose: 1, vote: 1, symbol: 1, roll: 1, move: 1, wolfPick: 1, witchSave: 1, witchDone: 1, witchPoisonClear: 1, tlCard: 1, tlPlay: 1, tlPass: 1, tlClear: 1, myAnswer: 1, myVote: 1, myWolf: 1, myWitchSave: 1, myWitchDone: 1, myWitchClear: 1, myRoll: 1, myMove: 1, mySymbol: 1, myChoose: 1, myTlCard: 1, myTlPlay: 1, myTlPass: 1, myTlClear: 1 };
 var cmdGuard = {};
 function findCmdNode(node) {
   while (node && node !== document.body) { if (node.getAttribute && node.getAttribute('data-cmd')) return node; node = node.parentNode; }
@@ -8890,9 +9969,57 @@ function runCmd(node) {
   var cmd = node.getAttribute('data-cmd');
   if (cmd === 'create') {
     api('/api/rooms', {}, function (v) {
-      if (v && v.ok) { S.role = 'host'; S.code = v.code; S.token = v.hostToken; S.seat = null; noteOk(); saveSession(); S.sig = ''; poll(); }
+      if (v && v.ok) { S.role = 'host'; S.code = v.code; S.token = v.hostToken; S.seat = null; S.phoneMode = false; npSaveRecent({ code: v.code, role: 'host', name: '', token: v.hostToken, seat: null }); noteOk(); saveSession(); S.sig = ''; poll(); }
       else toast(v && v.error ? v.error : 'Không tạo được phòng.');
     });
+  } else if (cmd === 'createPhone') {
+    // Phone mode: create the room AND sit the creator down in it —
+    // one flow, landing in the lobby with the seat taken and the
+    // invite link on screen. The name comes from the card's input
+    // (prefilled from the remembered identity); the server defaults
+    // it to 'Chủ phòng' when empty.
+    var pmEl = el('pmName'); var pmName = pmEl ? pmEl.value.trim() : '';
+    api('/api/rooms', {}, function (v) {
+      if (!(v && v.ok)) { toast(v && v.error ? v.error : 'Không tạo được phòng.'); return; }
+      S.role = 'host'; S.code = v.code; S.token = v.hostToken; S.seat = null; S.phoneMode = true;
+      api('/api/rooms/' + S.code + '/action', { role: 'host', token: S.token, action: 'hostJoin', name: pmName }, function (v2) {
+        if (v2 && v2.ok) { S.view = v2; S.serverOffset = v2.serverNow - Date.now(); }
+        else if (v2 && v2.error) toast(v2.error);
+        if (pmName) npSaveIdentity(pmName);
+        npSaveRecent({ code: S.code, role: 'host', name: pmName, token: S.token, seat: null, phone: true });
+        noteOk(); saveSession(); S.sig = ''; poll(); render();
+      });
+    });
+  } else if (cmd === 'recent') {
+    // One-tap rejoin from the home screen: probe the saved session —
+    // adopt it when the room still exists, drop the chip when it is
+    // gone (same not-found feedback the poll path uses).
+    var rc = npRecents()[+node.getAttribute('data-i')];
+    if (!rc) return;
+    api('/api/rooms/' + rc.code + '/state?role=' + rc.role + '&token=' + encodeURIComponent(rc.token), null, function (v) {
+      if (v && v.ok) {
+        S.role = rc.role; S.code = rc.code; S.token = rc.token; S.seat = rc.seat || null; S.phoneMode = !!rc.phone;
+        S.view = v; S.serverOffset = v.serverNow - Date.now(); noteOk(); saveSession(); S.sig = ''; poll(); render();
+      } else if (v && v.error && !v.net && v.error.indexOf('Không thấy phòng này') >= 0) {
+        npDropRecent(rc.code);
+        toast('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.');
+        S.sig = ''; render();
+      } else toast(v && v.error ? v.error : 'Không vào lại được phòng.');
+    });
+  } else if (cmd === 'copyLink') {
+    var liEl = el('shareLink');
+    if (liEl) {
+      var linkUrl = liEl.value;
+      var copied = function () { toast('Đã sao chép link mời! Gửi cho bạn bè nhé.'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(linkUrl).then(copied, function () { liEl.focus(); liEl.select(); toast('Link đã được bôi đen — sao chép rồi gửi cho bạn bè nhé.'); });
+      } else { liEl.focus(); liEl.select(); toast('Link đã được bôi đen — sao chép rồi gửi cho bạn bè nhé.'); }
+    }
+  } else if (cmd === 'hostJoinBtn') {
+    var idn2 = npIdentity();
+    act({ action: 'hostJoin', name: idn2 ? idn2.name : '' });
+  } else if (cmd === 'hostLeave') {
+    act({ action: 'hostLeave' });
   } else if (cmd === 'join') {
     var code = '';
     for (var i = 0; i < 6; i++) { var d = el('d' + i); code += d ? d.value.trim() : ''; }
@@ -8909,7 +10036,7 @@ function runCmd(node) {
   } else if (cmd === 'reload') {
     clearSession();
     location.reload();
-  } else if (cmd === 'addBot' || cmd === 'removeBot' || cmd === 'cycleBot' || cmd === 'addLocal') {
+  } else if (cmd === 'addBot' || cmd === 'removeBot' || cmd === 'cycleBot' || cmd === 'addLocal' || cmd === 'cycleScheme') {
     act({ action: cmd, seat: +node.getAttribute('data-seat') });
   } else if (cmd === 'start') {
     sfxTap();
@@ -8969,6 +10096,69 @@ function runCmd(node) {
   } else if (cmd === 'move') {
     sfxTap();
     act({ action: 'move', horse: +node.getAttribute('data-i') });
+  } else if (cmd === 'tlCard') {
+    sfxTap();
+    if (!S.tlSel) S.tlSel = [];
+    var tcid = +node.getAttribute('data-i');
+    var tix = S.tlSel.indexOf(tcid);
+    if (tix >= 0) S.tlSel.splice(tix, 1); else S.tlSel.push(tcid);
+    S.sig = ''; render();
+  } else if (cmd === 'tlPlay') {
+    if (!S.tlSel || !S.tlSel.length) { toast('Chọn ít nhất một lá bài trước đã.'); return; }
+    sfxTap();
+    tlSend({ action: 'play', cards: S.tlSel.slice() });
+  } else if (cmd === 'tlPass') {
+    sfxTap();
+    tlSend({ action: 'pass' });
+  } else if (cmd === 'tlClear') {
+    S.tlSel = [];
+    sfxTap(); S.sig = ''; render();
+  } else if (cmd === 'myAnswer' || cmd === 'myVote' || cmd === 'myWolf' || cmd === 'myWitchSave' || cmd === 'myWitchDone' || cmd === 'myWitchClear'
+    || cmd === 'myRoll' || cmd === 'myMove' || cmd === 'mySymbol' || cmd === 'myChoose' || cmd === 'myChatSend'
+    || cmd === 'myTlCard' || cmd === 'myTlPlay' || cmd === 'myTlPass' || cmd === 'myTlClear') {
+    // My-seat commands (phone mode): all sends ride the forSeat relay
+    // via localAct, which stamps host credentials + forSeat and never
+    // clears the session on a rules error.
+    var mySeat = mySeatOf(S.view);
+    if (mySeat == null) return;
+    sfxTap();
+    if (cmd === 'myAnswer') localAct(mySeat, { action: 'answer', choice: +node.getAttribute('data-i') });
+    else if (cmd === 'myVote') localAct(mySeat, { action: 'vote', seat: +node.getAttribute('data-i') });
+    else if (cmd === 'myWolf') {
+      var mk = node.getAttribute('data-kind');
+      var mi = +node.getAttribute('data-i');
+      if (mk === 'wolfPoison') localAct(mySeat, { action: 'wolfWitch', poison: mi });
+      else localAct(mySeat, { action: mk, seat: mi });
+    }
+    else if (cmd === 'myWitchSave') {
+      var msv = S.view && S.view.myView ? !!S.view.myView.myWitchSave : false;
+      localAct(mySeat, { action: 'wolfWitch', save: !msv });
+    }
+    else if (cmd === 'myWitchClear') localAct(mySeat, { action: 'wolfWitch', poison: null });
+    else if (cmd === 'myWitchDone') localAct(mySeat, { action: 'wolfWitch', done: true });
+    else if (cmd === 'myRoll') localAct(mySeat, { action: 'roll' });
+    else if (cmd === 'myMove') localAct(mySeat, { action: 'move', horse: +node.getAttribute('data-i') });
+    else if (cmd === 'mySymbol') { var msy = +node.getAttribute('data-i'); beep(320 + msy * 130, 0.1, 'triangle', 0.14); localAct(mySeat, { action: 'symbol', sym: msy }); }
+    else if (cmd === 'myChoose') localAct(mySeat, { action: 'choose', choice: node.getAttribute('data-c') });
+    else if (cmd === 'myChatSend') {
+      var mct = el('myChatText'); var mtxt = mct ? mct.value.trim() : '';
+      if (!mtxt) { toast('Nhập lời nhắn trước đã.'); return; }
+      if (mct) mct.value = '';
+      localAct(mySeat, { action: 'chat', text: mtxt });
+    }
+    else if (cmd === 'myTlCard') {
+      if (!S.myTlSel) S.myTlSel = [];
+      var mtc = +node.getAttribute('data-i');
+      var mtx = S.myTlSel.indexOf(mtc);
+      if (mtx >= 0) S.myTlSel.splice(mtx, 1); else S.myTlSel.push(mtc);
+      S.mySeatSig = ''; S.sig = ''; render();
+    }
+    else if (cmd === 'myTlPlay') {
+      if (!S.myTlSel || !S.myTlSel.length) { toast('Chọn ít nhất một lá bài trước đã.'); return; }
+      localAct(mySeat, { action: 'play', cards: S.myTlSel.slice() });
+    }
+    else if (cmd === 'myTlPass') localAct(mySeat, { action: 'pass' });
+    else if (cmd === 'myTlClear') { S.myTlSel = []; S.mySeatSig = ''; S.sig = ''; render(); }
   } else if (cmd === 'wolfPick') {
     sfxTap();
     var wk = node.getAttribute('data-kind');
@@ -9289,6 +10479,81 @@ if (!window.PointerEvent) {
   });
 }
 // ---------------------------------------------------------------------
+// Player-page keyboard (role 'player', this device's own keyboard):
+// a player alone on their own computer needs NO configuration — the
+// WASD set and the arrow set are both live at once (schemes 0 and 1
+// in LK_SCHEMES below share no key codes), and the merged result
+// drives the player's own seat through the ordinary pad machinery.
+// Merge design: the keyboard is one more input source riding padSet
+// under the synthetic pointer id 'kb:<bit>', exactly like each disc
+// direction does, so the sent pad state is the OR of the touch
+// claims and the keyboard claims — releasing a key never clears a
+// bit a finger still holds, and lifting a finger never clears a bit
+// a key still holds. Two physical keys can map to one bit (KeyW and
+// ArrowUp are both 'u'); KB_DOWN tracks keys, and a bit only counts
+// as keyboard-held while at least one of its keys is down. The
+// page's own blur handler (registered with the touch stack) already
+// zeroes padState + padPointers; this engine additionally forgets
+// which keys were down so a later keyup cannot resurrect a bit.
+// Discrete presses reuse the exact payloads the on-screen buttons
+// send through act() (see runCmd: answer / symbol / tap / roll),
+// including their answer-once gating on the view's mine field.
+// The host page is untouched — the multi-seat engine below owns it.
+// ---------------------------------------------------------------------
+var KB_MAP = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r', KeyF: 'a', Comma: 'a', KeyG: 'b', Period: 'b', KeyQ: 'x', KeyM: 'x', KeyE: 'y', Slash: 'y' };
+var KB_BITS = ['u', 'd', 'l', 'r', 'a', 'b', 'x', 'y'];
+var KB_DOWN = {};
+function pkActive() {
+  var v = S.view;
+  return S.role === 'player' && !!v && v.phase === 'playing' && !!v.game;
+}
+function kbBitHeld(bit) {
+  for (var c in KB_DOWN) if (KB_DOWN[c] === bit) return true;
+  return false;
+}
+function kbSync(bit) {
+  var on = kbBitHeld(bit);
+  var claimed = S.padPointers['kb:' + bit] === bit;
+  if (on !== claimed) padSet(bit, on, 'kb:' + bit);
+}
+function pkTranslate(bit) {
+  var v = S.view; var g = v && v.game; if (!g) return;
+  var ci = bit === 'a' ? 0 : bit === 'b' ? 1 : bit === 'x' ? 2 : bit === 'y' ? 3 : -1;
+  if (ci < 0) return;
+  if (g.id === 'do-vui' && g.phase === 'question') { if (g.mine == null) { sfxTap(); act({ action: 'answer', choice: ci }); } }
+  else if (g.id === 'ke-gia-mao' && g.phase === 'answer') { if (g.mine == null) { sfxTap(); act({ action: 'answer', choice: ci }); } }
+  else if (g.id === 'giai-ma-chung') { beep(320 + ci * 130, 0.1, 'triangle', 0.14); act({ action: 'symbol', sym: ci }); }
+  else if (g.id === 'cao-boi') { if (bit === 'a') { sfxTap(); act({ action: 'tap' }); } }
+  else if (g.id === 'cheo-thuyen' && g.phase === 'row') { if (bit === 'a') { sfxTap(); act({ action: 'tap' }); } }
+  else if (g.id === 'ca-ngua' && g.phase === 'roll') { if (bit === 'a' && g.myTurn) { sfxTap(); act({ action: 'roll' }); } }
+}
+window.addEventListener('keydown', function (ev) {
+  if (!pkActive()) return;
+  var t = ev.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+  var bit = KB_MAP[ev.code]; if (!bit) return;
+  ev.preventDefault();
+  var was = kbBitHeld(bit);
+  KB_DOWN[ev.code] = bit;
+  if (!was) { kbSync(bit); if (!ev.repeat) pkTranslate(bit); }
+});
+window.addEventListener('keyup', function (ev) {
+  var bit = KB_MAP[ev.code]; if (!bit) return;
+  if (!KB_DOWN[ev.code]) return;
+  delete KB_DOWN[ev.code];
+  if (pkActive()) ev.preventDefault();
+  if (!kbBitHeld(bit)) kbSync(bit);
+});
+window.addEventListener('blur', function () {
+  if (!Object.keys(KB_DOWN).length) return;
+  KB_DOWN = {};
+  for (var ki = 0; ki < KB_BITS.length; ki++) kbSync(KB_BITS[ki]);
+});
+function kbHintHTML() {
+  if ('ontouchstart' in window) return '';
+  return '<p class="center small muted" style="margin:8px 0 0">⌨️ WASD hoặc phím mũi tên để di chuyển · F/G/Q/E = A/B/X/Y</p>';
+}
+// ---------------------------------------------------------------------
 // Local keyboard mode (host screen only): up to four players play on
 // THIS screen, each with their own keyboard scheme — no phone needed.
 // The server marks those seats local:true; the host view carries
@@ -9408,6 +10673,50 @@ function lkPickHTML(v, seat) {
   h += '</div><div class="lpfoot">Phím lên/xuống: chọn · A: xác nhận</div>';
   return h;
 }
+// Tiến Lên local panel state: the seat's card selection + cursor,
+// kept in LK (outside the rendered HTML) and reset whenever the hand
+// signature changes — the same discipline as the phone's S.tlSel.
+function lkTlSync(seat, lv) {
+  var st = lkState(seat);
+  var hand = (lv && lv.myHand) || [];
+  var sig = hand.join(',');
+  if (st.tlSig !== sig) { st.tlSig = sig; st.tlSel = []; st.tlCur = 0; }
+  if (!st.tlSel) st.tlSel = [];
+  if (st.tlCur == null || st.tlCur < 0) st.tlCur = 0;
+  if (st.tlCur >= hand.length) st.tlCur = Math.max(0, hand.length - 1);
+  return hand;
+}
+function lkTienLenKey(seat, bit, fresh, repeat) {
+  var v = S.view; var g = v && v.game;
+  if (!g || g.id !== 'tien-len' || g.phase !== 'cards') return false;
+  var lv = (v.localViews || {})[seat]; if (!lv) return false;
+  var st = lkState(seat);
+  var hand = lkTlSync(seat, lv);
+  if (bit === 'l' || bit === 'r') {
+    if (hand.length) {
+      var nc = Math.max(0, Math.min(hand.length - 1, st.tlCur + (bit === 'l' ? -1 : 1)));
+      if (nc !== st.tlCur) { st.tlCur = nc; renderLocalPanels(); }
+    }
+    return true;
+  }
+  if (!fresh || repeat) return true;
+  if (bit === 'a') {
+    if (hand.length) {
+      var cid = hand[st.tlCur];
+      var ix = st.tlSel.indexOf(cid);
+      if (ix >= 0) st.tlSel.splice(ix, 1); else st.tlSel.push(cid);
+      renderLocalPanels();
+    }
+    return true;
+  }
+  if (bit === 'b') {
+    if (st.tlSel.length) localAct(seat, { action: 'play', cards: st.tlSel.slice() });
+    return true;
+  }
+  if (bit === 'x') { localAct(seat, { action: 'pass' }); return true; }
+  if (bit === 'u' || bit === 'd' || bit === 'y') return true;
+  return false;
+}
 function lkPanelBody(v, seat) {
   var g = v.game; var lv = (v.localViews || {})[seat] || {}; var st = lkState(seat);
   if (g.phase === 'countdown') return '<div class="lpline">⏳ Chuẩn bị… sẵn sàng trên bộ phím của bạn!</div>';
@@ -9468,6 +10777,39 @@ function lkPanelBody(v, seat) {
     }
     return '';
   }
+  if (g.id === 'tien-len') {
+    if (g.phase === 'tlWin') {
+      var winL = g.winner ? playerOf(v, g.winner) : null;
+      return '<div class="lpline">🏆 ' + esc(winL ? winL.name : '') + ' thắng Tiến Lên!' + (lv.myRank ? ' Bạn về hạng ' + lv.myRank + '.' : '') + '</div>';
+    }
+    if (g.phase !== 'cards') return '';
+    if (lv.myRank) return '<div class="lpline">🏆 Bạn đã hết bài — về hạng ' + lv.myRank + '! Xem TV đợi kết quả…</div>';
+    var handL = lkTlSync(seat, lv);
+    var stl = lkState(seat);
+    var th = '';
+    if (g.table) {
+      var tpL = playerOf(v, g.table.seat);
+      th += '<div class="lpline">Trên bàn: ' + tlChipsHTML(g.table.cards, true) + ' <span class="lpfoot">(' + esc(tpL ? tpL.name : '') + ' · ' + (TL_KIND_NAMES[g.table.kind] || '') + ')</span></div>';
+    } else {
+      th += '<div class="lpline">🃏 Bàn trống</div>';
+    }
+    th += '<div class="lpline">';
+    for (var tci = 0; tci < handL.length; tci++) {
+      var tcd = handL[tci];
+      th += '<span class="tlp' + (tlCardRed(tcd) ? ' red' : '') + (stl.tlSel.indexOf(tcd) >= 0 ? ' sel' : '') + (tci === stl.tlCur ? ' cur' : '') + '">' + tlCardLabel(tcd) + '</span>';
+    }
+    th += '</div>';
+    if (lv.myTurn) {
+      th += '<div class="lpline">' + (g.table ? '⚔️ Lượt của bạn — đã chọn ' + stl.tlSel.length + ' lá để chặn' : '👑 Bạn cầm cái — đã chọn ' + stl.tlSel.length + ' lá') + (lv.mustInclude3 ? ' · <b>phải có lá 3♠!</b>' : '') + '</div>';
+    } else if (lv.myPassed) {
+      th += '<div class="lpline">✋ Bạn đã bỏ lượt vòng này — đợi vòng mới…</div>';
+    } else {
+      var tnL = g.turn ? playerOf(v, g.turn) : null;
+      th += '<div class="lpline">Đợi lượt… (đang là lượt của ' + esc(tnL ? tnL.name : '') + ')</div>';
+    }
+    th += '<div class="lpfoot">◀▶ chọn lá · A lật chọn · B đánh · X bỏ lượt</div>';
+    return th;
+  }
   if (g.id === 'do-vui') {
     if (g.phase === 'question') return '<div class="lpline">' + (lv.mine != null ? '✅ Đã trả lời — đợi kết quả…' : '⌨️ A/B/X/Y = chọn đáp án 1–4') + '</div>';
     return '';
@@ -9496,6 +10838,25 @@ function renderLocalPanels() {
   var box = el('localpanels');
   if (!box) { box = document.createElement('div'); box.id = 'localpanels'; document.body.appendChild(box); }
   var v = S.view;
+  // Scheme watch: a seat whose layout was just rotated in the lobby
+  // (Đổi bộ phím) must not keep pad bits pressed under the OLD mapping
+  // — drop its snapshot and push the cleared state before anything
+  // else reads it. Runs in every phase because the rotation itself
+  // happens in the lobby.
+  if (S.role === 'host' && v && v.locals) {
+    for (var swi = 0; swi < v.locals.length; swi++) {
+      var swl = v.locals[swi]; var sws = LK[swl.seat]; if (!sws) continue;
+      var swScheme = swl.scheme || 0;
+      if (sws.schemeSeen === undefined) { sws.schemeSeen = swScheme; continue; }
+      if (sws.schemeSeen !== swScheme) {
+        sws.schemeSeen = swScheme;
+        var swDirty = false;
+        for (var swb = 0; swb < LK_BITS.length; swb++) if (sws.pad[LK_BITS[swb]]) { sws.pad[LK_BITS[swb]] = false; swDirty = true; }
+        sws.peek = false;
+        if (swDirty) sendLocalPad(swl.seat);
+      }
+    }
+  }
   if (S.role !== 'host' || !v || v.phase !== 'playing' || !v.game || !v.locals || !v.locals.length) { if (box.innerHTML) box.innerHTML = ''; return; }
   var h = '';
   for (var i = 0; i < v.locals.length && i < 4; i++) h += lkPanelHTML(v, v.locals[i], i);
@@ -9525,12 +10886,16 @@ window.addEventListener('keydown', function (ev) {
   // (confirm, fresh presses only); every other fresh press falls to
   // the per-game discrete translations. Pad state below tracks ALL
   // mapped keys regardless — the server ignores pads in list games.
-  var opts = lkOptions(S.view, seat);
+  // Tiến Lên claims its own keys first (card cursor + toggle + play +
+  // pass live in lkTienLenKey); its pick list is a hand of cards, not
+  // an lkOptions list.
+  var tlHandled = lkTienLenKey(seat, bit, fresh, ev.repeat);
+  var opts = tlHandled ? null : lkOptions(S.view, seat);
   if (opts && (bit === 'u' || bit === 'd')) {
     if (fresh || ev.repeat) { st.cur = (st.cur + (bit === 'u' ? opts.options.length - 1 : 1)) % opts.options.length; renderLocalPanels(); }
   } else if (opts && bit === 'a') {
     if (fresh && !ev.repeat) { var o = opts.options[st.cur]; if (o) localAct(seat, o.act); }
-  } else if (fresh && !ev.repeat) {
+  } else if (!tlHandled && fresh && !ev.repeat) {
     lkTranslate(seat, bit);
   }
   if (!st.pad[bit]) { st.pad[bit] = true; sendLocalPad(seat); }
@@ -9564,7 +10929,7 @@ window.addEventListener('blur', function () {
 (function init() {
   try {
     var raw = sessionStorage.getItem('np_session');
-    if (raw) { var s = JSON.parse(raw); if (s && s.code && s.token) { S.role = s.role; S.code = s.code; S.token = s.token; S.seat = s.seat; S.lastOkAt = Date.now(); } }
+    if (raw) { var s = JSON.parse(raw); if (s && s.code && s.token) { S.role = s.role; S.code = s.code; S.token = s.token; S.seat = s.seat; S.phoneMode = !!s.phoneMode; S.lastOkAt = Date.now(); } }
   } catch (e) {}
   wsEnsure();
   render();

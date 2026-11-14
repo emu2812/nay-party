@@ -263,3 +263,191 @@ semantics ("a one-off head start of <1 step").
 - Files touched by this wave: worker.mjs (padNudge + hook + RAF_TAU),
   tests/local-test.mjs (one appended audit section), this notes file.
   Nothing committed, nothing deployed.
+
+---
+
+# Catch-up stepping — DONE (2026-11-14, follow-up wave)
+
+Change 1 is now shipped in the working tree (not committed, not
+deployed — the parent handles shipping). The Step-0 blocker from the
+previous wave is removed exactly along the path it predicted: the
+harness was re-based to a <=125ms fake-time cadence FIRST and proven
+bit-identical under the old advance(), and only then was catch-up
+enabled. Final state: **659 assertions green** (651 migrated + 8 new
+Audit W), **discrim 7/7 with identical numbers**.
+
+## Part 1 — harness migration (tests only; worker.mjs untouched)
+
+Key insight the migration rests on: the harness defines tick-counting
+drives as "1 pump iteration = exactly 1 sim tick". That invariant
+survives re-basing IF each iteration still presents the sim with
+exactly one due tick — which a 125ms step does (the iteration's own
+state read fires the 1 tick). Subdividing a 250ms step into
+125+read+125 would fire TWO ticks per iteration and double every
+hand-computed distance; that is why tick-counting drives were
+re-based (step changed, iteration count unchanged, total fake time
+per segment halved — fake time is free) while pure WAITS were
+subdivided with the new helper `advanceMs(read, ms)` (<=125ms steps
+with a state read after each; total fake time unchanged). Phase-reach
+pumps (pump/pumpD) were re-based to a 125ms step with the until-check
+still attached to EVERY step — never subdivided with discarded
+intermediate reads, because a pump must return at the anchoring read
+(the quiz speed bonus depends on answering at the anchor instant;
+a discarded read could have stolen the anchor 125ms early). Where a
+match-to-results pump's iteration cap encoded a fake-time BUDGET,
+caps were scaled by oldStep/125 to preserve the budget.
+
+Re-based (step -> 125ms, iterations unchanged): `pump`/`pumpD`
+call sites (27 + 112 in local-test.mjs, 6 in discrim-check.mjs —
+discrim's 250ms pumps only reach phase begins and all its
+measurements are relative, so its numbers are untouched);
+`padTicks` (Audit I's core drive — THE blocker from the previous
+wave), `driveSeat`, `leg`, `legQ`, `step2U` (header comment updated),
+the Audit I splat spawn tick (tick(250) -> tick(125): fires exactly
+tick 1, which the grid assertions pin), the tank bot-smoke loop
+(40 iterations = 40 ticks), the bomber chain loop and placement
+blast loop (iteration count = tick count vs the 16-tick fuse), the
+stickman double-jump minY sampler, the fight chase loop, the
+ring-out loop (all 3 tick sites), the temple bot drive (240
+iterations = 240 ticks), Audit Q's frog minY sampler, the frog bot
+carry loop.
+Waits subdivided via `advanceMs` (total time unchanged): playArena /
+playDodge held-pad 6x500ms -> 3000ms, playSplat 8x1000ms -> 8000ms,
+Audit M's two 250ms ticks -> 500ms, Audit V's pf 500ms idle.
+Caps scaled to preserve fake-time budgets: main-match results pumps
+300->2400; Audit I results pumps 400->800; bomber cap 500->1000;
+impostor discuss 200->800; shared/box 200->400; wolf pumps
+6000->16000 and 600->1000; ngua 100->400 and bot-game 30000->60000;
+soccer results 600->2400, idle loops 600->2400 / 900->3600 (with
+their tick(500) -> tick(125)); cannon results 4000->16000; fight
+4000->8000; 8-seat splat 4000->8000; Audit V arena results 300->2400.
+(duelToResults' internal 2000 cap left alone: a duel is ~320
+iterations at 125ms, ample.)
+KEPT jumps — deliberately NOT subdivided, each because the target
+stepper is wall-clock-only or the jump's atomicity is the point:
+playChia tick(60000)x3 (stepChia has no tick block; subdividing
+would shift the choose-phase anchor quantization), impostor audits
+tick(45000)x4 (stepImpostor wall-clock), Audit J4 tick(61000) and
+J5 tick(76000) (stepShared/stepBox check endsAt BEFORE their tick
+branch — the jump crosses endsAt atomically and freezes the check
+counters; subdividing would run them away ~+1/tick), decode
+tick(80000) + tick(1600) levelup skip (stepDecode wall-clock; its
+levelup branch checks endsAt before the decodeAt transition),
+playlist tick(8100)/tick(9000) (room in 'results', step() no-ops,
+auto-start is wall-clock), the two 6h TTL jumps (no live game),
+rowing pressAt jumps + the final exact-landing tick (stepRow
+resolves beats from absolute t; presses must land at exact beat
+times). Already-conformant and untouched: tick(62)/tick(10) offsets,
+all tick(125)/pump(100) sites, the whole nudge section.
+
+PROOF (worker.mjs still the live 8d37f20 build): suite **651
+assertions green — same count**, discrim numbers identical (tank
+5.330, bomb fuse 2000ms, crown +40, stickman 4.20/1875ms, temple
+3.15/1750ms, run 5.200). Suite wall time grew ~11s -> ~29s from the
+finer read cadence; expected and harmless.
+
+## Part 2 — catch-up stepping (worker.mjs)
+
+The snap lives inside each stepper's tick block (there is no single
+choke point in advance()), so the transform was applied per stepper
+— 16 tick blocks: stepArena, stepDodge, stepSteal, stepCrown,
+stepSplat, stepShared, stepBox, stepTank, stepBomber, stepDefend,
+stepFight, stepTemple, stepSoccer ('soccer' phase), stepFrog
+('frog' phase), stepCannon 'shell', and stepCannon 'aim' (not a
+simulate block: the current player's held pad applies once per
+missed tick, up to 4 — exactly what 4 on-time ticks would do;
+padPrev is updated after the first sub-tick, so the A-fire and
+X-flip edges still fire exactly once; a fire returns immediately,
+as before). stepTug's TUG_TICK_MS block is byte-untouched, as are
+stepRow (absolute-time beats), stepChia/stepImpostor/stepWolf/
+stepNgua/stepDecode (wall-clock), stepDuel, stepQuiz, and the
+soccer 'goal' / frog 'frogClear' / cannon 'boom' wall-clock
+branches.
+
+Canonical block (per stepper, phase name and simulate fn vary):
+
+    if (t >= g.nextTickAt) {
+      let nCU = 0;
+      while (nCU < 4 && t >= g.nextTickAt && g.phase === PH) {
+        simulateXTick(room);
+        if (room.game !== g) return true; // the tick ended the game
+        g.nextTickAt += TICK_MS;
+        nCU++;
+      }
+      if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync rest
+      return true;
+    }
+
+Exact accounting:
+- Per advance() call, at most **4 sim ticks total**. advance()'s
+  step() loop can only re-enter the same stepper after its block,
+  and the block always leaves nextTickAt in (t, t+125] (after the
+  last simulated tick, or via the snap), so no second tick block
+  can fire ticks within the same call; step() dispatches to exactly
+  one stepper per iteration and any post-tick phase transition the
+  loop reaches next is a wall-clock branch (countdown flip, goal
+  kickoff, frogClear, boom), never another tick block.
+- Behind by 0: block not entered. Behind by 1: the while body runs
+  exactly once and the snap condition is false — **bit-identical**
+  to the old code (this is what kept the migrated 651 green with
+  zero assertion changes after Part 2 landed).
+- Behind by k in [2,4]: all k ticks simulate; no snap.
+- Behind by k > 4 (e.g. a 60s gap, k=480): exactly 4 ticks
+  simulate, the remaining backlog is discarded by the snap
+  (nextTickAt = t + TICK_MS). **No spiral, ever** — one call never
+  does more than 4 ticks of work.
+- The phase guard (g.phase === PH) stops the loop the moment a
+  tick transitions the phase (soccer goal, frog chamber clear,
+  shell impact); advance()'s next step() call re-dispatches,
+  identical to the old one-tick-per-call flow.
+- endsAt is still checked BEFORE the tick block with call time t,
+  so catch-up ticks never run past a match end; all phase timers
+  (countdown, question/reveal, turn timers) remain wall-clock
+  endsAt and are untouched.
+- stepShared keeps its original mid-tick `room.game !== g` early
+  return (hearts-out) inside the loop; the other steppers gained
+  the same guard (a tick can end the game via finishArena etc.) —
+  observable state is identical to the old code, which wrote
+  nextTickAt onto the detached game object and returned true.
+
+Alarm findings (_syncAlarm / poke interplay): NO change needed.
+_syncAlarm arms the DO alarm at Date.now() + TICK_MS only when a
+game (or a playlist intermission) is live AND >=1 socket is
+connected AND no alarm is currently set; the alarm() handler
+advances, broadcasts, and re-arms via _syncAlarm. Because every
+tick block above guarantees nextTickAt is never left in the past
+after a step() call (the snap), the alarm can never be armed for a
+past instant, and there is no "still behind, continue later" state
+to schedule: any backlog beyond 4 ticks is intentionally discarded
+by the snap, so the +125ms alarm cadence remains exactly right.
+HTTP pokeRoom() paths inherit the same guarantee.
+
+## Part 3 — Audit W (8 new assertions, all passing)
+
+(a) day-ra, 2 humans, pad held left from an exact tick boundary
+(nudge frac 0 by construction): one tick(500) jump + one read moved
+the blob **-1.33** = exactly 4 ticks (old semantics: -0.33).
+(b) Same room, one tick(10000) jump: movement **-1.34** (bounded to
+4 ticks, blob alive, phase still 'arena'); the next tick(125) step
+moved exactly **-0.33** = 1 tick — proves nextTickAt was snapped
+into the future and the sim resynced instead of staying behind.
+(c) Countdown integrity: +500ms in one call mid-countdown leaves
+the phase untouched; still 'countdown' at start+2999ms; flips to
+'arena' at exactly start+3000ms — the wall-clock deadline did not
+move by a single tick.
+(d) Regression: day-ra at max seats (1 human + 7 bots) driven with
+a 500ms single jump injected every 20 steps (20 gaps over the
+match) reaches 'results' with placements exactly
+[300,200,100,50,40,30,20,10] — no stuck phase, no error.
+
+## Test results (final tree)
+
+- tests/local-test.mjs: **ALL TESTS PASSED — 659 assertions**
+  (651 pre-existing, zero changed/removed/re-toleranced, + 8 Audit W).
+- tests/discrim-check.mjs: **7/7 PASS, numbers identical** (tank
+  5.330, bomb fuse 2000ms, crown +40, stickman 4.20/1875ms, temple
+  3.15/1750ms, temple run 5.200).
+- Files touched: worker.mjs (16 catch-up tick blocks),
+  tests/local-test.mjs (harness migration + Audit W),
+  tests/discrim-check.mjs (6 pump steps 250->125), this notes file.
+  Nothing committed, nothing deployed.

@@ -195,6 +195,97 @@ Rules: additive only; no commit, no deploy; don't touch TICK_MS/transport/watchd
   cursor-down moved to row 2, A confirmed (myWolfVote = that row's seat),
   panel switched to the chosen-prey line.
 
+## Keyboard flexibility wave (2026-11-14, later) — player-page keys + Đổi bộ phím
+
+Built on top of the uncommitted catch-up tree (~659 suite). User principle:
+same machine = separate key sets per person; different machines = no
+configuration at all, everything works at once; convenience above all.
+Additive only; no commit, no deploy.
+
+### Part A — keyboard on the PLAYER page (role 'player')
+- Union map KB_MAP = schemes 0 + 1 merged (verified disjoint against
+  LK_SCHEMES: scheme 0 uses KeyW/KeyS/KeyA/KeyD + KeyF/KeyG/KeyQ/KeyE;
+  scheme 1 uses the four arrows + Comma/Period/KeyM/Slash — no shared
+  code). Directions from WASD or arrows; a/b/x/y from either set.
+- Merge design (the load-bearing part): the keyboard rides the EXISTING
+  padSet machinery under the synthetic pointer id 'kb:<bit>' — the same
+  trick each disc direction uses ('<pid>:<bit>'). The sent S.padState
+  is therefore the OR of touch claims (S.padPointers/discPointers) and
+  keyboard claims: padSet(bit, false, pid) only clears the bit when no
+  other claim for it remains, so releasing a key never drops a bit a
+  finger holds and vice versa. kbSync(bit) only calls padSet when the
+  keyboard aggregate for that bit actually flips. KB_DOWN tracks
+  physical keys (two keys can map to one bit — KeyW and ArrowUp are
+  both 'u'); a discrete translation fires once per BIT press (the
+  0->1 aggregate transition), not once per physical key.
+- One consequence inherited from padSet by design: pressing a key for
+  a bit a finger already holds produces padSet's fresh-edge cycle
+  (false->true sends) — identical to a second finger joining a held
+  button; edge-counted games see a new press, which is the semantics
+  the touch stack already guarantees for multi-source holds.
+- Discrete translations (pkTranslate) reuse the buttons' exact act()
+  payloads from runCmd, including answer-once gating on the view's
+  mine field: do-vui 'question' a/b/x/y -> answer{choice}; ke-gia-mao
+  'answer' a/b/x/y -> answer{choice} (ALL four — on your own screen
+  there is no peek conflict, unlike the host panel's Y); giai-ma-chung
+  a/b/x/y -> symbol{sym} (with the button's beep); cao-boi a -> tap;
+  cheo-thuyen 'row' a -> tap; ca-ngua 'roll' + myTurn a -> roll.
+- Guards mirror the host engine: pkActive() = role 'player' + view
+  phase 'playing' + game present (countdown included); input/textarea/
+  select/contentEditable targets ignored (chat typing never plays);
+  preventDefault on every mapped code; repeats never re-fire discrete
+  actions. Blur: the engine clears KB_DOWN and re-syncs — the page's
+  own touch-stack blur handler (registered earlier) has already zeroed
+  padState + padPointers by then, so the re-sync degrades to no-ops
+  and a later keyup cannot resurrect a bit.
+- Hint: playerHTML appends kbHintHTML() after the game stage during
+  play — one small muted line '⌨️ WASD hoặc phím mũi tên để di chuyển
+  · F/G/Q/E = A/B/X/Y', returned empty when 'ontouchstart' exists, so
+  touch phones see nothing extra. The HOST page/engine is untouched.
+
+### Part B — Đổi bộ phím (cycleScheme)
+- Server (hostAction, next to cycleBot): lobby/choosing gate ('Chỉ đổi
+  bộ phím được khi đang ở sảnh chờ.'); the seat must be local, else
+  'Ghế này không phải người chơi bàn phím.' (same text as the forSeat
+  rejection); scheme := first of (cur+1, cur+2, cur+3) mod 4 not used
+  by another local seat; if all three are taken ->
+  'Cả 3 bộ phím còn lại đều đang có người dùng.'
+- The seat's name is NOT changed on rotation: 'Phím N' is
+  creation-order naming (addLocal names by scheme+1 at creation); a
+  rotated seat keeps its birth name — noted per brief.
+- Client: the local seat cell gains 'Đổi bộ phím' (data-cmd=
+  cycleScheme) next to 'Xoá phím' in lobby/choosing; the data-cmd
+  dispatcher routes it through the same act() branch as addLocal. The
+  scheme summary line already renders from the view, so it follows
+  automatically.
+- Engine robustness: renderLocalPanels() now opens with a scheme
+  watch (it runs on every render() call, in every phase — the rotation
+  happens in the lobby where the panels themselves are hidden). Each
+  LK seat state remembers schemeSeen; on a mismatch the seat's pad is
+  zeroed, peek dropped, and the cleared snapshot is pushed via
+  sendLocalPad, so no bit can stay stuck under the old mapping.
+
+### Part C — verification
+- tests/local-test.mjs Audit V grew by 14 assertions (673 total):
+  served-page markers for cycleScheme/KB_MAP/pkTranslate/kbHintHTML;
+  cycleScheme rejects phone/bot/empty seats with the exact error;
+  rotation skips a used scheme (0 -> 2 while another local holds 1);
+  the name does not follow the scheme; host-view locals follow; next
+  free (2 -> 3); wrap (3 -> 0); four locals seated -> exact all-taken
+  error; mid-game rotation rejected. Suite: ALL TESTS PASSED — 673
+  assertions. discrim-check: 7/7 PASS, numbers identical (tank 5.330,
+  temple 5.200, crown +40, bomb 2000ms).
+- Rig browser proofs: boottest/rig-kb-flex.mjs — 17/17 OK on the local
+  rig (HTTP transport; the rig has no WS upgrade, same caveat as the
+  earlier smokes). Player page: ArrowRight keydown sets padState.r;
+  key release keeps r while a touch-style padSet claim holds (and the
+  mirror case for l); real movement ArrowRight dx=+3.87, KeyA
+  dx=-4.21, release drift 0.00; no-touch hint line present; KeyF in
+  do-vui sets mine=0; chia-cuop chat box receives typed 'wasd' with
+  padState fully clear and KB_DOWN empty; host lobby Đổi bộ phím
+  click rotates the cell WASD -> Mũi tên and view locals to scheme 1.
+- NOT committed, NOT deployed (per brief).
+
 ## Unfinished / unverified
 - NOT committed, NOT deployed (per brief — the parent agent handles it).
 - Local pads over the WS transport were not exercised on the rig (no WS
