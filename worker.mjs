@@ -5756,7 +5756,12 @@ function buildView(room, role, seat) {
   const view = {
     ok: true, serverNow: t, code: room.code, phase: room.phase, players, standings: st, gap,
     bubble: room.bubble && room.bubble.until > t ? { seat: room.bubble.seat, text: room.bubble.text } : null,
-    games: Object.keys(GAMES).map((id) => ({ id, name: GAMES[id].name, desc: GAMES[id].desc, rounds: GAMES[id].rounds, cat: GAMES[id].cat, min: minSeats(id), max: maxSeats(id) })),
+    // The 25-game catalog is chooser furniture (lobby/choosing and the
+    // results/podium/final screens that lead back to it). During play
+    // it is half the state payload and nothing reads it — every
+    // playing-phase read goes through v.game — so it ships empty and
+    // returns the moment the phase leaves 'playing'.
+    games: room.phase === 'playing' ? [] : Object.keys(GAMES).map((id) => ({ id, name: GAMES[id].name, desc: GAMES[id].desc, rounds: GAMES[id].rounds, cat: GAMES[id].cat, min: minSeats(id), max: maxSeats(id) })),
     playlist: playlistView(room, t),
     game: room.game ? gameView(room, role, seat, t) : null,
     lastGame: room.lastGame,
@@ -6749,8 +6754,13 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
 .aring { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%;
   background: radial-gradient(circle, rgba(140,200,255,.15), rgba(140,200,255,.03) 62%, rgba(255,120,80,.06));
   border: 3px solid rgba(120,220,255,.9);
-  box-shadow: 0 0 26px rgba(80,200,255,.45), inset 0 0 44px rgba(80,200,255,.22), inset 0 0 120px rgba(0,0,0,.35);
-  transition: width .5s linear, height .5s linear; }
+  box-shadow: 0 0 26px rgba(80,200,255,.45), inset 0 0 44px rgba(80,200,255,.22), inset 0 0 120px rgba(0,0,0,.35); }
+/* The day-ra / ne-dan ring is resized by patchPositions via transform
+   scale on a fixed full-field basis (compositor work) instead of
+   width/height (a full repaint of this giant bordered circle on every
+   patch). The old width/height transition is gone with it: the 125ms
+   patch cadence steps the shrink, which reads fine at ring speed. */
+.aring.dynring { width: 100%; height: 100%; }
 .aring.danger { border-color: #FF4757; box-shadow: 0 0 34px rgba(255,71,87,.75), inset 0 0 50px rgba(255,71,87,.35); animation: ringPulse .5s ease-in-out infinite alternate; }
 @keyframes ringPulse { from { filter: brightness(1); } to { filter: brightness(1.7); } }
 .ablob { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 2; }
@@ -6954,6 +6964,18 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 #app.playhud .stage > p.center { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 8; margin: 0; max-width: 94%; padding: 5px 16px; border-radius: 999px; background: rgba(10,8,20,.55); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #app.playhud .afield:not(.wide) { width: min(100%, calc((100vh - 104px) * 16 / 9)); width: min(100%, calc((100dvh - 104px) * 16 / 9)); margin: 0 auto; }
 #app.playhud .topbar { margin-bottom: 2px; }
+/* PERF MODE: while a field game is playing, render() stamps .perf on
+   #app (both roles) and every decorative INFINITE animation freezes.
+   An infinite animation on a full-screen stage forces the compositor
+   to repaint forever — the filter ones (ringPulse brightness on the
+   giant ring, poolGlow on temple pools) are the worst. One-shot
+   feedback (spawnPop, boomPop, trailFade, shakes, pops) is untouched.
+   Gameplay signals stay live below: a pulsing bomb is a fuse timer and
+   the warning marker means incoming fire — information, not decor. */
+#app.perf .blobbob, #app.perf .tpool, #app.perf .tpool::after, #app.perf .tgem i,
+#app.perf .ffly, #app.perf .pip.now, #app.perf .aring.danger, #app.perf .astar,
+#app.perf .acrown, #app.perf .agoal, #app.perf .crownglow { animation-play-state: paused; }
+#app.perf .abomb, #app.perf .awarn { animation-play-state: running; }
 /* Local keyboard players: per-seat overlay panels on the host screen.
    The container is created by JS and appended to <body> (never inside
    #app, whose innerHTML render() rebuilds); panels are display-only —
@@ -7308,7 +7330,11 @@ function poll() {
   // The moment the socket drops, this gate opens and the normal rates
   // (800ms base + 220ms in-game) resume on their own.
   var tPoll = Date.now();
-  if (wsOpen() && tPoll - lastPollAt < 2000) return;
+  // While a game is playing the safety net tightens to ~900ms: a
+  // stalled push channel then freezes the screen for under a second
+  // instead of up to ~3s. Other phases keep the relaxed ~2s gate.
+  var gateMs = (S.view && S.view.phase === 'playing') ? 900 : 2000;
+  if (wsOpen() && tPoll - lastPollAt < gateMs) return;
   lastPollAt = tPoll;
   api(stateUrl(), null, function (v) {
     if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; S.serverOffset = v.serverNow - Date.now(); noteOk(); render(); return; }
@@ -7943,7 +7969,7 @@ function hostStage(v) {
   } else if (g.id === 'day-ra') {
     if (g.phase === 'arena') {
       h += '<div class="baloo" style="font-size:25px">Đẩy hết đối thủ ra khỏi vòng tròn! Sàn đang thu hẹp dần…</div>';
-      h += '<div class="afield" id="afield"><div class="aring" id="aring"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
+      h += '<div class="afield" id="afield"><div class="aring dynring" id="aring" style="transform:translate(-50%,-50%) scale(' + (g.arenaR * 25 / 300) + ')"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
       for (var aI = 0; aI < v.players.length; aI++) { var ap = v.players[aI]; h += '<div class="ablob" id="ablob-' + ap.seat + '" style="left:50%;top:50%;color:' + COLORS[ap.color] + '">' + orbSVG(ap.color, 46) + '<div class="aname">' + esc(ap.name) + '</div><div class="alives" id="alives-' + ap.seat + '"></div></div>'; }
       h += '</div>';
       h += '<p class="center">Rơi khỏi vòng là mất 1 mạng · Hết mạng là bị loại · Người trụ lại cuối cùng thắng!</p>';
@@ -7951,7 +7977,7 @@ function hostStage(v) {
   } else if (g.id === 'ne-dan') {
     if (g.phase === 'dodge') {
       h += '<div class="baloo" style="font-size:25px">Né hết đạn pháo! Trúng là mất 1 mạng…</div>';
-      h += '<div class="afield" id="afield"><div class="aring" id="aring"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
+      h += '<div class="afield" id="afield"><div class="aring dynring" id="aring" style="transform:translate(-50%,-50%) scale(' + (g.arenaR * 25 / 300) + ')"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
       for (var dI = 0; dI < v.players.length; dI++) { var dp = v.players[dI]; h += '<div class="ablob" id="ablob-' + dp.seat + '" style="left:50%;top:50%;color:' + COLORS[dp.color] + '">' + orbSVG(dp.color, 46) + '<div class="aname">' + esc(dp.name) + '</div><div class="alives" id="alives-' + dp.seat + '"></div></div>'; }
       h += '</div>';
       h += '<p class="center">Đạn bay càng lúc càng dày · Hết mạng là bị loại · Người sống sót cuối cùng thắng!</p>';
@@ -8640,10 +8666,11 @@ function render() {
   // host's private view can change (a dealt hand, a witch toggle)
   // while the public stage signature stands still.
   renderMySeat();
-  if (!S.role) { if (app.classList) app.classList.remove('playhud'); if (S.sig !== 'home') { S.sig = 'home'; S.ctrlKey = ''; app.innerHTML = homeHTML(); fillHomeDefaults(); } return; }
+  if (!S.role) { if (app.classList) { app.classList.remove('playhud'); app.classList.remove('perf'); } if (S.sig !== 'home') { S.sig = 'home'; S.ctrlKey = ''; app.innerHTML = homeHTML(); fillHomeDefaults(); } return; }
   var v = S.view;
   if (!v) { app.innerHTML = '<div class="card center"><h2>Đang nối phòng…</h2><p class="muted">Nếu chờ lâu vẫn không vào được, phòng có thể đã đóng hoặc hết hạn.</p><p><button class="btn ghost" data-cmd="reload">Về trang chính</button></p></div>'; return; }
   if (app.classList) app.classList.toggle('playhud', !!(S.role === 'host' && v.phase === 'playing' && v.game && FIELD_GAMES[v.game.id]));
+  if (app.classList) app.classList.toggle('perf', !!(v.phase === 'playing' && v.game && FIELD_GAMES[v.game.id]));
   var sig = viewSig(v);
   if (sig === S.sig) return;
   var transplant = null;
@@ -9101,7 +9128,11 @@ function patchPositions(v) {
       if (lv) lv.textContent = '\u2764'.repeat(bb.lives);
     }
     var ring = el('aring');
-    if (ring && g.arenaR) { var pct = (g.arenaR * 25 / 3) + '%'; ring.style.width = pct; ring.style.height = pct; }
+    // Ring size rides a transform scale on the fixed full-field basis
+    // (.aring.dynring is 100% x 100%): scale = (arenaR * 25/3)% / 100 —
+    // the exact diameter the old width/height percentages produced,
+    // without repainting the giant bordered circle on every patch.
+    if (ring && g.arenaR) { ring.style.transform = 'translate(-50%, -50%) scale(' + (g.arenaR * 25 / 300) + ')'; }
     var ml = el('mylives');
     if (ml && g.blobs[S.seat]) ml.textContent = '\u2764'.repeat(g.blobs[S.seat].lives);
   }

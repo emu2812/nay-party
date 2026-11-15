@@ -3833,10 +3833,11 @@ async function main() {
     await aDrv.act({ action: 'addBot', seat: 2 });
     await aDrv.act({ action: 'addBot', seat: 3 });
     await aDrv.act({ action: 'addBot', seat: 4 });
+    const aLobby = await aDrv.state();
+    const aMeta = aLobby.games.find((gm) => gm.id === 'tien-len');
+    assert(aMeta && aMeta.min === 2 && aMeta.max === 4 && aMeta.cat === 'versus' && aMeta.name === 'Tiến Lên Miền Nam', 'tl A: registry meta (2–4 seats, versus)');
     const aStart = await aDrv.act({ action: 'startGame', game: 'tien-len' });
     assert(aStart.ok === true && aStart.game.id === 'tien-len', 'tl A: game starts with phone + 3 bots');
-    const aMeta = aStart.games.find((gm) => gm.id === 'tien-len');
-    assert(aMeta && aMeta.min === 2 && aMeta.max === 4 && aMeta.cat === 'versus' && aMeta.name === 'Tiến Lên Miền Nam', 'tl A: registry meta (2–4 seats, versus)');
     await dealCards(aDrv, 'tl A');
     const nowA = Date.now();
     await tlSet(aDrv)((tl) => {
@@ -4176,6 +4177,30 @@ async function main() {
     const tHostP = tRes.players.find((p) => p.seat === 1);
     assert(tHostP && tHostP.score === 200 && tHostP.hostSeat === true,
       'phone mode tl: the host seat banks its 200 points like any player, got ' + JSON.stringify(tHostP));
+  }
+
+  // ---------- Audit P: slim state during play (perf wave) --------------
+  // The 25-game catalog is chooser furniture: it must ship in lobby /
+  // choosing views and be EMPTY while phase === 'playing' (it was half
+  // the in-game payload and no playing-phase code reads it).
+  console.log('Audit P: games catalog omitted during play');
+  {
+    const pd = await newDrv();
+    const pj = await pd.join('Perf');
+    await pd.act({ action: 'addBot', seat: 2 });
+    const pLobby = await pd.state();
+    assert(pLobby.games && pLobby.games.length === 25, 'perf: lobby view carries the full 25-game catalog');
+    await pd.act({ action: 'startGame', game: 'do-vui' });
+    const pHost = await pd.state();
+    assert(pHost.phase === 'playing' && Array.isArray(pHost.games) && pHost.games.length === 0,
+      'perf: playing-phase host view ships an empty games catalog');
+    const pPhone = await pd.pState(pj.playerToken);
+    assert(pPhone.phase === 'playing' && Array.isArray(pPhone.games) && pPhone.games.length === 0,
+      'perf: playing-phase player view ships an empty games catalog');
+    await pd.act({ action: 'quitToChoosing' });
+    const pBack = await pd.state();
+    assert(pBack.phase === 'choosing' && pBack.games && pBack.games.length === 25,
+      'perf: catalog returns as soon as the phase leaves playing');
   }
 
   // ---------- Audit Z: Tiến Lên — lá 3♠ không được chia (phòng 2 người) --
