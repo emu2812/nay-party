@@ -7088,7 +7088,7 @@ var S = { role: null, code: null, token: null, seat: null, view: null, sig: '', 
   fxReveal: '', fxRound: '', fxConfetti: '', blobN: 0, fxP: null, _nb: null, _koT: 0, _smT: 0,
   plMode: false, plQueue: [], raf: {}, rafLast: 0,
   phoneMode: false, mySeatSig: '', myTlSel: [], myTlSig: '',
-  lastOkAt: 0 };
+  lastOkAt: 0, lastWsAt: 0 };
 function el(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? '' : s).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
 function fmt(n) { var s = String(Math.round(Math.abs(n))); var out = ''; while (s.length > 3) { out = '.' + s.slice(-3) + out; s = s.slice(0, -3); } return (n < 0 ? '-' : '') + s + out; }
@@ -7479,6 +7479,34 @@ function wsUrl() {
   return proto + location.host + '/api/rooms/' + S.code + '/ws?role=' + S.role + '&token=' + encodeURIComponent(S.token);
 }
 function wsOpen() { return !!wsConn && wsConn.readyState === 1; }
+// Push-channel watchdog (SMOOTH5). The stale-view watchdog above cannot
+// see a silently dead socket: while playing, the 900ms safety poll keeps
+// stamping noteOk() with fresh views, so the screen never looks stale —
+// yet sendPad/sendLocalPad keep preferring the corpse socket (readyState
+// still 1) and the player's inputs vanish. Track push freshness on its
+// own signal: S.lastWsAt is stamped ONLY when a pushed state is applied
+// below (never on open, never by polls) and cleared whenever a fresh
+// socket is created, so a new socket is never judged before its first
+// push. During real arena play views change every tick, so 2s of push
+// silence mid-play means the channel is dead.
+function wsStale() {
+  if (!wsOpen()) return false;
+  if (!S.lastWsAt) return false;
+  if (Date.now() - S.lastWsAt <= 2000) return false;
+  if (!S.view || S.view.phase !== 'playing') return false;
+  if (!S.view.game || S.view.game.phase === 'countdown') return false;
+  return true;
+}
+function wsWatchdog() {
+  if (!wsStale()) return;
+  // Drop the corpse: poll() ungates itself the moment wsOpen() is false
+  // (full 120ms in-play rate resumes) and the scheduled retry builds a
+  // fresh socket. After the drop wsConn is null, so wsStale() stays
+  // false until a new socket opens, receives a push, then goes silent
+  // again — this cannot loop from tick().
+  wsDrop();
+  wsSchedule();
+}
 function wsEnsure() {
   if (!S.code || !S.role || !S.token) return;
   if (wsConn || wsTimer) return; // already open/connecting, or a retry is scheduled
@@ -7486,6 +7514,7 @@ function wsEnsure() {
   var sock = null;
   try { sock = new WebSocket(wsUrl()); } catch (e) { wsSchedule(); return; }
   wsConn = sock;
+  S.lastWsAt = 0;
   sock.onopen = function () { wsBackoff = 0; };
   sock.onmessage = function (ev) {
     var msg = null;
@@ -7493,7 +7522,9 @@ function wsEnsure() {
     if (!msg) return;
     if (msg.type === 'state' && msg.view && msg.view.ok) {
       // Applied EXACTLY like a successful poll: fresh view, fresh
-      // server-offset, watchdog stamp, render.
+      // server-offset, watchdog stamp, render. The push-freshness stamp
+      // is separate: only a real pushed state proves the socket lives.
+      S.lastWsAt = Date.now();
       S.failN = 0; S.failSince = 0; S.view = msg.view; S.serverOffset = msg.view.serverNow - Date.now(); noteOk(); render();
     } else if (msg.type === 'error' && msg.error) {
       toast(msg.error);
@@ -9477,6 +9508,7 @@ function patchPositions(v) {
 
 function tick() {
   watchdog();
+  wsWatchdog();
   var v = S.view;
   if (!v || !S.role) return;
   var t = serverNow();
@@ -10456,8 +10488,8 @@ function sendPad() {
   paintDiscs();
   // The live channel carries pad snapshots with no HTTP round trip per
   // press; the HTTP send (tiny-ack path) remains the exact fallback
-  // whenever the socket is down or a send throws.
-  if (wsOpen()) {
+  // whenever the socket is down, stale (SMOOTH5), or a send throws.
+  if (wsOpen() && !wsStale()) {
     try { wsConn.send(JSON.stringify({ action: 'pad', pad: S.padState })); return; } catch (e) {}
   }
   api('/api/rooms/' + S.code + '/action', { role: 'player', token: S.token, action: 'pad', pad: S.padState }, function () {});
@@ -10742,7 +10774,7 @@ function sendLocalPad(seat) {
   // Mirror of sendPad() for a local seat: WS bare object when the live
   // channel is open, else the HTTP tiny-ack path; replies are ignored.
   var st = LK[seat]; if (!st || !S.code) return;
-  if (wsOpen()) { try { wsConn.send(JSON.stringify({ action: 'pad', forSeat: seat, pad: st.pad })); return; } catch (e) {} }
+  if (wsOpen() && !wsStale()) { try { wsConn.send(JSON.stringify({ action: 'pad', forSeat: seat, pad: st.pad })); return; } catch (e) {} }
   api('/api/rooms/' + S.code + '/action', { role: 'host', token: S.token, action: 'pad', forSeat: seat, pad: st.pad }, function () {});
 }
 function localAct(seat, body) {

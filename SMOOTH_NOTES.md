@@ -718,3 +718,61 @@ for this reason.
   SMOOTH3's 55.3.
 - Inserted page code scanned: no backticks, no backslashes, no
   template substitutions (the page lives in a template literal).
+
+## SMOOTH5 — WebSocket push-channel watchdog (2026-11-15)
+
+Defect: the stale-view watchdog stamps S.lastOkAt on EVERY applied
+state — WS pushes and safety polls alike. During play the poll gate
+is 900 ms, so with a silently dead WebSocket (readyState stuck at 1,
+no pushes, no close event) the polls keep lastOkAt fresh forever:
+the watchdog never fires, bots keep moving at poll cadence, but
+sendPad/sendLocalPad keep preferring the corpse socket and the
+player's inputs are silently swallowed. Healthy-path drives never
+see it; it only bites on an unhealthy connection.
+
+Fix (client page script only; server untouched):
+- S.lastWsAt added to the state object. Stamped ONLY in
+  sock.onmessage when a state message is applied; cleared in
+  wsEnsure whenever a fresh socket is created, so a new socket is
+  never judged before its first push. Never stamped on onopen,
+  never by polls.
+- wsStale(): true only when ALL hold — wsOpen(); lastWsAt set;
+  silence > 2000 ms; room phase 'playing'; game phase not
+  'countdown'. During real arena play views change every tick, so
+  2 s of push silence mid-play means a dead channel. A trip during
+  quiet turn-based play costs only a reconnect + HTTP fallback,
+  never input.
+- sendPad() and sendLocalPad() (the only two wsConn.send sites)
+  now use the socket only when wsOpen() && !wsStale(); otherwise
+  they fall through to the existing HTTP tiny-ack path.
+- wsWatchdog() runs from tick() next to watchdog(): on stale it
+  calls wsDrop() then wsSchedule() (first backoff 1000 ms). The
+  drop ungates poll() automatically (its gate keys on wsOpen()),
+  restoring the full 120 ms in-play poll rate. No loop is possible:
+  after the drop wsConn is null, so wsStale() stays false until a
+  new socket opens, receives a push, and goes silent again.
+- The existing stale-view watchdog, noteOk, poll gates, and the
+  backoff table are unchanged.
+
+Verification:
+- Suite 802 assertions ALL PASSED (one run read 801 — the known
+  conditional-assertion fluctuation also present on the base
+  commit); discrim 7/7 identical numbers; deep-drive 630 checks,
+  0 failures.
+- New rig test boottest/rig-ws-watchdog.mjs (fake WebSocket via
+  evaluateOnNewDocument; first instance auto-opens, later instances
+  never open; pushes are real host views fetched from the rig API
+  and injected at ~200 ms): pads rode the fake socket while pushes
+  flowed (2 pad messages, 0 HTTP pad POSTs); after pushes stopped
+  mid-arena the page closed the corpse itself at 2036 ms (2 s
+  threshold + tick granularity, inside the 3.5 s limit, no
+  premature drop); a fresh socket was attempted (instance 2);
+  later local pads arrived as HTTP /action POSTs (2); the view's
+  serverNow kept advancing via polls and the game stayed in the
+  arena phase. ALL OK.
+- No-delay battery: rig-local-smoke ALL OK, rig-kb-flex ALL OK,
+  rig-fps2 day-ra play 55.0 fps (>= 50, no regression);
+  rig-pred on the 250 ms-delay rig ALL PASSED (keydown -> rendered
+  move 8.6 ms; prediction unaffected).
+- Inserted page code scanned: no backticks, no backslashes, no
+  template substitutions.
