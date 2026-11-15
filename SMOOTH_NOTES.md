@@ -451,3 +451,164 @@ match) reaches 'results' with placements exactly
   tests/local-test.mjs (harness migration + Audit W),
   tests/discrim-check.mjs (6 pump steps 250->125), this notes file.
   Nothing committed, nothing deployed.
+
+## SMOOTH3 — tick 125ms -> 62.5ms, dead reckoning by time, faster HTTP fallback (2026-11-15)
+
+Context: after the perf wave (4324372) the user still reported heavy
+lag ("vẫn lag lắm"). Parent measurements: WS push cadence p50 125ms
+(the tick itself), extrapolation capped at 200ms (any push gap froze
+movers mid-glide), HTTP-fallback clients polling at 220ms. This wave
+attacks all three. No commit, no deploy from this agent (parent ships).
+
+### Part 1 — TICK_MS 125 -> 62.5
+
+Rescale rule by quantity class (this is the part that bites):
+- velocities / per-tick displacements: HALVE.
+- per-tick counters (fuses, cooldowns, invulnerability, spawn
+  intervals in ticks, brain cadences): DOUBLE.
+- per-tick FRICTION FACTORS (multiplicative decay): sqrt-rescale,
+  f' = sqrt(f), so decay per second is preserved.
+- per-tick PROBABILITIES in every-tick bot brains: p' = 1 - sqrt(1-p).
+- ACCELERATIONS (gravity-like, anything whose per-second effect is
+  x / T^2): QUARTER. Two places got this wrong in the first draft
+  and were caught by tests, not by eye:
+  * BALLISTICS (can-goc): grav 0.10 -> 0.025, windK 0.003 -> 0.00075
+    (maxV is a velocity -> halved to 0.8; sub stays 4). With grav
+    merely halved, the shell range v^2/g halved and the snipe
+    solver (which mirrors the export) found no damaging solution
+    in 3 fresh rooms — the failure that exposed it.
+  * Frog crate glide decrement: 0.03 -> 0.0075 (release speed is
+    FROG_RUN, halved; glide distance v^2/2a needs a quartered).
+    The 0.015 stop threshold is a velocity and halved normally.
+- Platformer gravity/jump: NOT the naive rule. With
+  gravity-before-move (semi-implicit Euler), apex/air are set by
+  m = V/G. The 125ms arcs were family A (m integer: apex
+  G*m(m-1)/2, air 2m-1 ticks). Halving the tick needs air in ticks
+  to DOUBLE (even), so the new arcs are family B (m = k+0.5:
+  apex G*k^2/2, air 2k ticks), with V nudged -0.0003 so the fall
+  penetrates ~0.009u on the exact return tick instead of depending
+  on float dust to land. Per-game gravities at the platStep call
+  sites: FIGHT_GRAV 0.0373333 (apex 4.20, air 30 ticks = 1875ms),
+  TEMP_GRAV 0.0321429 (temple + frog + crates; apex 3.15, air 28 =
+  1750ms), SOCCER_GRAV 0.0357143 (apex ~3.50, air 28 = 1750ms, the
+  old soccer arc). FROG_JUMP_CARRY = 19.5*TEMP_GRAV - 0.0003: air
+  exactly 38 ticks, carry range 38 * 0.1625 = 6.175u — unchanged,
+  which is what the frog spike strips (5.2u / 4.9u) are sized
+  against. PLAT_MAXFALL 1.3 -> 0.65 (shared).
+- Catch-up cap 4 -> 8 in all 16 tick blocks (same 500ms coverage).
+  _syncAlarm already arms at Date.now()+TICK_MS, so the DO alarm
+  now fires ~16x/s during play with no change. stepTug untouched
+  (own 500ms cadence). All *_MS durations and wall-clock bot timers
+  unchanged. padNudge unchanged (its fraction derives from TICK_MS).
+
+Per-game inventory (constants/sites touched): arena MOVE_STEP
+0.25->0.125 (STEP_X/STEP_Y derive), DASH_CD 24->48, SHOVE_CD 12->24,
+DASH_BOOST 2->4 ticks, ring shrink %16->%32; dodge BALL_SPEED
+0.2875->0.14375, INVULN 16->32, spawn reset re-derived
+max(24, 56-2*floor(tc/192)), setup spawnIn 12->24; crown accumulator
+threshold 2->4 ticks (the +1-per-250ms hold), CROWN_LOCK 8->16;
+steal GOLD_EVERY 96->192, DROP_LOCK 4->8, STAR_STALE 120->240;
+splat PAINT_CD 16->32; shared SHARED_BALL_SPEED 0.2->0.1, spawn
+reset max(40, 64-2*floor(tc/384)), spawnIn 10->20; tank SHELL_SPEED
+0.6->0.3, SHELL_CD 8->16; bomber BOM_FUSE 16->32 ticks (= 2000ms);
+defend spawn formula via DEF_MS/TICK_MS (follows automatically),
+big-slime gate tick 160->320, slime speeds 0.14->0.07 / 0.09->0.045,
+spawnIn 8->16; bot brainCadence de/vua/kho 4/8/12 -> 8/16/24 (all
+three copies); fight FIGHT_RUN 0.34->0.17, ATK_CD 6->12, HITSTUN
+6->12, HVY_CD 10->20, HVY_ATK_T 6->12, DASH_CD 16->32, DASH_TICKS
+6->12, DASH_SPEED 0.95->0.475, knockback force 0.3+dmg*0.025 ->
+0.15+dmg*0.0125, atkT literal 4->8, friction sqrt-rescaled (0.775->
+0.8803, 0.938->0.9685, 0.927->0.9628, 0.985->0.9925, 0.742->0.8614,
+0.949->0.9742), per-tick brain probabilities sqrt-rescaled; soccer
+SOCCER_RUN 0.36->0.18, KICK_CD 6->12, KICK_VX 0.88->0.44, KICK_VY
+0.62->0.31, DASH_CD/TICKS/SPEED as fight, ball grav 0.09->0.0225
+(x0.25), ball friction x0.94->x0.9695 (sqrt), contact/header/kick
+velocities halved, bot ball prediction x4->x8 ticks; temple
+TEMP_RUN 0.325->0.1625, bot holdBtn timeout 240->480 ticks, frog
+bot swallow timeout 160->320 ticks; frog FROG_RUN 0.325->0.1625,
+spit vx 0.5->0.25 / vy -1.0->-0.5, crate glide (above); cannon aim
+sweeps angle 2.5->1.25 deg/tick, power 3->1.5/tick, shell trail cap
+40->80 points. SHOVE_FORCE 2.7 / STEAL_SHOVE_FORCE 4.5 unchanged
+(one-shot displacements, not per-tick motion). HOLDER_SPEED 0.9
+unchanged (multiplier). BOX_STEP_MUL follows MOVE_STEP.
+
+### Temple level geometry — one forced change
+
+The two mid-floor side pools shift 0.4 toward the centre (blue
+-9.3 -> -8.9, red 6.9 -> 6.5; widths/kinds/bottom pools unchanged).
+Reason: at 125ms a jump off the mid floor beside a gate slab
+cleared BOTH the slab's head-bonk shadow and the pool's feet band
+in one tick (x-step 0.325, first-tick rise 0.90; slab margin was
+0.015). At 62.5ms (x-step 0.1625, first-tick rise 0.434 < the 0.45
+band depth) NO takeoff position satisfied both — tick 1 needed
+x >= 9.55 (pool) and x <= 9.45 (slab) at once — so that jump was
+flatly impossible. The shift reopens a 0.3u takeoff window. The
+slabs could not move instead: 0.4 further out they overlap the
+balcony stairs. Related micro-difference, accepted: a takeoff from
+the very lip of any pool (feet box already overlapping the pool's
+x-range) now dies on tick 1, where 125ms cleared the band in one
+tick; taking off >= ~0.2u back (as the bots do, jumping >= 0.75
+ahead, and as a running player does) is unaffected.
+
+### Part 2 — dead reckoning by time (client)
+
+rafLoop lead is now a TIME budget: TICK_MS_CLIENT = 62.5 mirrors
+the server tick; lead = clamp(elapsedMs / 62.5, 0, 400 / 62.5)
+ticks (was elapsed/125 capped at 1.6 ticks = 200ms). Normal flow
+unchanged (elapsed ~62ms -> lead ~1); during push gaps a mover now
+glides on its last velocity for up to 400ms instead of freezing at
+200ms. No velocity decay added; the existing tau-40 exponential
+correction absorbs the snap-back. Shells/slimes/balls share the
+moveEl path and get the same treatment.
+
+### Part 3 — HTTP fallback poll
+
+Play-phase fast poll 220ms -> 120ms (the end-of-script interval;
+three comments updated). The WS-open safety poll is untouched
+(900ms during play / 2000ms otherwise). The unrelated 220ms
+setTimeout for the button-press animation was NOT touched.
+
+### Harness migration (tests/)
+
+- discrim-check.mjs: drives re-based to 62.5ms steps (iteration
+  caps that encode time budgets doubled). EXPECTATIONS UNTOUCHED.
+- local-test.mjs: advanceMs subdivides at 62.5; padTicks runs 2n
+  half-steps so n keeps its pre-SMOOTH3 meaning; tick-exact drives
+  re-based case by case. Notable re-derivations: crown pickup read
+  window (holder takes one 0.15-speed tick before the read);
+  Audit J2 position tolerances 0.05 -> 0.09 (the sim rounds blob
+  positions to 2dp per tick; over a 16-tick drive the rounding
+  drift reaches 16*0.005 = 0.08 — travel per second unchanged);
+  Audit J5 box delivery drive rewritten (route one player at a
+  time with axis-only pads — diagonal intent has magnitude
+  sqrt(2) >= 1.2, so a lone diagonal pusher moves the crate; lanes
+  assigned dynamically by current side because the fixed lanes are
+  1.42 apart, inside the 1.6 separation distance); fight/xy 250ms
+  jump read y 1.65 -> 1.66 (four ticks of the family-B arc);
+  temple drives re-choreographed around the shifted pools and the
+  lip-takeoff window (approach thresholds 9.9 -> 9.55, green-pool
+  takeoffs at 2.15, Lua's return = walk to -5.5 + one jump instead
+  of two full jumps); leg() gained a guard that evaluates until()
+  before declaring a vanished game (legs that wait for the results
+  phase have game == null legitimately).
+- deep-drive.mjs: unchanged — it drives at 125ms steps, which under
+  catch-up stepping is exactly 2 ticks per step, deterministic.
+
+### Verification (all local, this agent)
+
+- Suite: ALL TESTS PASSED — 803 assertions (was 802; +1 from the
+  migration). Discrim: 7/7 with the IDENTICAL numbers (tank 5.330,
+  bomb fuse 2000ms, crown +40, stickman apex 4.20 / air 1875ms,
+  temple apex 3.15 / air 1750ms, temple run 5.200). Deep-drive:
+  630 checks, 0 failures.
+- Rig fps2 (rig restarted on the new worker): lobby 52.7, day-ra
+  play 55.3 fps (frames >50ms 0.9%), no-anim ceiling 58.3 — no
+  regression vs the perf wave's 56.4.
+- Rig smoothness (new boottest/rig-smooth.mjs; rig has no WS, so
+  the page runs the 120ms HTTP fallback — the stress path): 563
+  in-play frames over 10s of bot day-ra, ONE freeze run total,
+  longest 17ms, ZERO runs over 250ms.
+- Cadence note: the suite drives rooms by repeated 62.5ms steps
+  throughout (advanceMs / padTicks / legs), so state changing at
+  the 62.5ms cadence is covered implicitly by every audit above.
+  Live-link cadence verification is the parent's post-deploy job.

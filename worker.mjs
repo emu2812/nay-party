@@ -159,8 +159,18 @@ const PLAYLIST_GAP_MS = 8000; // results intermission before a playlist auto-sta
 // The TEMPLE game originally stayed on the old 250ms tick (its gate
 // slabs shadowed the mid-floor pool jumps — see the note at
 // TEMPLE_LEVEL); it has since joined the shared 125ms tick too.
-const ARENA_R0 = 10, ARENA_RMIN = 4, ARENA_MS = 90000, ARENA_LIVES = 3, TICK_MS = 125;
-const MOVE_STEP = 0.25, DASH_CD_TICKS = 24, SHOVE_CD_TICKS = 12;
+// SMOOTH3: retuned once more 125ms -> 62.5ms (same playbook — see
+// SMOOTH_NOTES.md). Per-tick speeds halved, tick counters doubled, bot
+// cadences 8/16/24 ticks, crown accumulator threshold 4 ticks. The
+// platformers now carry PER-GAME gravities (FIGHT_GRAV / TEMP_GRAV /
+// SOCCER_GRAV) tuned on the half-integer discrete family (V = (k+0.5)G,
+// apex = G*k^2/2, air = 2k ticks exactly, with the jump velocity
+// nudged 0.0003 low so the fall penetrates on the exact return tick
+// instead of depending on float dust): fight apex 4.20 / air 30 ticks,
+// temple+frog apex 3.15 / air 28, soccer apex ~3.50 / air 28 — the
+// discrim numbers are bit-identical to the 125ms build.
+const ARENA_R0 = 10, ARENA_RMIN = 4, ARENA_MS = 90000, ARENA_LIVES = 3, TICK_MS = 62.5;
+const MOVE_STEP = 0.125, DASH_CD_TICKS = 48, SHOVE_CD_TICKS = 24;
 // 16:9 WAVE: the arena family plays in a 32x18 space (x in [-16,16],
 // y in [-9,9]) so the TV stage fills a 16:9 screen edge to edge. The
 // map from the old 24x24 space scales x by 4/3 and y by 3/4, and the
@@ -169,13 +179,13 @@ const MOVE_STEP = 0.25, DASH_CD_TICKS = 24, SHOVE_CD_TICKS = 12;
 const FIELD_HW = 16, FIELD_HH = 9;
 const STEP_X = MOVE_STEP * 4 / 3, STEP_Y = MOVE_STEP * 3 / 4;
 const CLAMP_X = FIELD_HW - 0.8, CLAMP_Y = FIELD_HH - 0.8; // blob rect clamp (0.8 margin)
-// A dash is a x3 speed boost lasting DASH_BOOST_TICKS ticks: 2 ticks
-// at 125ms reproduces the old single-tick 1.5-unit lunge (3 x 0.5)
+// A dash is a x3 speed boost lasting DASH_BOOST_TICKS ticks: 4 ticks
+// at 62.5ms reproduces the old single-tick 1.5-unit lunge (3 x 0.5)
 // over the same 250ms.
-const DASH_BOOST_TICKS = 2;
+const DASH_BOOST_TICKS = 4;
 const SHOVE_RANGE = 2.7, SHOVE_FORCE = 2.7;
 // Né Đạn: same tick engine + walled arena (no shrinking, no ring-out).
-const DODGE_MS = 75000, DODGE_LIVES = 3, BALL_SPEED = 0.2875, BALL_HIT_DIST = 1.35, INVULN_TICKS = 16;
+const DODGE_MS = 75000, DODGE_LIVES = 3, BALL_SPEED = 0.14375, BALL_HIT_DIST = 1.35, INVULN_TICKS = 32;
 // Kéo Co: knot = TUG_STEP * (presses of even seats - presses of odd seats);
 // first side to |knot| >= TUG_WIN within TUG_MS wins, else the leader at
 // time out wins (exact tie = draw). Bots add BOT_TUG presses per tug tick.
@@ -189,15 +199,15 @@ const TALK_MS = 60000, CHOOSE_MS = 15000, POT = 400;
 // one banked point loose as a fresh star (unpickable for DROP_LOCK_TICKS
 // ticks so the victim cannot instantly re-grab it). A golden star worth
 // 3 spawns every GOLD_EVERY_TICKS ticks (12s) while none is on the field.
-const STEAL_MS = 45000, STEAL_SHOVE_FORCE = 4.5, GOLD_EVERY_TICKS = 96, DROP_LOCK_TICKS = 4;
+const STEAL_MS = 45000, STEAL_SHOVE_FORCE = 4.5, GOLD_EVERY_TICKS = 192, DROP_LOCK_TICKS = 8;
 // Giữ Vương Miện: hold the crown for +1 point per 250ms; the holder moves
 // at HOLDER_SPEED of normal speed; a shove drops the crown, which then
 // cannot be picked up for CROWN_LOCK_TICKS ticks (1s).
-const CROWN_MS = 45000, HOLDER_SPEED = 0.9, CROWN_LOCK_TICKS = 8;
+const CROWN_MS = 45000, HOLDER_SPEED = 0.9, CROWN_LOCK_TICKS = 16;
 // Sơn Sàn: 18x10 grid of 1.6u cells over [-14.4,14.4]x[-8,8] (the old
 // 12x12 over [-9.6,9.6]^2, widened with the 16:9 field). Entering
 // a cell paints it; A triggers a 3x3 paint burst on PAINT_CD_TICKS (2s).
-const SPLAT_MS = 40000, SPLAT_COLS = 18, SPLAT_ROWS = 10, SPLAT_MIN_X = -14.4, SPLAT_MIN_Y = -8, SPLAT_CELL = 1.6, PAINT_CD_TICKS = 16;
+const SPLAT_MS = 40000, SPLAT_COLS = 18, SPLAT_ROWS = 10, SPLAT_MIN_X = -14.4, SPLAT_MIN_Y = -8, SPLAT_CELL = 1.6, PAINT_CD_TICKS = 32;
 // Cao Bồi: after a random hidden delay the BẮN! window opens for
 // DUEL_WINDOW_MS; round points by server receipt order, foul = -100.
 // Tail extended past 4 shooters (25/10/0/…) so 5-8-player duels still
@@ -211,8 +221,8 @@ const TIER_POINTS = { vang: 300, bac: 200, dong: 100, none: 50 };
 // Chung Một Thân: ONE shared blob steered by split direction ownership;
 // checkpoint stars score for the team, cannonballs (slower + sparser
 // than Né Đạn) cost shared hearts.
-const SHARED_MS = 60000, SHARED_HEARTS = 3, STAR_STALE_TICKS = 120;
-const SHARED_BALL_SPEED = 0.2;
+const SHARED_MS = 60000, SHARED_HEARTS = 3, STAR_STALE_TICKS = 240;
+const SHARED_BALL_SPEED = 0.1;
 // Tiers by checkpoints: >=8 Vàng, >=5 Bạc, >=3 Đồng.
 const SHARED_TIERS = [[8, 'vang'], [5, 'bac'], [3, 'dong']];
 // Đẩy Hộp Về Đích: crate = circle of radius BOX_CRATE_R; it only moves
@@ -237,7 +247,7 @@ const ROW_ERR = { kho: 120, vua: 220, de: 380 };
 // (1s) cooldown, and a player hit costs 1 life + INVULN_TICKS (2s) of
 // cover. Xe Tăng cover blocks are arena rects in {x,y,w,h} top-left
 // form, kept off the spawn axes so every spawn lane starts clear.
-const TANK_MS = 75000, TANK_LIVES = 3, SHELL_SPEED = 0.6, SHELL_CD_TICKS = 8, SHELL_HIT_DIST = 1.0;
+const TANK_MS = 75000, TANK_LIVES = 3, SHELL_SPEED = 0.3, SHELL_CD_TICKS = 16, SHELL_HIT_DIST = 1.0;
 const TANK_BLOCKS = [
   { x: 2.9, y: -2.4, w: 2.7, h: 1.1 }, { x: -5.6, y: 1.35, w: 2.7, h: 1.1 },
   { x: -5.6, y: -2.4, w: 2.7, h: 1.1 }, { x: 2.9, y: 1.35, w: 2.7, h: 1.1 },
@@ -245,7 +255,7 @@ const TANK_BLOCKS = [
 // Đặt Bom: 15x9 grid of 2-unit cells over the wide arena; hard pillars sit
 // on odd/odd cells (classic bomber layout), soft blocks are dealt per
 // match with Math.random so tests can queue the exact layout.
-const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 15, BOM_ROWS = 9, BOM_FUSE_TICKS = 16, BOM_SOFT_P = 0.62;
+const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 15, BOM_ROWS = 9, BOM_FUSE_TICKS = 32, BOM_SOFT_P = 0.62;
 // Kẻ Giả Mạo: one secret impostor per round secretly gets the variant
 // question; catching pays every other player, escaping pays the
 // impostor (doubled in the final round).
@@ -347,20 +357,33 @@ const DECODE_SYMBOLS = [
 // (the pre-retune 250ms values were V=2.6 -> ~4.4, V=2.2 -> ~3.0).
 // Every step-up in both stages below is sized against those apexes,
 // never the naive V²/2G.
-const PLAT_GRAV = 0.15, PLAT_MAXFALL = 1.3, PLAT_HW = 0.45, PLAT_HH = 0.9;
+// SMOOTH3 (62.5ms tick): gravity is per-game. Each pair below sits on
+// the half-integer family V = (k + 0.5) * G: apex = G * k^2 / 2 and
+// air time = 2k ticks EXACTLY (the fall returns to launch height on
+// the final tick), and each jump velocity is shaved by 0.0003 so the
+// return tick penetrates the floor by ~0.01u instead of relying on
+// binary float dust to miss the strict-overlap test (the 125ms temple
+// arc only made its 14th tick that way). Fight: k=15 -> apex 4.20,
+// air 30 ticks = 1875ms. Temple/frog: k=14 -> apex 3.15, air 28 ticks
+// = 1750ms. Soccer: k=14 -> apex ~3.50, air 28 ticks = 1750ms.
+const FIGHT_GRAV = 0.0373333, TEMP_GRAV = 0.0321429, SOCCER_GRAV = 0.0357143;
+const PLAT_MAXFALL = 0.65, PLAT_HW = 0.45, PLAT_HH = 0.9;
 // Người Que Đại Chiến: %-based knockback fighting on an open stage.
 // A hit adds FIGHT_DMG %; the knockback force 0.3 + dmg*0.025 is applied
 // AFTER the damage lands, so the same punch flies further the more
 // hurt the victim already is. Ring-out (past the blast bounds) costs a
 // life; respawn is on the top platform, damage reset, 2s invulnerable.
 const FIGHT_MS = 90000, FIGHT_LIVES = 3;
-const FIGHT_RUN = 0.34, FIGHT_JUMP = 1.2, FIGHT_DJUMP = 1.05;
-const FIGHT_ATK_CD = 6, FIGHT_DMG = 10, FIGHT_HITSTUN = 6;
+// SMOOTH3: FIGHT_JUMP = 15.5 * FIGHT_GRAV - 0.0003 (apex 4.20, air
+// 30 ticks); FIGHT_DJUMP = 13.5 * FIGHT_GRAV - 0.0003 (apex ~3.15,
+// air 26 ticks — the double jump keeps the temple arc's height).
+const FIGHT_RUN = 0.17, FIGHT_JUMP = 0.5783667, FIGHT_DJUMP = 0.5037;
+const FIGHT_ATK_CD = 12, FIGHT_DMG = 10, FIGHT_HITSTUN = 12;
 // Heavy swing (pad X): own cooldown, +16% and 1.5x the knockback
 // force of a normal hit at the same resulting damage; the attacker's
-// recovery (hvyT, the big-swing pose) runs 6 ticks.
-const FIGHT_HVY_CD = 10, FIGHT_HVY_DMG = 16, FIGHT_HVY_ATK_T = 6;
-const FIGHT_DASH_CD = 16, FIGHT_DASH_TICKS = 6, FIGHT_DASH_SPEED = 0.95;
+// recovery (hvyT, the big-swing pose) runs 12 ticks.
+const FIGHT_HVY_CD = 20, FIGHT_HVY_DMG = 16, FIGHT_HVY_ATK_T = 12;
+const FIGHT_DASH_CD = 32, FIGHT_DASH_TICKS = 12, FIGHT_DASH_SPEED = 0.475;
 // 16:9 WAVE: platforms are the old layout under the arena map
 // (x*4/3, y*3/4). Vertical gaps SHRINK (4.0 -> 3.0 < jump apex 4.2)
 // and horizontal gaps grow by 4/3 (still far inside the ~5.4u jump
@@ -385,10 +408,10 @@ const FIGHT_SPAWN_X = [-8, -2.7, 2.7, 8, -10.7, -5.3, 5.3, 10.7];
 // for them in turn. Wrong-element (or green) pool = death: respawn at
 // the element start, the team loses one of TEMP_HEARTS hearts.
 const TEMP_MS = 200000, TEMP_HEARTS = 5; // 150s at the old 24-wide level, scaled by the 32/24 width so the wide temple keeps the same time budget per unit of travel
-// Temple runs on the shared 125ms tick with the shared platform
-// physics (PLAT_GRAV / PLAT_MAXFALL via platStep), rescaled like the
-// fighter's: TEMP_RUN is the old 0.65 per 250ms tick halved, and
-// TEMP_JUMP 1.05 reproduces the old discrete arc (apex 3.15 vs the
+// Temple runs on the shared tick with its own platform gravity
+// (TEMP_GRAV / PLAT_MAXFALL via platStep), rescaled like the
+// fighter's: TEMP_RUN is the old 0.65 per 250ms tick quartered, and
+// TEMP_JUMP reproduces the old discrete arc (apex 3.15 vs the
 // old 3.0; air time 14 ticks = 1750ms and jump range 4.55u, both
 // exactly the old values). It originally kept its own 250ms tick
 // because gate slab 2 began at x 5.5, only 0.2 past the mid-floor red
@@ -401,13 +424,25 @@ const TEMP_MS = 200000, TEMP_HEARTS = 5; // 150s at the old 24-wide level, scale
 // the balcony stairs and block the climb exactly as before (the 0.4
 // gap to the balcony edge is narrower than a character's 0.9 body,
 // and a stair jump's apex never rises past the slab tops).
-const TEMP_RUN = 0.325, TEMP_JUMP = 1.05;
+// SMOOTH3: TEMP_JUMP = 14.5 * TEMP_GRAV - 0.0003 (apex 3.15, air
+// 28 ticks = 1750ms, jump range 28 * 0.1625 = 4.55u — unchanged).
+const TEMP_RUN = 0.1625, TEMP_JUMP = 0.4657714;
 // 16:9 WAVE: the temple is re-laid for the 32x18 field WITHOUT
 // touching physics: every feature keeps its local relationships —
 // left-side features shift -4, right-side +4, centre-spanning solids
 // stretch, and all y coordinates scale by 3/4 (steps get SHORTER, so
 // every proven jump keeps working; pool widths and the gate-slab /
 // pool-end gaps are preserved to the centimetre).
+// SMOOTH3 (62.5ms): the two mid-floor side pools shift 0.4 toward
+// the centre (blue -9.3 -> -8.9, red 6.9 -> 6.5). At 125ms a jump
+// off the mid floor beside a gate slab cleared BOTH the slab's
+// head-bonk shadow and the pool's feet band in one tick (x-step
+// 0.325, rise 0.90; the slab margin was 0.015). At 62.5ms (x-step
+// 0.1625, first-tick rise 0.434 < the 0.45 band depth) no takeoff
+// position satisfied both, so that jump was impossible; the shift
+// reopens a 0.3u takeoff window. The slabs cannot move instead:
+// 0.4 further out they would overlap the balcony stairs. Widths,
+// kinds and the bottom pools are unchanged.
 const TEMPLE_LEVEL = {
   solids: [
     { x: -16, y: 7.5, w: 32, h: 1.8 },
@@ -434,9 +469,9 @@ const TEMPLE_LEVEL = {
     { x: -10.2, y: 7.05, w: 2.8, h: 0.45, kind: 'red' },
     { x: -1.4, y: 7.05, w: 2.8, h: 0.45, kind: 'green' },
     { x: 7.4, y: 7.05, w: 2.8, h: 0.45, kind: 'blue' },
-    { x: -9.3, y: 2.25, w: 2.4, h: 0.45, kind: 'blue' },
+    { x: -8.9, y: 2.25, w: 2.4, h: 0.45, kind: 'blue' }, // SMOOTH3: -9.3 -> -8.9 (see the SMOOTH3 pool note below)
     { x: -1.1, y: 2.25, w: 2.2, h: 0.45, kind: 'green' },
-    { x: 6.9, y: 2.25, w: 2.4, h: 0.45, kind: 'red' },
+    { x: 6.5, y: 2.25, w: 2.4, h: 0.45, kind: 'red' }, // SMOOTH3: 6.9 -> 6.5 (see the SMOOTH3 pool note below)
   ],
   gems: [
     { x: -8.8, y: 6.4, el: 'lua' }, { x: -0.7, y: 5.8, el: 'lua' }, { x: -8.1, y: -0.3, el: 'lua' },
@@ -489,10 +524,12 @@ const TEMP_GEMS_TOTAL = 10;
 // A = SÚT (kick), B = LƯỚT (dash). A goal pauses the match clock for a
 // 2.5s celebration, then everyone resets to the kickoff formation.
 const SOCCER_MS = 90000, SOCCER_GOAL_MS = 2500;
-const SOCCER_RUN = 0.36, SOCCER_JUMP = 1.1;
-const SOCCER_KICK_CD = 6, SOCCER_KICK_VX = 0.88, SOCCER_KICK_VY = 0.62;
-const SOCCER_DASH_CD = 16, SOCCER_DASH_TICKS = 6, SOCCER_DASH_SPEED = 0.95;
-const SOCCER_BALL_R = 0.55, SOCCER_BALL_GRAV = 0.09, SOCCER_BALL_REST = 0.62;
+// SMOOTH3: SOCCER_JUMP = 14.5 * SOCCER_GRAV - 0.0003 (apex ~3.50,
+// air 28 ticks); ball gravity follows the x0.25 discrete rule.
+const SOCCER_RUN = 0.18, SOCCER_JUMP = 0.5175571;
+const SOCCER_KICK_CD = 12, SOCCER_KICK_VX = 0.44, SOCCER_KICK_VY = 0.31;
+const SOCCER_DASH_CD = 32, SOCCER_DASH_TICKS = 12, SOCCER_DASH_SPEED = 0.475;
+const SOCCER_BALL_R = 0.55, SOCCER_BALL_GRAV = 0.0225, SOCCER_BALL_REST = 0.62;
 const SOCCER_SOLIDS = [
   { x: -19, y: 8, w: 38, h: 1.6 },
   { x: -19, y: -9.6, w: 38, h: 0.6 },
@@ -515,7 +552,12 @@ const SOCCER_GOALIE_X = 13.8;
 // edge near a free teammate; the passenger rides hidden in the belly.
 // A carrier touching spikes kills BOTH frogs for ONE shared heart.
 const FROG_HEARTS = 5, FROG_PER_MS = 120000;
-const FROG_RUN = 0.325, FROG_JUMP = 1.05, FROG_JUMP_CARRY = 1.45;
+// SMOOTH3: frogs fly on TEMP_GRAV; FROG_JUMP = TEMP_JUMP (air 28
+// ticks, range 4.55u); FROG_JUMP_CARRY = 19.5 * TEMP_GRAV - 0.0003
+// (air 38 ticks, range 38 * 0.1625 = 6.175u — the spike-strip sizing
+// arithmetic is unchanged; apex ~5.80 vs ~6.30 before, clearance is
+// governed by range, not apex).
+const FROG_RUN = 0.1625, FROG_JUMP = 0.4657714, FROG_JUMP_CARRY = 0.6264857;
 const FROG_EAT_R = 1.25;
 // 16:9 WAVE: chambers re-laid for the 32x18 field with physics
 // untouched: spike strips keep their exact widths (5.2u still fits
@@ -574,7 +616,15 @@ const FROG_WP = [
 // power (0-100), X flips facing, A fires; the 'setAim' action sets
 // angle/power/face exactly (sliders / tests). NO trajectory preview.
 const CANNON_COLS = 160, CANNON_AIM_MS = 30000, CANNON_BOOM_MS = 800, CANNON_MATCH_MS = 360000;
-export const BALLISTICS = { grav: 0.10, sub: 4, maxV: 1.6, windK: 0.003, blastR: 2.2, dmgMax: 60 };
+// SMOOTH3: per-tick totals halve at the 62.5ms tick — grav and windK
+// halve (each tick applies sub x (value/sub)), maxV (a per-tick
+// velocity) halves; sub stays 4 so the integration shape is kept.
+export const BALLISTICS = { grav: 0.025, sub: 4, maxV: 0.8, windK: 0.00075, blastR: 2.2, dmgMax: 60 };
+// SMOOTH3 note: grav and windK are accelerations — when the tick
+// halved they QUARTERED (0.10 -> 0.025, 0.003 -> 0.00075), because
+// per-second acceleration is g / T^2. maxV is a velocity and halved.
+// (An earlier draft halved grav too; the shell's range, v^2/g,
+// halved with it and the snipe solver found no solutions.)
 const CANNON_HP = 100;
 
 // ---------------------------------------------------------------------------
@@ -1127,7 +1177,7 @@ function beginRound(room) {
   } else if (g.id === 'ne-dan') {
     g.phase = 'dodge';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + DODGE_MS;
-    g.blobs = {}; g.balls = []; g.spawnIn = 12; g.elimOrder = []; g.elimTick = {};
+    g.blobs = {}; g.balls = []; g.spawnIn = 24; g.elimOrder = []; g.elimTick = {};
     g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
@@ -1228,7 +1278,7 @@ function beginRound(room) {
     ['u', 'r', 'd', 'l'].forEach((d, i) => { g.owners[d] = seats[i % seats.length]; });
     g.shared = { x: 0, y: 0 };
     g.hearts = SHARED_HEARTS; g.checks = 0; g.sharedInvuln = 0;
-    g.balls = []; g.spawnIn = 10; preservePads(room); g.botIntent = {};
+    g.balls = []; g.spawnIn = 20; preservePads(room); g.botIntent = {};
     spawnSharedStar(room);
   } else if (g.id === 'day-hop') {
     g.phase = 'box';
@@ -1298,7 +1348,7 @@ function beginRound(room) {
     spawnArenaBlobs(room, 0);
     initGuns(room);
     g.crystal = { hp: DEF_CRYSTAL_HP };
-    g.slimes = []; g.slimeSeq = 0; g.kills = 0; g.spawnIn = 8;
+    g.slimes = []; g.slimeSeq = 0; g.kills = 0; g.spawnIn = 16;
   } else if (g.id === 'giai-ma-chung') {
     g.phase = 'decode';
     g.endsAt = t + DECODE_MS;
@@ -1581,7 +1631,7 @@ function stepArena(room, t) {
     // sleep can never spiral. Behind by <=1 the loop runs exactly
     // once — bit-identical to the old 1-tick-per-call semantics.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'arena') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'arena') {
       simulateTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -1594,7 +1644,7 @@ function stepArena(room, t) {
 }
 function botBrain(room, p) {
   const g = room.game;
-  const every = p.difficulty === 'kho' ? 4 : p.difficulty === 'vua' ? 8 : 12;
+  const every = p.difficulty === 'kho' ? 8 : p.difficulty === 'vua' ? 16 : 24;
   const prev = g.botIntent[p.seat];
   if (prev && (g.tickCount + p.seat) % every !== 0) return { x: prev.x, y: prev.y, shove: false };
   const me = g.blobs[p.seat];
@@ -1653,7 +1703,7 @@ function simulateTick(room) {
   const g = room.game;
   g.tickCount += 1;
   const trk = trackStart(room);
-  if (g.tickCount % 16 === 0 && g.arenaR > ARENA_RMIN) g.arenaR = Math.max(ARENA_RMIN, g.arenaR - 0.5);
+  if (g.tickCount % 32 === 0 && g.arenaR > ARENA_RMIN) g.arenaR = Math.max(ARENA_RMIN, g.arenaR - 0.5);
   const moves = {};
   room.players.forEach((p) => {
     const b = g.blobs[p.seat];
@@ -1761,9 +1811,9 @@ function stepDodge(room, t) {
   if (g.phase !== 'dodge') return false;
   if (t >= g.endsAt) { finishDodge(room); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'dodge') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'dodge') {
       simulateDodgeTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -1776,7 +1826,7 @@ function stepDodge(room, t) {
 }
 function botBrainDodge(room, p) {
   const g = room.game;
-  const every = p.difficulty === 'kho' ? 4 : p.difficulty === 'vua' ? 8 : 12;
+  const every = p.difficulty === 'kho' ? 8 : p.difficulty === 'vua' ? 16 : 24;
   const prev = g.botIntent[p.seat];
   if (prev && (g.tickCount + p.seat) % every !== 0) return prev;
   const me = g.blobs[p.seat];
@@ -1837,7 +1887,7 @@ function simulateDodgeTick(room) {
     const tx = rand(-8, 8), ty = rand(-4.5, 4.5);
     const dx = tx - x, dy = ty - y; const dd = Math.hypot(dx, dy) || 1;
     g.balls.push({ x, y, vx: (dx / dd) * BALL_SPEED * (4 / 3), vy: (dy / dd) * BALL_SPEED * (3 / 4) });
-    g.spawnIn = Math.max(12, 28 - Math.floor(g.tickCount / 96));
+    g.spawnIn = Math.max(24, 56 - 2 * Math.floor(g.tickCount / 192));
   }
   g.balls.forEach((b) => { b.x += b.vx; b.y += b.vy; });
   g.balls = g.balls.filter((b) => Math.abs(b.x) <= 19 && Math.abs(b.y) <= 12);
@@ -2119,7 +2169,7 @@ function addRowDistance(room, seat) {
   g.distance = Math.round((g.distance + ROW_FULL_STROKE / Math.max(1, room.players.length)) * 1000) / 1000;
   g.hits[seat] = (g.hits[seat] || 0) + 1;
 }
-function brainCadence(p) { return p.difficulty === 'kho' ? 4 : p.difficulty === 'vua' ? 8 : 12; }
+function brainCadence(p) { return p.difficulty === 'kho' ? 8 : p.difficulty === 'vua' ? 16 : 24; }
 function cachedIntent(room, p) {
   const g = room.game;
   const prev = g.botIntent[p.seat];
@@ -2193,9 +2243,9 @@ function stepSteal(room, t) {
   if (g.phase !== 'steal') return false;
   if (t >= g.endsAt) { finishByValue(room, g.banked, 'banked'); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'steal') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'steal') {
       simulateStealTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -2286,9 +2336,9 @@ function stepCrown(room, t) {
   if (g.phase !== 'crown') return false;
   if (t >= g.endsAt) { finishByValue(room, g.hold, 'hold'); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'crown') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'crown') {
       simulateCrownTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -2324,11 +2374,11 @@ function simulateCrownTick(room) {
   if (g.crown.holder) {
     const hb = g.blobs[g.crown.holder];
     g.crown.x = hb.x; g.crown.y = hb.y;
-    // +1 hold point per 250ms of holding: at the 125ms tick, accrue
-    // one point per two ticks spent holding (counted from the pickup,
+    // +1 hold point per 250ms of holding: at the 62.5ms tick, accrue
+    // one point per four ticks spent holding (counted from the pickup,
     // so the rate is exact regardless of tick parity).
     g.crown.acc = (g.crown.acc || 0) + 1;
-    if (g.crown.acc >= 2) { g.crown.acc = 0; g.hold[g.crown.holder] = (g.hold[g.crown.holder] || 0) + 1; }
+    if (g.crown.acc >= 4) { g.crown.acc = 0; g.hold[g.crown.holder] = (g.hold[g.crown.holder] || 0) + 1; }
   } else if (g.crown.lockTicks > 0) {
     g.crown.lockTicks -= 1;
   } else {
@@ -2388,9 +2438,9 @@ function stepSplat(room, t) {
   if (g.phase !== 'splat') return false;
   if (t >= g.endsAt) { finishByValue(room, splatCounts(room), 'cells'); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'splat') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'splat') {
       simulateSplatTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -2522,9 +2572,9 @@ function stepShared(room, t) {
   if (g.phase !== 'shared') return false;
   if (t >= g.endsAt) { finishShared(room); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'shared') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'shared') {
       simulateSharedTick(room);
       if (room.game !== g) return true; // hearts ran out mid-tick
       g.nextTickAt += TICK_MS;
@@ -2575,7 +2625,7 @@ function simulateSharedTick(room) {
     const tx = rand(-8, 8), ty = rand(-4.5, 4.5);
     const dx = tx - x, dy = ty - y; const dd = Math.hypot(dx, dy) || 1;
     g.balls.push({ x, y, vx: (dx / dd) * SHARED_BALL_SPEED * (4 / 3), vy: (dy / dd) * SHARED_BALL_SPEED * (3 / 4) });
-    g.spawnIn = Math.max(20, 32 - Math.floor(g.tickCount / 192));
+    g.spawnIn = Math.max(40, 64 - 2 * Math.floor(g.tickCount / 384));
   }
   g.balls.forEach((ball) => { ball.x += ball.vx; ball.y += ball.vy; });
   g.balls = g.balls.filter((ball) => Math.abs(ball.x) <= 19 && Math.abs(ball.y) <= 12);
@@ -2662,9 +2712,9 @@ function stepBox(room, t) {
   if (g.phase !== 'box') return false;
   if (t >= g.endsAt) { finishBox(room); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'box') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'box') {
       simulateBoxTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -2900,9 +2950,9 @@ function stepTank(room, t) {
   if (g.phase !== 'tank') return false;
   if (t >= g.endsAt) { finishArena(room); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'tank') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'tank') {
       simulateTankTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -3049,9 +3099,9 @@ function stepBomber(room, t) {
   if (g.phase !== 'bomber') return false;
   if (t >= g.endsAt) { finishArena(room); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'bomber') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'bomber') {
       simulateBomberTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -4011,9 +4061,9 @@ function stepDefend(room, t) {
   if (g.phase !== 'defend') return false;
   if (t >= g.endsAt) { finishCoop(room, g.kills, coopTier(g.crystal.hp, DEF_TIERS), 'slime bị hạ'); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'defend') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'defend') {
       simulateDefendTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -4042,14 +4092,14 @@ function simulateDefendTick(room) {
     // they arrive along every edge; speeds scale ~x1.1 so the average
     // march time to the crystal matches the old game's.
     const ang = rand(0, Math.PI * 2);
-    const big = g.tickCount >= 160 && Math.random() < 0.3;
+    const big = g.tickCount >= 320 && Math.random() < 0.3;
     g.slimeSeq += 1;
     g.slimes.push({
       id: g.slimeSeq,
       x: Math.round(Math.cos(ang) * 10.6 * (4 / 3) * 100) / 100, y: Math.round(Math.sin(ang) * 10.6 * (3 / 4) * 100) / 100,
-      hp: big ? 3 : 1, maxHp: big ? 3 : 1, r: big ? 1.05 : 0.7, speed: big ? 0.09 : 0.14, big,
+      hp: big ? 3 : 1, maxHp: big ? 3 : 1, r: big ? 1.05 : 0.7, speed: big ? 0.045 : 0.07, big,
     });
-    g.spawnIn = Math.max(10, Math.round(24 - 14 * (g.tickCount / (DEF_MS / TICK_MS))));
+    g.spawnIn = Math.max(20, Math.round(48 - 28 * (g.tickCount / (DEF_MS / TICK_MS))));
   }
   let crystalDown = false;
   g.slimes.forEach((sl) => {
@@ -4202,9 +4252,9 @@ function stepFight(room, t) {
   if (g.phase !== 'fight') return false;
   if (t >= g.endsAt) { finishFight(room); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'fight') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'fight') {
       simulateFightTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -4246,7 +4296,7 @@ function fightSwing(room, seat, heavy) {
     const dx = qb.x - b.x, dy = qb.y - b.y;
     if (Math.abs(dy) > 1.7 || Math.abs(dx) > 2.1 || (Math.abs(dx) > 0.3 && Math.sign(dx) !== face)) return;
     g.dmg[q.seat] = (g.dmg[q.seat] || 0) + (heavy ? FIGHT_HVY_DMG : FIGHT_DMG);
-    let force = 0.3 + g.dmg[q.seat] * 0.025; // AFTER the damage lands
+    let force = 0.15 + g.dmg[q.seat] * 0.0125; // AFTER the damage lands (per-tick velocity: halved at 62.5ms)
     if (heavy) force *= 1.5;
     qb.vx = face * force;
     qb.vy = -force * 0.55;
@@ -4280,17 +4330,17 @@ function simulateFightTick(room) {
     if ((g.dashT[seat] || 0) > 0) {
       g.dashT[seat] -= 1;
       b.vx = g.dashDir[seat] * FIGHT_DASH_SPEED;
-      b.vy = -PLAT_GRAV; // pre-cancel gravity: the dash flies level
+      b.vy = -FIGHT_GRAV; // pre-cancel gravity: the dash flies level
       g.face[seat] = g.dashDir[seat];
     } else if (stunned) {
-      b.vx *= b.ground ? 0.775 : 0.938; // knockback slide, no control
+      b.vx *= b.ground ? 0.8803 : 0.9685; // knockback slide, no control (sqrt-rescaled per-tick friction)
     } else {
       if (it.x !== 0) {
         g.face[seat] = it.x;
         if (Math.abs(b.vx) <= FIGHT_RUN || Math.sign(b.vx) !== it.x) b.vx = it.x * FIGHT_RUN;
-        else b.vx *= b.ground ? 0.927 : 0.985; // launched: bleed back toward run speed
+        else b.vx *= b.ground ? 0.9628 : 0.9925; // launched: bleed back toward run speed
       } else {
-        b.vx *= b.ground ? 0.742 : 0.949;
+        b.vx *= b.ground ? 0.8614 : 0.9742;
         if (Math.abs(b.vx) < 0.015) b.vx = 0;
       }
       if (it.jump && (g.jumps[seat] || 0) < 2) {
@@ -4308,11 +4358,11 @@ function simulateFightTick(room) {
       g.hvyCd[seat] = FIGHT_HVY_CD;
       fightSwing(room, seat, true);
     } else if (!stunned && it.atk && g.atkCd[seat] <= 0) {
-      g.atkT[seat] = 4;
+      g.atkT[seat] = 8;
       g.atkCd[seat] = FIGHT_ATK_CD;
       fightSwing(room, seat, false);
     }
-    platStep(b, FIGHT_PLATFORMS, PLAT_GRAV, PLAT_MAXFALL);
+    platStep(b, FIGHT_PLATFORMS, FIGHT_GRAV, PLAT_MAXFALL);
     if (b.ground) g.jumps[seat] = 0;
     // Ring-out past the blast bounds (widened with the 16:9 stage:
     // the floor now spans +-11.3, the field +-16 x +-9).
@@ -4343,7 +4393,7 @@ function botBrainFight(room, p) {
   // the dash to get back over the stage.
   if (!me.ground && (me.y > 1 || Math.abs(me.x) > 11.3)) {
     intent.x = me.x > 0 ? -1 : 1;
-    if (me.vy > 0.2 && me.y > -1.1 && (g.jumps[p.seat] || 0) < 2) intent.jump = true;
+    if (me.vy > 0.1 && me.y > -1.1 && (g.jumps[p.seat] || 0) < 2) intent.jump = true;
     else if (Math.abs(me.x) > 12.7 && (g.dashCd[p.seat] || 0) <= 0) intent.dash = true;
     return intent;
   }
@@ -4367,14 +4417,14 @@ function botBrainFight(room, p) {
       // sometimes spend the heavy swing instead of a normal one —
       // only when its own cooldown is ready. Dễ bots never heavy.
       const foeDmg = near.foeSeat != null ? (g.dmg[near.foeSeat] || 0) : 0;
-      const hvyProb = p.difficulty === 'kho' ? 0.35 : p.difficulty === 'vua' ? 0.15 : 0;
+      const hvyProb = p.difficulty === 'kho' ? 0.194 : p.difficulty === 'vua' ? 0.078 : 0; // per-tick rolls: 1-sqrt(1-p) keeps the per-second rate
       if (hvyProb > 0 && foeDmg >= 50 && (g.hvyCd[p.seat] || 0) <= 0 && Math.random() < hvyProb) {
         intent.hvy = true;
       } else {
-        const prob = p.difficulty === 'kho' ? 0.9 : p.difficulty === 'vua' ? 0.6 : 0.35;
+        const prob = p.difficulty === 'kho' ? 0.684 : p.difficulty === 'vua' ? 0.368 : 0.194;
         if (Math.random() < prob) intent.atk = true;
       }
-    } else if (Math.abs(dx) > 6 && p.difficulty !== 'de' && Math.random() < 0.25) {
+    } else if (Math.abs(dx) > 6 && p.difficulty !== 'de' && Math.random() < 0.134) {
       intent.dash = true;
     }
   }
@@ -4416,9 +4466,9 @@ function stepTemple(room, t) {
   if (g.phase !== 'temple') return false;
   if (t >= g.endsAt) { finishTemple(room, false); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'temple') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'temple') {
       simulateTempleTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -4458,7 +4508,7 @@ function simulateTempleTick(room) {
     const it = templeIntent(room, p);
     if (it.jump && c.ground) { c.vy = -TEMP_JUMP; c.ground = false; }
     c.vx = it.x * TEMP_RUN;
-    platStep(c, solids, PLAT_GRAV, PLAT_MAXFALL);
+    platStep(c, solids, TEMP_GRAV, PLAT_MAXFALL);
     // Pools: only the feet box counts, so jumping a pool is safe.
     for (const pool of TEMPLE_LEVEL.pools) {
       const inX = c.x + 0.25 > pool.x && c.x - 0.25 < pool.x + pool.w;
@@ -4499,7 +4549,7 @@ function botBrainTemple(room, p) {
       if (!g.wpAt[p.seat]) g.wpAt[p.seat] = g.tickCount;
       const partnersIn = room.players.every((q) => q.seat === p.seat
         || (g.chars[q.seat] && (g.chars[q.seat].home || g.chars[q.seat].y < -1.5)));
-      if (!partnersIn && g.tickCount - g.wpAt[p.seat] < 240) return intent; // keep holding (30s at the shared 125ms tick)
+      if (!partnersIn && g.tickCount - g.wpAt[p.seat] < 480) return intent; // keep holding (30s at the shared 62.5ms tick)
     }
     g.wpIdx[p.seat] = idx + 1;
     g.wpAt[p.seat] = 0;
@@ -4574,9 +4624,9 @@ function stepSoccer(room, t) {
   if (g.phase !== 'soccer') return false;
   if (t >= g.endsAt) { finishSoccer(room); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'soccer') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'soccer') {
       simulateSoccerTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -4625,7 +4675,7 @@ function simulateSoccerTick(room) {
     }
     if (it.jump && b.ground) { b.vy = -SOCCER_JUMP; b.ground = false; }
     if (it.kick && g.kickCd[seat] <= 0) soccerKick(room, seat);
-    platStep(b, SOCCER_SOLIDS, PLAT_GRAV, PLAT_MAXFALL);
+    platStep(b, SOCCER_SOLIDS, SOCCER_GRAV, PLAT_MAXFALL);
   });
   stepSoccerBall(room);
   snapshotPad(room);
@@ -4643,8 +4693,8 @@ function soccerKick(room, seat) {
   g.kickCd[seat] = SOCCER_KICK_CD;
   const pad = g.pad[seat] || {};
   let vx = SOCCER_KICK_VX, vy = SOCCER_KICK_VY;
-  if (pad.u) { vx *= 0.8; vy = 0.85; } // lob it
-  else if (pad.d) { vx *= 1.15; vy = 0.25; } // low drive
+  if (pad.u) { vx *= 0.8; vy = 0.425; } // lob it
+  else if (pad.d) { vx *= 1.15; vy = 0.125; } // low drive
   ball.vx = (g.face[seat] || 1) * vx;
   ball.vy = -vy;
   g.lastTouch = seat;
@@ -4653,7 +4703,7 @@ function stepSoccerBall(room) {
   const g = room.game;
   const ball = g.ball;
   if (!ball) return;
-  ball.vy = Math.min(1.3, ball.vy + SOCCER_BALL_GRAV);
+  ball.vy = Math.min(0.65, ball.vy + SOCCER_BALL_GRAV);
   ball.x += ball.vx;
   ball.y += ball.vy;
   for (const s of SOCCER_SOLIDS) {
@@ -4669,7 +4719,7 @@ function stepSoccerBall(room) {
       ball.y = ny + uy * SOCCER_BALL_R;
       const vn = ball.vx * ux + ball.vy * uy;
       if (vn < 0) {
-        if (vn > -0.18) { ball.vx -= vn * ux; ball.vy -= vn * uy; } // settle, don't micro-bounce
+        if (vn > -0.09) { ball.vx -= vn * ux; ball.vy -= vn * uy; } // settle, don't micro-bounce
         else {
           ball.vx -= (1 + SOCCER_BALL_REST) * vn * ux;
           ball.vy -= (1 + SOCCER_BALL_REST) * vn * uy;
@@ -4695,19 +4745,19 @@ function stepSoccerBall(room) {
     ball.x = nx + ux * SOCCER_BALL_R;
     ball.y = ny + uy * SOCCER_BALL_R;
     const vn = ball.vx * ux + ball.vy * uy;
-    if (vn < 0.4) {
-      ball.vx += (0.4 - vn) * ux + b.vx * 0.55;
-      ball.vy += (0.4 - vn) * uy + (b.vy < 0 ? b.vy * 0.35 : 0);
+    if (vn < 0.2) {
+      ball.vx += (0.2 - vn) * ux + b.vx * 0.55;
+      ball.vy += (0.2 - vn) * uy + (b.vy < 0 ? b.vy * 0.35 : 0);
     }
-    if (uy < -0.5 && b.vy < -0.2) ball.vy = Math.min(ball.vy, -0.55); // header pop
+    if (uy < -0.5 && b.vy < -0.1) ball.vy = Math.min(ball.vy, -0.275); // header pop
     g.lastTouch = p.seat;
   });
   // Rolling friction once the ball is basically resting on the ground.
-  if (ball.y >= 8 - SOCCER_BALL_R - 0.03 && Math.abs(ball.vy) < 0.1) {
+  if (ball.y >= 8 - SOCCER_BALL_R - 0.03 && Math.abs(ball.vy) < 0.05) {
     ball.vy = 0;
     ball.y = 8 - SOCCER_BALL_R;
-    ball.vx *= 0.94;
-    if (Math.abs(ball.vx) < 0.02) ball.vx = 0;
+    ball.vx *= 0.9695; // sqrt(0.94): same decay per second at 62.5ms
+    if (Math.abs(ball.vx) < 0.01) ball.vx = 0;
   }
 }
 function soccerGoal(room, team) {
@@ -4741,7 +4791,7 @@ function botBrainSoccer(room, p) {
       const qb = g.blobs[q.seat];
       if (qb && Math.hypot(ball.x - qb.x, ball.y - qb.y) < Math.hypot(ball.x - me.x, ball.y - me.y)) closest = false;
     });
-    tx = closest ? ball.x + ball.vx * (p.difficulty === 'kho' ? 4 : 0) : ball.x * 0.45 - atk * 2;
+    tx = closest ? ball.x + ball.vx * (p.difficulty === 'kho' ? 8 : 0) : ball.x * 0.45 - atk * 2;
   }
   if (Math.abs(tx - me.x) > 0.35) intent.x = Math.sign(tx - me.x);
   const dBall = Math.hypot(ball.x - me.x, ball.y - me.y);
@@ -4752,7 +4802,7 @@ function botBrainSoccer(room, p) {
     else intent.x = wantFace;
   }
   if (ball.y < me.y - 1.6 && dBall < 2.6 && me.ground) intent.jump = true;
-  if (!isGoalie && dBall > 7 && intent.x !== 0 && p.difficulty !== 'de' && Math.random() < 0.06) intent.dash = true;
+  if (!isGoalie && dBall > 7 && intent.x !== 0 && p.difficulty !== 'de' && Math.random() < 0.0305) intent.dash = true; // per-tick roll: 1-sqrt(1-p)
   return intent;
 }
 function finishSoccer(room) {
@@ -4815,9 +4865,9 @@ function stepFrog(room, t) {
   if (g.phase !== 'frog') return false;
   if (t >= g.endsAt) { finishFrog(room); return true; }
   if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
     let nCU = 0;
-    while (nCU < 4 && t >= g.nextTickAt && g.phase === 'frog') {
+    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'frog') {
       simulateFrogTick(room);
       if (room.game !== g) return true; // the tick ended the game
       g.nextTickAt += TICK_MS;
@@ -4846,7 +4896,7 @@ function frogIntent(room, p) {
 function crateStep(c, solids) {
   // platStep's axis-separated resolution with the crate's own 0.6 half extents.
   const HW = 0.6, HH = 0.6;
-  c.vy = Math.min(PLAT_MAXFALL, c.vy + PLAT_GRAV);
+  c.vy = Math.min(PLAT_MAXFALL, c.vy + TEMP_GRAV);
   c.x += c.vx;
   for (const s of solids) {
     if (s.oneWay) continue;
@@ -4883,7 +4933,11 @@ function simulateFrogTick(room) {
       if (Math.sign(dx) === it.x && Math.abs(dx) <= 1.25 && Math.abs(f.y - c.y) < 1.1) push = it.x;
     });
     if (push !== 0) c.vx = push * FROG_RUN;
-    else if (c.ground) c.vx = Math.abs(c.vx) <= 0.03 ? 0 : c.vx - Math.sign(c.vx) * 0.03;
+    // SMOOTH3: the glide decrement is acceleration-class — with the
+    // release speed halved it must QUARTER (0.03 -> 0.0075) or the
+    // glide distance (v^2 / 2a) halves. The 0.015 stop threshold is
+    // a velocity and simply halves.
+    else if (c.ground) c.vx = Math.abs(c.vx) <= 0.015 ? 0 : c.vx - Math.sign(c.vx) * 0.0075;
     crateStep(c, staticSolids);
     if (c.y > 10.5) { c.x = L.crates[ci].x; c.y = L.crates[ci].y; c.vx = 0; c.vy = 0; }
   });
@@ -4906,8 +4960,8 @@ function simulateFrogTick(room) {
           pas.by = null;
           pas.x = f.x + (g.face[seat] || 1) * 1.15;
           pas.y = f.y - 0.3;
-          pas.vx = (g.face[seat] || 1) * 0.5;
-          pas.vy = -1.0;
+          pas.vx = (g.face[seat] || 1) * 0.25;
+          pas.vy = -0.5;
           pas.ground = false;
           const pasP = playerAt(room, f.belly);
           if (pasP && pasP.type === 'bot') {
@@ -4936,7 +4990,7 @@ function simulateFrogTick(room) {
       f.ground = false;
     }
     f.vx = it.x * FROG_RUN;
-    platStep(f, solids, PLAT_GRAV, PLAT_MAXFALL);
+    platStep(f, solids, TEMP_GRAV, PLAT_MAXFALL);
     for (const sp of L.spikes) {
       // Spikes kill only once the feet are essentially ON the strip
       // (within 0.15 of the floor): a frog arcing over the far edge
@@ -5022,7 +5076,7 @@ function botBrainFrog(room, p) {
       g.wpAt[p.seat] = 0;
       return intent;
     }
-    if (g.tickCount - (g.wpAt[p.seat] || 0) > 160) { g.wpIdx[p.seat] = idx + 1; g.wpAt[p.seat] = 0; return intent; }
+    if (g.tickCount - (g.wpAt[p.seat] || 0) > 320) { g.wpIdx[p.seat] = idx + 1; g.wpAt[p.seat] = 0; return intent; }
     if (Math.abs(dx) >= 0.45) intent.x = Math.sign(dx);
     return intent;
   }
@@ -5126,13 +5180,13 @@ function stepCannon(room, t) {
       // Edges still fire once: padPrev tracks the pad after the first
       // sub-tick, so the A fire / X flip cannot repeat inside the loop.
       let nCU = 0;
-      while (nCU < 4 && t >= g.nextTickAt && g.phase === 'aim') {
+      while (nCU < 8 && t >= g.nextTickAt && g.phase === 'aim') {
         const pad = g.pad[seat] || {};
         const prev = g.padPrev[seat] || {};
-        if (pad.u) c.angle = Math.min(85, c.angle + 2.5);
-        if (pad.d) c.angle = Math.max(5, c.angle - 2.5);
-        if (pad.l) c.power = Math.max(0, c.power - 3);
-        if (pad.r) c.power = Math.min(100, c.power + 3);
+        if (pad.u) c.angle = Math.min(85, c.angle + 1.25);
+        if (pad.d) c.angle = Math.max(5, c.angle - 1.25);
+        if (pad.l) c.power = Math.max(0, c.power - 1.5);
+        if (pad.r) c.power = Math.min(100, c.power + 1.5);
         if (pad.x && !prev.x) c.face = -c.face;
         g.padPrev[seat] = Object.assign({}, pad);
         g.nextTickAt += TICK_MS;
@@ -5146,9 +5200,9 @@ function stepCannon(room, t) {
   }
   if (g.phase === 'shell') {
     if (t >= g.nextTickAt) {
-      // Catch-up (see stepArena): up to 4 missed ticks, then resync.
+      // Catch-up (see stepArena): up to 8 missed ticks, then resync.
       let nCU = 0;
-      while (nCU < 4 && t >= g.nextTickAt && g.phase === 'shell') {
+      while (nCU < 8 && t >= g.nextTickAt && g.phase === 'shell') {
         simulateShellTick(room);
         if (room.game !== g) return true; // the tick ended the game
         g.nextTickAt += TICK_MS;
@@ -5197,7 +5251,7 @@ function simulateShellTick(room) {
     if (sh.y >= g.heights[cannonColAt(sh.x)]) { resolveBoom(room, sh.x, g.heights[cannonColAt(sh.x)]); return; }
   }
   sh.trail.push({ x: Math.round(sh.x * 100) / 100, y: Math.round(sh.y * 100) / 100 });
-  if (sh.trail.length > 40) sh.trail = sh.trail.slice(-40);
+  if (sh.trail.length > 80) sh.trail = sh.trail.slice(-80);
   if (now() - sh.born > 12000) {
     g.shell = null;
     g.boomFx = null;
@@ -7293,7 +7347,7 @@ function api(path, body, cb) {
 function stateUrl() { return '/api/rooms/' + S.code + '/state?role=' + S.role + '&token=' + encodeURIComponent(S.token); }
 // Stale-view watchdog. poll()'s own failure counter only counts failures
 // spaced >=600ms apart, so when polls fail FAST (flaky WiFi against the
-// 220ms in-game poll) an outage never registers and the screen can sit
+// 120ms in-game poll) an outage never registers and the screen can sit
 // frozen on the last good frame forever. noteOk() stamps every successful
 // state application; watchdog() (driven from tick) shows a reconnecting
 // badge after 3s of silence and self-heals with ONE location.reload()
@@ -7328,7 +7382,7 @@ function poll() {
   // While the WebSocket channel is live it pushes every change the
   // moment it happens, so polling demotes itself to a ~2s safety net.
   // The moment the socket drops, this gate opens and the normal rates
-  // (800ms base + 220ms in-game) resume on their own.
+  // (800ms base + 120ms in-game) resume on their own.
   var tPoll = Date.now();
   // While a game is playing the safety net tightens to ~900ms: a
   // stalled push channel then freezes the screen for under a second
@@ -7342,7 +7396,7 @@ function poll() {
       // No answer at all (offline / DNS / non-JSON reply): the room may
       // well still exist, so keep waiting — but never spin on the
       // connecting screen forever. Count only failures spaced >=600ms
-      // apart (the 220ms fast poll during games must not be able to fake
+      // apart (the 120ms fast poll during games must not be able to fake
       // a long outage) and give up after 5 counted failures spanning
       // at least ~3 seconds of continuous silence.
       var t = Date.now();
@@ -9031,13 +9085,18 @@ function syncBlasts(blasts) {
 // First placement of any element SNAPS exactly to target in the same
 // task as the render: the centre-flash guard is preserved. On top of
 // easing, the loop EXTRAPOLATES: views carry vx/vy in units per tick,
-// and the rendered target leads the last server position by up to 1.6
-// ticks (200 ms), so motion runs ahead of the 125 ms tick instead of
-// trailing it. The loop still reads the field's .slowmo class and
+// and the rendered target leads the last server position by a TIME
+// budget (SMOOTH3: up to 400 ms of dead reckoning at the 62.5 ms
+// tick), so motion runs ahead of the tick instead of trailing it —
+// and when a state push is delayed, movers keep gliding on their
+// last velocity for up to 400 ms instead of freezing mid-glide; the
+// exponential ease (tau 40) absorbs the correction when fresh state
+// lands. The loop still reads the field's .slowmo class and
 // stretches its time constant ~6x. Without rAF, moveEl falls back to
 // left/top percentages and the CSS transitions carry the motion.
 var RAF_OK = typeof requestAnimationFrame === 'function';
 var RAF_TAU = 40;
+var TICK_MS_CLIENT = 62.5;
 function moverMode(node) {
   var c = ' ' + (node.className || '') + ' ';
   if (c.indexOf(' acrown ') >= 0) return 'crown';
@@ -9091,7 +9150,7 @@ function rafLoop(ts) {
     var rect = null;
     for (var ci = 0; ci < rectCache.length; ci++) if (rectCache[ci][0] === parent) { rect = rectCache[ci][1]; break; }
     if (!rect) { rect = parent.getBoundingClientRect(); rectCache.push([parent, rect]); }
-    var lead = Math.min(Math.max((nowMs - e.at) / 125, 0), 1.6);
+    var lead = Math.min(Math.max((nowMs - e.at) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
     var gx = e.tx + e.vx * lead, gy = e.ty + e.vy * lead;
     var kk = slow && field && field.contains(e.el) ? ks : k;
     var dx = gx - e.x, dy = gy - e.y;
@@ -10970,7 +11029,7 @@ window.addEventListener('blur', function () {
   setInterval(function () {
     var v = S.view;
     if (v && v.game && ((v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend') || (v.game.id === 'nguoi-que' && v.game.phase === 'fight') || (v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple') || (v.game.id === 'da-bong' && (v.game.phase === 'soccer' || v.game.phase === 'goal')) || (v.game.id === 'ech-op' && (v.game.phase === 'frog' || v.game.phase === 'frogClear')) || (v.game.id === 'can-goc' && (v.game.phase === 'shell' || v.game.phase === 'boom')))) poll();
-  }, 220);
+  }, 120);
 })();
 </script>
 </body>
