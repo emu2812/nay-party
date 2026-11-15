@@ -612,3 +612,109 @@ setTimeout for the button-press animation was NOT touched.
   throughout (advanceMs / padTicks / legs), so state changing at
   the 62.5ms cadence is covered implicitly by every audit above.
   Live-link cadence verification is the parent's post-deploy job.
+
+## SMOOTH4 — client-side prediction for the viewer's own character
+
+Motivation: the user plays on a COMPUTER with local keyboard seats
+and still felt heavy lag. Diagnosis (parent, from reading the page
+script): sendLocalPad fires instantly, but the host page rendered
+the local player's blob ONLY from server state — moveEl anchored
+each mover at the last server position/velocity and rafLoop
+extrapolated from receipt time. A local keypress therefore showed
+on screen only after a full round trip (pad -> DO tick -> push ->
+render), even though the pad was already known on the client.
+
+### Change (page script only; server untouched)
+
+All in worker.mjs's client script, three sites:
+
+1. New helper `predPadFor(id)` + `PRED_GAMES` table (just before
+   moveEl). Returns the LIVE pad for a mover iff: the node id is
+   'ablob-<seat>'; the current view's game is one of the seven
+   positional pad games (day-ra, ne-dan, cuop-sao, giu-vuong-mien,
+   son-san, xe-tank, thu-thanh); and the seat is the viewer's own —
+   host page: the seat is in S.view.locals and LK[seat].pad is the
+   pad; player page: seat === S.seat and S.padState is the pad.
+   Everything else (bots, phone seats seen from the host, shells,
+   slimes, balls, stars, the crown prop, the shared blob, all
+   platformers, soccer, dat-bom) returns null and renders exactly
+   as before. chung-mot-than is excluded by game id (its mover is
+   'sharedblob', never an ablob node, doubly safe).
+2. moveEl: entries gain lastSpdX/lastSpdY — the last NONZERO
+   per-axis speed magnitude the server reported (|vx| / |vy|,
+   updated on every anchor for predictable movers only). Divergence
+   guard in the same branch: when a fresh anchor lands more than
+   2.5 u from the rendered position on either axis, snap
+   (e.x = e.tx, e.y = e.ty) instead of gliding — covers ring-out
+   respawns and teleports.
+3. rafLoop: for a predictable mover, per axis — if the pad drives
+   that axis (dir != 0) and a speed was observed, the target is
+   anchor + dir * lastSpd * leadP, where leadP = min(elapsedTicks
+   + 2.5, 400/TICK_MS_CLIENT). An axis the pad is not driving (or
+   whose speed was never observed) keeps the server-velocity
+   target, so shoves/knockback still land as sent; a fully released
+   pad therefore falls back to exactly the pre-SMOOTH4 behaviour.
+   RAF_TAU, perf mode, view signatures, serverOffset: untouched.
+
+Sign convention (verified against the server steppers, not
+assumed): every in-scope stepper computes intent identically —
+x = (pad.r?1:0) - (pad.l?1:0), y = (pad.d?1:0) - (pad.u?1:0)
+(simulateTick line ~1714 and its siblings at ~1855, ~2046, ~2598),
+adds intent * STEP to the position, and the views carry vx/vy as
+the measured per-tick displacement (trackStart/trackEnd). famPct
+'std' maps +x to screen right and +y to screen down (PY grows with
+y), matching pad d = +vy = down. The client reuses exactly
+dirX = r - l, dirY = d - u against the server-reported speeds.
+
+Cold start: before the server has reported any nonzero speed this
+match, lastSpd is null and there is NO prediction (the first press
+of a match still waits for the channel, by design); from the first
+moving anchor onward prediction is live. The rig protocol warms up
+for this reason.
+
+### Verification
+
+- Suite: ALL TESTS PASSED — 802 assertions. Discrim: 7/7 identical
+  numbers (tank 5.330, bomb 2000 ms, crown +40, stickman 4.20 /
+  1875 ms, temple 3.15 / 1750 ms, temple run 5.200). Deep-drive:
+  629 checks, 0 failures. (Counts re-measured on pristine HEAD
+  5ddb49a in the same session: suite 802, deep-drive 629 — the
+  SMOOTH3 report's 803/630 included one conditional assertion that
+  does not run every time; no delta from this wave. One suite run
+  hit a ma-soi 'pump timeout' under load and passed on re-run;
+  the diff touches only the page script, server logic is byte-
+  identical outside it.)
+- Rig prediction drive (new boottest/rig-pred.mjs; rig server
+  gained an opt-in RIG_DELAY_MS switch that holds every response
+  back by that many ms — started with RIG_DELAY_MS=250): local
+  seat 2 (WASD) in day-ra, rendered x = S.raf['ablob-2'].x sampled
+  every 5 ms in-page, keydown/keyup timestamps captured in-page.
+  Five runs of the new build vs three of the pre-SMOOTH4 build
+  (git stash, same rig):
+  * (a) keydown -> rendered x starts moving: new 6.8 / 8.8 / 10.1
+    / 13.5 / 18.4 ms (limit 60); old 548.8 / 567.4 / 570.2 ms.
+  * (b) mean lead of rendered over the latest applied server x
+    during a 1 s hold: new +0.36..+0.47 u (max ~0.74); old -0.07 u
+    (rendered TRAILS the anchor stream). One early new-build run
+    read +0.05: the blob was in sustained bot contact, so the
+    server-reported vx (and hence lastSpd) was genuinely small —
+    prediction tracks the true current speed, contact included.
+  * (c) post-release behaviour. The naive metric (forward drift
+    after keyup+100 ms) is channel-phase noise on a 250 ms rig:
+    the stopped anchor reached the client 433-608 ms after keyup
+    in BOTH builds, and pre-keyup anchors still arriving dominate
+    the drift (new-build samples 0.347..0.939, median 0.361; old
+    0.348..0.490, median 0.388 — indistinguishable, prediction
+    adds no runaway). The deterministic criterion is overshoot:
+    after keyup the rendered x never passes the blob's final
+    stopped server x by more than 0.25 u (new: 0.208 / 0.000 in
+    measured runs; old: 0.000 / 0.000 — it never leads, it trails).
+  * (d) convergence: |rendered - server| 1 s after release =
+    0.000 u in every run of both builds (limit 0.25).
+- No-delay rig battery on the new build: rig-local-smoke ALL OK,
+  rig-kb-flex ALL OK, rig-smooth (bot-only day-ra; prediction inert
+  — no local seats) PASS with 0 freeze runs > 250 ms, rig-fps2
+  day-ra play 57.3 fps (frames >50 ms 0.7%) — no regression vs
+  SMOOTH3's 55.3.
+- Inserted page code scanned: no backticks, no backslashes, no
+  template substitutions (the page lives in a template literal).

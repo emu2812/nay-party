@@ -9114,6 +9114,36 @@ function writePos(e, rect) {
   else if (e.mode === 'crown') t += ' translate(-50%,-135%)';
   e.el.style.transform = t;
 }
+// --- SMOOTH4: client-side prediction for the viewer's OWN character.
+// A local keypress used to show on screen only after a full round
+// trip to the Durable Object and back (pad POST -> tick -> push ->
+// render), even though the pad is already known HERE, instantly.
+// For the seven positional pad games below, rafLoop now steers the
+// viewer's own blob with a LIVE velocity rebuilt from the currently
+// held pad (same sign convention as every server stepper:
+// x = r - l, y = d - u) at the last speed the server reported for
+// that axis, and leads the anchor by the elapsed time plus a fixed
+// 2.5 ticks (the one-way trip), under the same 400 ms cap as the
+// plain dead reckoning. Other players, bots, projectiles and props
+// keep the server velocity untouched. When the pad is released the
+// prediction velocity is 0 and the mover settles on the anchor
+// exactly as before. Scope is deliberately narrow: positional
+// movers only (no gravity games, no shared blob, no soccer).
+var PRED_GAMES = { 'day-ra': 1, 'ne-dan': 1, 'cuop-sao': 1, 'giu-vuong-mien': 1, 'son-san': 1, 'xe-tank': 1, 'thu-thanh': 1 };
+function predPadFor(id) {
+  if (!id || id.indexOf('ablob-') !== 0) return null;
+  var v = S.view;
+  if (!v || !v.game || !PRED_GAMES[v.game.id]) return null;
+  var seat = +id.slice(6);
+  if (!seat) return null;
+  if (S.role === 'player') return seat === S.seat ? S.padState : null;
+  if (S.role === 'host' && v.locals) {
+    for (var i = 0; i < v.locals.length; i++) {
+      if (v.locals[i].seat === seat) { var st = LK[seat]; return st ? st.pad : null; }
+    }
+  }
+  return null;
+}
 function moveEl(node, x, y, fam, vx, vy) {
   if (!node) return;
   fam = fam || 'std';
@@ -9125,11 +9155,21 @@ function moveEl(node, x, y, fam, vx, vy) {
   var e = S.raf[node.id];
   if (!e || e.el !== node) {
     node.style.left = '0px'; node.style.top = '0px';
-    e = S.raf[node.id] = { el: node, fam: fam, mode: moverMode(node), x: x, y: y, tx: x, ty: y, vx: vx || 0, vy: vy || 0, at: performance.now() };
+    e = S.raf[node.id] = { el: node, fam: fam, mode: moverMode(node), x: x, y: y, tx: x, ty: y, vx: vx || 0, vy: vy || 0, at: performance.now(), lastSpdX: vx ? Math.abs(vx) : null, lastSpdY: vy ? Math.abs(vy) : null };
     writePos(e);
     return;
   }
   e.tx = x; e.ty = y; e.vx = vx || 0; e.vy = vy || 0; e.at = performance.now(); e.fam = fam;
+  if (predPadFor(node.id)) {
+    // Remember the last nonzero per-axis speed the server reported
+    // (magnitude only — the held pad supplies the sign), and snap
+    // instead of gliding when a fresh anchor lands far from the
+    // predicted render (ring-out respawn / teleport): a glide from
+    // a stale spot would read as a long rubber-band.
+    if (e.vx) e.lastSpdX = Math.abs(e.vx);
+    if (e.vy) e.lastSpdY = Math.abs(e.vy);
+    if (Math.abs(e.tx - e.x) > 2.5 || Math.abs(e.ty - e.y) > 2.5) { e.x = e.tx; e.y = e.ty; }
+  }
 }
 function rafLoop(ts) {
   requestAnimationFrame(rafLoop);
@@ -9152,6 +9192,17 @@ function rafLoop(ts) {
     if (!rect) { rect = parent.getBoundingClientRect(); rectCache.push([parent, rect]); }
     var lead = Math.min(Math.max((nowMs - e.at) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
     var gx = e.tx + e.vx * lead, gy = e.ty + e.vy * lead;
+    var pp = predPadFor(id);
+    if (pp) {
+      // Own character: steer by the LIVE pad, per axis. An axis the
+      // pad is not driving (or whose speed was never observed) keeps
+      // the server-velocity target above, so shoves and knockback
+      // still land exactly as the server sent them.
+      var pdx = (pp.r ? 1 : 0) - (pp.l ? 1 : 0), pdy = (pp.d ? 1 : 0) - (pp.u ? 1 : 0);
+      var leadP = Math.min(lead + 2.5, 400 / TICK_MS_CLIENT);
+      if (pdx !== 0 && e.lastSpdX != null) gx = e.tx + pdx * e.lastSpdX * leadP;
+      if (pdy !== 0 && e.lastSpdY != null) gy = e.ty + pdy * e.lastSpdY * leadP;
+    }
     var kk = slow && field && field.contains(e.el) ? ks : k;
     var dx = gx - e.x, dy = gy - e.y;
     if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
