@@ -1359,13 +1359,13 @@ function beginRound(room) {
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + FIGHT_MS;
     g.blobs = {}; g.elimOrder = []; g.elimTick = {}; g.botIntent = {}; preservePads(room); g.invuln = {};
     g.vel = {}; g.dmg = {}; g.face = {}; g.jumps = {}; g.atkCd = {}; g.hitT = {}; g.atkT = {}; g.dashT = {}; g.dashDir = {};
-    g.hvyCd = {}; g.hvyT = {};
+    g.dashCd = {}; g.hvyCd = {}; g.hvyT = {};
     room.players.forEach((p, i) => {
       const sx = FIGHT_SPAWN_X[i % FIGHT_SPAWN_X.length];
       g.blobs[p.seat] = { x: sx, y: FIGHT_PLATFORMS[0].y - PLAT_HH, vx: 0, vy: 0, ground: true, lives: FIGHT_LIVES, alive: true };
       g.dmg[p.seat] = 0; g.face[p.seat] = sx < 0 ? 1 : -1; g.jumps[p.seat] = 0;
       g.atkCd[p.seat] = 0; g.hitT[p.seat] = 0; g.atkT[p.seat] = 0; g.dashT[p.seat] = 0; g.dashDir[p.seat] = 1;
-      g.hvyCd[p.seat] = 0; g.hvyT[p.seat] = 0;
+      g.dashCd[p.seat] = 0; g.hvyCd[p.seat] = 0; g.hvyT[p.seat] = 0;
       g.invuln[p.seat] = 0;
     });
   } else if (g.id === 'den-lua-nuoc') {

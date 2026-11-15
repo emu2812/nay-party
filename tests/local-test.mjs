@@ -2731,6 +2731,27 @@ async function main() {
   }
   assert(qMinY <= -1.0, 'xy: Y also double-jumps (apex y ' + qMinY + ', single jump only reaches -0.6)');
 
+  // --- Dash (B) regression: g.dashCd must be initialized ------------
+  // Found by the 15/11 button audit: the nguoi-que setup never
+  // initialized g.dashCd[p.seat], so undefined <= 0 was false forever
+  // and dash could never start on any surface (keyboard/phone/APK).
+  const luDrv = await newDrv();
+  const lu1 = await luDrv.join('LuotMot');
+  await luDrv.join('LuotHai');
+  await luDrv.act({ action: 'startGame', game: 'nguoi-que' });
+  await pumpD(luDrv, 125, (s) => s.game && s.game.phase === 'fight', 'dash fight begins');
+  await padTicksQ(luDrv, lu1.playerToken, { r: true }, 2);
+  await padTicksQ(luDrv, lu1.playerToken, { r: true, b: true }, 1);
+  let luMaxVx = 0;
+  for (let i = 0; i < 8; i++) {
+    const dv = await luDrv.state();
+    const vx = Math.abs(dv.game.blobs[1].vx || 0);
+    if (vx > luMaxVx) luMaxVx = vx;
+    tick(125);
+  }
+  await luDrv.pAct(lu1.playerToken, { action: 'pad', pad: {} });
+  assert(luMaxVx >= 0.4, 'dash: B while running dashes (max |vx| ' + luMaxVx + ' >= 0.4; run speed is 0.17)');
+
   // --- Heavy attack numbers: +16% and 1.5x knockback ---------------
   // Baseline first: a normal A hit at 0% in a fresh room.
   const nDrv = await newDrv();
