@@ -7874,7 +7874,7 @@ function mySeatInner(v) {
   // Any other game (real-time pads and friends): the host's own seat
   // has no touch controls on this screen — say so plainly instead of
   // rendering dead buttons.
-  return h + '<p class="center" style="margin:6px 0 0">Game hành động cần màn hình lớn — mở link mời trên một máy khác để vào ghế chơi game này.</p>';
+  return h + '<p class="center" style="margin:6px 0 0">Game hành động cần bàn phím hoặc điện thoại — quay lại sảnh rồi bấm “⌨️ Chơi bằng phím ngay trên máy này” là chơi được ngay trên máy này.</p>';
 }
 function seatCard(v, seat) {
   var p = playerOf(v, seat);
@@ -7930,12 +7930,18 @@ function hostHTML(v) {
     h += '</div>';
     var humans = 0; for (var j = 0; j < v.players.length; j++) if (v.players[j].type === 'human') humans++;
     h += '<p class="center" style="margin-top:14px">';
-    if (humans < 1) h += '<span class="chip hot">Cần ít nhất 1 người chơi bằng điện thoại</span>';
+    if (humans < 1) h += '<span class="chip hot">Cần ít nhất 1 người chơi (điện thoại hoặc bàn phím)</span>';
     else if (v.players.length < 2) h += '<span class="chip hot">Thêm Máy hoặc rủ thêm bạn để đủ 2 người</span>';
     else h += '<span class="chip cool">Sẵn sàng! Chọn một game bên dưới để bắt đầu</span>';
     h += '</p>';
     h += '<p class="center small muted" style="margin:8px 0 0">Chơi ngay trên màn hình này: bấm + Phím để thêm người chơi bằng bàn phím — mỗi người một bộ phím, không cần điện thoại.</p>';
-    if (!mySeatOf(v)) h += '<p class="center" style="margin:10px 0 0"><button class="btn green" data-cmd="hostJoinBtn">🎮 Chủ phòng cũng chơi — ngồi vào một ghế</button></p>';
+    var kbFree = 0, kbLoc = 0;
+    for (var li1 = 0; li1 < v.players.length; li1++) if (v.players[li1].local) kbLoc++;
+    if (kbLoc < 4) for (var fs1 = 2; fs1 <= 12; fs1++) if (!playerOf(v, fs1)) { kbFree = fs1; break; }
+    var hostBtns = '';
+    if (kbFree) hostBtns += '<button class="btn green" data-cmd="hostPlayKb" data-seat="' + kbFree + '">⌨️ Chơi bằng phím ngay trên máy này</button> ';
+    if (!mySeatOf(v)) hostBtns += '<button class="btn blue" data-cmd="hostJoinBtn">🎮 Chủ phòng cũng chơi — ngồi vào một ghế</button>';
+    if (hostBtns) h += '<p class="center" style="margin:10px 0 0">' + hostBtns + '</p>';
     h += '</div>';
     // Game chooser, grouped by category: versus games race for
     // placement points; co-op games score the whole team one tier.
@@ -10209,6 +10215,9 @@ function runCmd(node) {
   } else if (cmd === 'reload') {
     clearSession();
     location.reload();
+  } else if (cmd === 'hostPlayKb') {
+    sfxTap();
+    act({ action: 'addLocal', seat: +node.getAttribute('data-seat') });
   } else if (cmd === 'addBot' || cmd === 'removeBot' || cmd === 'cycleBot' || cmd === 'addLocal' || cmd === 'cycleScheme') {
     act({ action: cmd, seat: +node.getAttribute('data-seat') });
   } else if (cmd === 'start') {
