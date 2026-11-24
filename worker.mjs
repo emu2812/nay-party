@@ -922,6 +922,15 @@ export class RoomStore {
         player = room.players.find((p) => p.type === 'human' && !p.local && !p.hostSeat && p.seat === att.seat && p.token === att.token) || null;
         if (!player) { this._bye(ws); return; }
       }
+      // Tick-pump rate gate: the host page drives the loop with
+      // 'tick' messages every ~50 ms while playing; anything faster
+      // than 30 ms spacing is redundant (the sim is time-based, so
+      // extra advances add nothing) and is dropped before any work.
+      if (body.action === 'tick') {
+        const nowT = Date.now();
+        if (this._lastPumpAt && nowT - this._lastPumpAt < 30) return;
+        this._lastPumpAt = nowT;
+      }
       // The HTTP action pipeline, verbatim: advance, dispatch, advance,
       // save (even on error — the first advance may have moved the sim),
       // then push the fresh personalized views to every socket.
@@ -11466,6 +11475,25 @@ window.addEventListener('blur', function () {
   window.addEventListener('resize', function () { S.fieldRect = null; });
   setInterval(poll, 800);
   setInterval(tick, 150);
+  // Tick pump: while a game is playing, the host page drives the
+  // server loop over the WebSocket every ~50 ms. The platform alarm
+  // that normally drives the loop measured ~118 ms per cycle on the
+  // user's own room (their ping is only 30 ms — the message path is
+  // fast, the alarm path is not), so state arrived in ~118 ms lumps
+  // and the world juddered at that rhythm in every game. Driving
+  // the loop from inside the message handler restores a ~60 ms
+  // cadence. The alarm stays armed as a backstop; advance() is
+  // time-based, so pump + alarm together can never double-step
+  // the simulation.
+  setInterval(function () {
+    if (S.role !== 'host' || !S.view || S.view.phase !== 'playing' || !S.view.game) return;
+    if (!wsOpen() || wsStale()) return;
+    var nowP = Date.now();
+    if (S._pumpAt && nowP - S._pumpAt < 50) return;
+    if (S.lastStateAt && nowP - S.lastStateAt < 35) return;
+    S._pumpAt = nowP;
+    try { wsConn.send(JSON.stringify({ action: 'tick' })); } catch (e) {}
+  }, 50);
   setInterval(function () {
     var v = S.view;
     if (v && v.game && ((v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend') || (v.game.id === 'nguoi-que' && v.game.phase === 'fight') || (v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple') || (v.game.id === 'da-bong' && (v.game.phase === 'soccer' || v.game.phase === 'goal')) || (v.game.id === 'ech-op' && (v.game.phase === 'frog' || v.game.phase === 'frogClear')) || (v.game.id === 'can-goc' && (v.game.phase === 'shell' || v.game.phase === 'boom')))) poll();
