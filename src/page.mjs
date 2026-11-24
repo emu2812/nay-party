@@ -995,6 +995,7 @@ function localMirror() {
   var E = window.__NP_ENGINE; var v = S.view; if (!E || !v) return null;
   var room = E.newRoom(v.code, 'local');
   room.phase = v.phase;
+  room.lastGame = v.lastGame || null;
   room.players = [];
   L.mirrorSeats = {};
   for (var i = 0; i < v.players.length; i++) {
@@ -1070,7 +1071,7 @@ function act(body, cb) {
     if (cb) cb(lerr ? { error: lerr } : { ok: true });
     return;
   }
-  if ((body.action === 'startGame' || body.action === 'quickStart') && !S.localActive && engReady() && localEligible()) {
+  if ((body.action === 'startGame' || body.action === 'quickStart' || body.action === 'replay') && !S.localActive && engReady() && localEligible()) {
     if (localStart(body)) { if (cb) cb({ ok: true }); return; }
   }
   body.role = S.role; body.token = S.token;
@@ -2887,7 +2888,11 @@ function writePos(e, rect) {
   var t = 'translate3d(' + (p[0] / 100 * rect.width).toFixed(1) + 'px,' + (p[1] / 100 * rect.height).toFixed(1) + 'px,0)';
   if (e.mode === 'c') t += ' translate(-50%,-50%)';
   else if (e.mode === 'crown') t += ' translate(-50%,-135%)';
-  e.el.style.transform = t;
+  // Writing the same transform again still costs a style recalc on
+  // weak GPUs; movers whose rendered position did not change since
+  // the last write (idle players, paused balls, static pieces) skip
+  // the write entirely.
+  if (e._wt !== t) { e._wt = t; e.el.style.transform = t; }
 }
 // --- SMOOTH4: client-side prediction for the viewer's OWN character.
 // A local keypress used to show on screen only after a full round
@@ -3163,6 +3168,12 @@ function rafLoop(ts) {
 // Everything here is a pure function of the current view (idempotent),
 // and arenaFX keeps its own delta snapshot, so an extra call after a
 // render can only fire a pending effect once, never twice.
+// DOM write guards: patchPositions runs on every push (and every
+// local tick); rewriting identical text/transforms still dirties
+// layout on weak GPUs, so each element remembers its last value.
+function setT(elm, txt) { if (!elm) return; txt = '' + txt; if (elm._tx !== txt) { elm._tx = txt; elm.textContent = txt; } }
+function setTf(elm, tf) { if (!elm) return; if (elm._tf !== tf) { elm._tf = tf; elm.style.transform = tf; } }
+function setOp(elm, op) { if (!elm) return; if (elm._op !== op) { elm._op = op; elm.style.opacity = op; } }
 function patchPositions(v) {
   var g = v && v.game;
   if (!g) return;
@@ -3193,9 +3204,9 @@ function patchPositions(v) {
   if (g.id === 'keo-co') {
     var kn9 = el('tugknot');
     if (kn9) kn9.style.left = Math.max(3, Math.min(97, 50 + (g.knot / 112) * 46)) + '%';
-    if (g.presses) for (var pSeat in g.presses) { var tp = el('tugpress-' + pSeat); if (tp) tp.textContent = g.presses[pSeat]; }
+    if (g.presses) for (var pSeat in g.presses) { setT(el('tugpress-' + pSeat), g.presses[pSeat]); }
     var mp9 = el('mypull');
-    if (mp9 && g.presses) mp9.textContent = g.presses[S.seat] || 0;
+    if (g.presses) setT(mp9, g.presses[S.seat] || 0);
   }
   if ((g.id === 'xe-tank' || g.id === 'dat-bom' || g.id === 'thu-thanh') && g.blobs) {
     for (var wSeat in g.blobs) {
@@ -3203,15 +3214,15 @@ function patchPositions(v) {
       var wn = el('ablob-' + wSeat);
       if (wn) {
         moveEl(wn, wb.x, wb.y, 'std', wb.vx, wb.vy);
-        wn.style.opacity = wb.alive ? '1' : '0.25';
+        setOp(wn, wb.alive ? '1' : '0.25');
       }
       var lv2 = el('alives-' + wSeat);
-      if (lv2) lv2.textContent = '\u2764'.repeat(Math.max(0, wb.lives));
+      setT(lv2, '\u2764'.repeat(Math.max(0, wb.lives)));
       var brl = el('barrel-' + wSeat);
-      if (brl && g.facing && g.facing[wSeat]) brl.style.transform = 'rotate(' + Math.round(Math.atan2(g.facing[wSeat].y, g.facing[wSeat].x) * 180 / Math.PI) + 'deg)';
+      if (brl && g.facing && g.facing[wSeat]) setTf(brl, 'rotate(' + Math.round(Math.atan2(g.facing[wSeat].y, g.facing[wSeat].x) * 180 / Math.PI) + 'deg)');
     }
     var ml2 = el('mylives');
-    if (ml2 && g.blobs[S.seat]) ml2.textContent = '\u2764'.repeat(Math.max(0, g.blobs[S.seat].lives));
+    if (g.blobs[S.seat]) setT(ml2, '\u2764'.repeat(Math.max(0, g.blobs[S.seat].lives)));
     if (g.shells) syncDyn(g.shells, 'shell-', 'ashell', null);
     if (g.id === 'xe-tank' || g.id === 'dat-bom') arenaFX(v, g);
   }
