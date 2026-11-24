@@ -840,14 +840,25 @@ export class RoomStore {
   // playlist intermission is pending) and at least one socket is
   // attached; disarm otherwise. Only arms when no alarm is pending,
   // so frequent calls never postpone a due tick.
-  async _syncAlarm(room) {
+  async _syncAlarm(room, base) {
     try {
       const st = this.state && this.state.storage;
       if (!st || typeof st.setAlarm !== 'function' || typeof st.getAlarm !== 'function') return;
       const want = !!((room && room.game) || (room && room.phase === 'results' && room.playlistNextAt)) && this._sockets().length > 0;
       const current = await st.getAlarm();
-      if (want && current === null) await st.setAlarm(Date.now() + TICK_MS);
-      if (!want && current !== null && typeof st.deleteAlarm === 'function') await st.deleteAlarm();
+      if (want && current === null) {
+        // Metronome arming: the next wake is scheduled off the PREVIOUS
+        // wake's target (base, threaded from alarm() via this._alarmFor),
+        // not off whenever this handler happens to finish. Handler work
+        // plus platform delivery latency used to inflate every cycle
+        // from 62.5 ms to ~100 ms, and state pushes inherited the gap.
+        let target = (base || Date.now()) + TICK_MS;
+        const nowMs = Date.now();
+        if (target <= nowMs) target = nowMs + 5;
+        this._alarmFor = target;
+        await st.setAlarm(target);
+      }
+      if (!want && current !== null && typeof st.deleteAlarm === 'function') { this._alarmFor = 0; await st.deleteAlarm(); }
     } catch (e) { /* best-effort: HTTP lazy advance still works without it */ }
   }
   async _acceptWs(request) {
@@ -946,7 +957,7 @@ export class RoomStore {
       // socket in _sendState) can never corrupt or block persistence.
       await this._saveIfChanged(loaded);
       this._broadcast(loaded.room);
-      await this._syncAlarm(loaded.room); // the fired alarm is spent: re-arm
+      await this._syncAlarm(loaded.room, this._alarmFor || 0); // the fired alarm is spent: re-arm on the metronome base
     } catch (e) { /* an alarm must never throw */ }
   }
 }
@@ -7391,7 +7402,7 @@ function poll() {
   if (wsOpen() && tPoll - lastPollAt < gateMs) return;
   lastPollAt = tPoll;
   api(stateUrl(), null, function (v) {
-    if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; S.serverOffset = v.serverNow - Date.now(); noteOk(); render(); return; }
+    if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; S.serverOffset = v.serverNow - Date.now(); noteOk(); render(); patchPositions(v); hostKbAutoSeat(v); return; }
     if (v && v.net) {
       // No answer at all (offline / DNS / non-JSON reply): the room may
       // well still exist, so keep waiting — but never spin on the
@@ -7525,7 +7536,7 @@ function wsEnsure() {
       // server-offset, watchdog stamp, render. The push-freshness stamp
       // is separate: only a real pushed state proves the socket lives.
       S.lastWsAt = Date.now();
-      S.failN = 0; S.failSince = 0; S.view = msg.view; S.serverOffset = msg.view.serverNow - Date.now(); noteOk(); render();
+      S.failN = 0; S.failSince = 0; S.view = msg.view; S.serverOffset = msg.view.serverNow - Date.now(); noteOk(); render(); patchPositions(msg.view);
     } else if (msg.type === 'error' && msg.error) {
       toast(msg.error);
     } else if (msg.type === 'bye') {
@@ -7925,6 +7936,19 @@ function hostHTML(v) {
     for (var i = 0; i < v.code.length; i++) h += '<div class="codebox">' + esc(v.code[i]) + '</div>';
     h += '</div>';
     h += '<p class="center" style="margin:10px 0 0">🔗 Link mời bạn bè: <input class="shareurl" id="shareLink" readonly value="' + esc((location.origin || (location.protocol + '//' + location.host)) + '/?code=' + v.code) + '"> <button class="btn small blue" data-cmd="copyLink">Sao chép link</button></p>';
+    var kbFreeT = 0, kbLocT = 0;
+    for (var liT = 0; liT < v.players.length; liT++) if (v.players[liT].local) kbLocT++;
+    if (kbLocT < 4) for (var fsT = 2; fsT <= 12; fsT++) if (!playerOf(v, fsT)) { kbFreeT = fsT; break; }
+    var canKbT = !('ontouchstart' in window) || (window.matchMedia && matchMedia('(pointer:fine)').matches);
+    h += '<div style="border:3px solid #58C472;border-radius:16px;padding:10px 12px;margin:12px 0 4px;background:rgba(88,196,114,.10)">';
+    h += '<div class="center baloo" style="font-size:19px;margin-bottom:8px">🎮 Chủ phòng cũng chơi — chọn cách chơi của bạn</div>';
+    h += '<p class="center" style="margin:0">';
+    if (kbFreeT && canKbT) h += '<button class="btn green" data-cmd="hostPlayKb" data-seat="' + kbFreeT + '">⌨️ Chơi bằng bàn phím máy này</button> ';
+    h += '<button class="btn blue" data-cmd="hostPhone">📱 Chơi bằng điện thoại</button> ';
+    if (!mySeatOf(v)) h += '<button class="btn ghost" data-cmd="hostJoinBtn">Ngồi vào ghế trên màn hình này</button>';
+    h += '</p>';
+    if (S.phoneHelp) h += '<p class="center" style="margin:8px 0 0">Mở Nảy Party trên điện thoại của bạn, nhập mã phòng <b>' + esc(v.code) + '</b> hoặc quét mã QR phía trên — bạn vào như một người chơi bình thường.</p>';
+    h += '</div>';
     h += '<div class="seats">';
     for (var s = 1; s <= 12; s++) h += seatCard(v, s);
     h += '</div>';
@@ -7934,14 +7958,7 @@ function hostHTML(v) {
     else if (v.players.length < 2) h += '<span class="chip hot">Thêm Máy hoặc rủ thêm bạn để đủ 2 người</span>';
     else h += '<span class="chip cool">Sẵn sàng! Chọn một game bên dưới để bắt đầu</span>';
     h += '</p>';
-    h += '<p class="center small muted" style="margin:8px 0 0">Chơi ngay trên màn hình này: bấm + Phím để thêm người chơi bằng bàn phím — mỗi người một bộ phím, không cần điện thoại.</p>';
-    var kbFree = 0, kbLoc = 0;
-    for (var li1 = 0; li1 < v.players.length; li1++) if (v.players[li1].local) kbLoc++;
-    if (kbLoc < 4) for (var fs1 = 2; fs1 <= 12; fs1++) if (!playerOf(v, fs1)) { kbFree = fs1; break; }
-    var hostBtns = '';
-    if (kbFree) hostBtns += '<button class="btn green" data-cmd="hostPlayKb" data-seat="' + kbFree + '">⌨️ Chơi bằng phím ngay trên máy này</button> ';
-    if (!mySeatOf(v)) hostBtns += '<button class="btn blue" data-cmd="hostJoinBtn">🎮 Chủ phòng cũng chơi — ngồi vào một ghế</button>';
-    if (hostBtns) h += '<p class="center" style="margin:10px 0 0">' + hostBtns + '</p>';
+    h += '<p class="center small muted" style="margin:8px 0 0">Chơi ngay trên màn hình này: mỗi ghế trống cũng có nút + Phím / + Máy riêng.</p>';
     h += '</div>';
     // Game chooser, grouped by category: versus games race for
     // placement points; co-op games score the whole team one tier.
@@ -9132,7 +9149,7 @@ function syncBlasts(blasts) {
 // stretches its time constant ~6x. Without rAF, moveEl falls back to
 // left/top percentages and the CSS transitions carry the motion.
 var RAF_OK = typeof requestAnimationFrame === 'function';
-var RAF_TAU = 40;
+var RAF_TAU = 30;
 var TICK_MS_CLIENT = 62.5;
 function moverMode(node) {
   var c = ' ' + (node.className || '') + ' ';
@@ -9192,11 +9209,11 @@ function moveEl(node, x, y, fam, vx, vy) {
   var e = S.raf[node.id];
   if (!e || e.el !== node) {
     node.style.left = '0px'; node.style.top = '0px';
-    e = S.raf[node.id] = { el: node, fam: fam, mode: moverMode(node), x: x, y: y, tx: x, ty: y, vx: vx || 0, vy: vy || 0, at: performance.now(), lastSpdX: vx ? Math.abs(vx) : null, lastSpdY: vy ? Math.abs(vy) : null };
+    e = S.raf[node.id] = { el: node, fam: fam, mode: moverMode(node), x: x, y: y, tx: x, ty: y, vx: vx || 0, vy: vy || 0, atS: (S._anchorT || serverNow()), lastSpdX: vx ? Math.abs(vx) : null, lastSpdY: vy ? Math.abs(vy) : null };
     writePos(e);
     return;
   }
-  e.tx = x; e.ty = y; e.vx = vx || 0; e.vy = vy || 0; e.at = performance.now(); e.fam = fam;
+  e.tx = x; e.ty = y; e.vx = vx || 0; e.vy = vy || 0; e.atS = (S._anchorT || serverNow()); e.fam = fam;
   if (predPadFor(node.id)) {
     // Remember the last nonzero per-axis speed the server reported
     // (magnitude only — the held pad supplies the sign), and snap
@@ -9218,6 +9235,7 @@ function rafLoop(ts) {
   var slow = !!(field && field.classList.contains('slowmo'));
   var k = 1 - Math.exp(-dt / RAF_TAU);
   var ks = 1 - Math.exp(-dt / (RAF_TAU * 6));
+  var nowS = serverNow();
   var rectCache = [];
   for (var id in S.raf) {
     var e = S.raf[id];
@@ -9227,18 +9245,25 @@ function rafLoop(ts) {
     var rect = null;
     for (var ci = 0; ci < rectCache.length; ci++) if (rectCache[ci][0] === parent) { rect = rectCache[ci][1]; break; }
     if (!rect) { rect = parent.getBoundingClientRect(); rectCache.push([parent, rect]); }
-    var lead = Math.min(Math.max((nowMs - e.at) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
+    // Lead is measured on the SERVER clock (nowS vs the anchor's own
+    // server stamp), so network transit and apply delay count toward
+    // the extrapolation instead of silently trailing behind the sim.
+    var lead = Math.min(Math.max((nowS - (e.atS || nowS)) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
     var gx = e.tx + e.vx * lead, gy = e.ty + e.vy * lead;
     var pp = predPadFor(id);
     if (pp) {
-      // Own character: steer by the LIVE pad, per axis. An axis the
-      // pad is not driving (or whose speed was never observed) keeps
-      // the server-velocity target above, so shoves and knockback
-      // still land exactly as the server sent them.
+      // Own character: steer by the LIVE pad, per axis. A driven axis
+      // predicts at the last observed speed; an IDLE axis caps the
+      // stale-velocity lead at one tick — full lead on a just-released
+      // axis was the measured post-release overshoot (the render kept
+      // drifting on the old velocity until the stopped anchor landed),
+      // while one tick still gives shoves and knockback their start.
       var pdx = (pp.r ? 1 : 0) - (pp.l ? 1 : 0), pdy = (pp.d ? 1 : 0) - (pp.u ? 1 : 0);
-      var leadP = Math.min(lead + 2.5, 400 / TICK_MS_CLIENT);
+      var leadP = Math.min(lead + 2.0, 400 / TICK_MS_CLIENT);
       if (pdx !== 0 && e.lastSpdX != null) gx = e.tx + pdx * e.lastSpdX * leadP;
+      else gx = e.tx + e.vx * Math.min(lead, 1);
       if (pdy !== 0 && e.lastSpdY != null) gy = e.ty + pdy * e.lastSpdY * leadP;
+      else gy = e.ty + e.vy * Math.min(lead, 1);
     }
     var kk = slow && field && field.contains(e.el) ? ks : k;
     var dx = gx - e.x, dy = gy - e.y;
@@ -9263,6 +9288,7 @@ function patchPositions(v) {
   var g = v && v.game;
   if (!g) return;
   var t = serverNow();
+  S._anchorT = (v && v.serverNow) || t; // anchors are stamped with the VIEW's server time, not the apply time
   if ((g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) {
     for (var bSeat in g.blobs) {
       var bb = g.blobs[bSeat];
@@ -9555,6 +9581,7 @@ function homeHTML() {
   h += '<div class="logo"><span class="word">nảy</span>' + blobSVG('blue', 'reo', 60) + blobSVG('pink', 'cuoi', 60) + '<span class="party"><span style="background:#4FA8E8">P</span><span style="background:#F77FB0">A</span><span style="background:#FFB35C">R</span><span style="background:#58C472">T</span><span style="background:#A78BFA">Y</span></span></div>';
   h += '<p class="tagline">Game tiệc trên màn hình lớn — điện thoại là tay cầm</p>';
   h += '<p><button class="btn blue" data-cmd="create" style="font-size:23px">Mở trên màn hình lớn (TV)</button></p>';
+  if (!('ontouchstart' in window) || (window.matchMedia && matchMedia('(pointer:fine)').matches)) h += '<p><button class="btn green" data-cmd="createKb" style="font-size:20px">⌨️ Mở màn hình lớn & chủ phòng chơi bằng bàn phím</button></p>';
   h += '<p class="muted">Màn hình lớn tạo phòng và hiện mã 6 số. Bạn bè mở trang này trên điện thoại, nhập mã là chơi — không cần cài app, không cần tài khoản.</p>';
   h += '</div>';
   h += '<div class="card center" style="margin-top:16px"><h2 style="margin:0 0 8px">📱 Tạo phòng chơi trên điện thoại</h2>';
@@ -10148,7 +10175,14 @@ function runCmd(node) {
   var cmd = node.getAttribute('data-cmd');
   if (cmd === 'create') {
     api('/api/rooms', {}, function (v) {
-      if (v && v.ok) { S.role = 'host'; S.code = v.code; S.token = v.hostToken; S.seat = null; S.phoneMode = false; npSaveRecent({ code: v.code, role: 'host', name: '', token: v.hostToken, seat: null }); noteOk(); saveSession(); S.sig = ''; poll(); }
+      if (v && v.ok) { S.role = 'host'; S.code = v.code; S.token = v.hostToken; S.seat = null; S.phoneMode = false; S.hostKb = false; npSaveRecent({ code: v.code, role: 'host', name: '', token: v.hostToken, seat: null }); noteOk(); saveSession(); S.sig = ''; poll(); }
+      else toast(v && v.error ? v.error : 'Không tạo được phòng.');
+    });
+  } else if (cmd === 'createKb') {
+    // Same big-screen create, plus the host sits down at a keyboard
+    // seat the moment the lobby lands (hostKbAutoSeat, on poll).
+    api('/api/rooms', {}, function (v) {
+      if (v && v.ok) { S.role = 'host'; S.code = v.code; S.token = v.hostToken; S.seat = null; S.phoneMode = false; S.hostKb = true; npSaveRecent({ code: v.code, role: 'host', name: '', token: v.hostToken, seat: null }); noteOk(); saveSession(); S.sig = ''; poll(); }
       else toast(v && v.error ? v.error : 'Không tạo được phòng.');
     });
   } else if (cmd === 'createPhone') {
@@ -10218,6 +10252,9 @@ function runCmd(node) {
   } else if (cmd === 'hostPlayKb') {
     sfxTap();
     act({ action: 'addLocal', seat: +node.getAttribute('data-seat') });
+  } else if (cmd === 'hostPhone') {
+    sfxTap();
+    S.phoneHelp = true; S.sig = ''; render();
   } else if (cmd === 'addBot' || cmd === 'removeBot' || cmd === 'cycleBot' || cmd === 'addLocal' || cmd === 'cycleScheme') {
     act({ action: cmd, seat: +node.getAttribute('data-seat') });
   } else if (cmd === 'start') {
@@ -10779,6 +10816,15 @@ function lkFind(code) {
   return null;
 }
 function lkPlayerName(v, seat) { var p = playerOf(v, seat); return p ? p.name : ''; }
+// One-shot helper for the home screen's "play by keyboard" create:
+// once the freshly created room's lobby view lands, sit the host
+// down in the first free keyboard seat automatically.
+function hostKbAutoSeat(v) {
+  if (!S.hostKb || S.role !== 'host' || !v || v.phase !== 'lobby') return;
+  S.hostKb = false;
+  for (var hl = 0; hl < v.players.length; hl++) if (v.players[hl].local) return;
+  for (var ks2 = 2; ks2 <= 12; ks2++) if (!playerOf(v, ks2)) { act({ action: 'addLocal', seat: ks2 }); return; }
+}
 function sendLocalPad(seat) {
   // Mirror of sendPad() for a local seat: WS bare object when the live
   // channel is open, else the HTTP tiny-ack path; replies are ignored.
