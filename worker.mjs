@@ -7676,6 +7676,7 @@ function serverNow() { return Date.now() + S.serverOffset; }
 // the whole view (ring radius pulsing backwards, HUD flicker,
 // anchor statistics poisoned) roughly once a second.
 function medOf(a) { if (!a || !a.length) return null; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; }
+function pctOf(a, q) { if (!a || !a.length) return null; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.min(b.length - 1, Math.floor(b.length * q))]; }
 function viewStale(v) {
   return !!(v && S.view && typeof v.serverNow === 'number' && typeof S.view.serverNow === 'number' && v.serverNow < S.view.serverNow);
 }
@@ -9557,8 +9558,16 @@ function rafLoop(ts) {
     // the world glides across late pushes instead of snapping at
     // each one. The player's own blob is unaffected: it renders
     // from local prediction at ~now on a separate branch.
-    var gapMed = medOf(S._gapH) || 63;
-    var rDelayT = gapMed <= 75 ? 0 : Math.min(140, Math.max(40, gapMed * 0.9));
+    // Size the render buffer from the gap DISTRIBUTION, not the
+    // median: residential Wi-Fi delivers pushes in bunches (three
+    // at once, then 250 ms of silence) while the median still reads
+    // a healthy ~60 ms — a median-sized buffer is empty exactly
+    // when the bunch gap hits, so the world extrapolated, decayed
+    // and snapped all match long. The 90th-percentile gap is the
+    // honest size of the hole the buffer must cover. On a truly
+    // clean channel (p90 <= 85 ms) the delay stays zero.
+    var gapP90 = pctOf(S._gapH, 0.9) || medOf(S._gapH) || 63;
+    var rDelayT = gapP90 <= 85 ? 0 : Math.min(200, Math.max(40, (gapP90 - 25) * 0.8));
     // The delay itself must glide toward its target (<=2 ms per
     // frame): the rolling median steps as samples enter and leave,
     // and a stepping delay makes the render clock wobble, which is
@@ -9569,13 +9578,16 @@ function rafLoop(ts) {
     var rt = nowS - S._rDelayCur / 1000;
     var gx, gy;
     if (e.atS == null || e.atP == null || e.atS <= e.atP || rt >= e.atS) {
-      // Past the newest anchor: extrapolate the velocity. Ballistic
-      // movers (shells) fly straight at constant speed, so the
-      // first 120 ms extrapolate at full speed exactly; the decay
-      // only fades in after that, so a late push still resumes from
-      // a closer position and the catch-up snap shrinks.
-      var extra = e.atS == null ? 0 : Math.min(Math.max(rt - e.atS, 0), 280);
-      var decay = extra <= 120 ? 1 : 1 - (extra - 120) / 500;
+      // Past the newest anchor: extrapolate the velocity.
+      var extra = e.atS == null ? 0 : Math.min(Math.max(rt - e.atS, 0), e.bal ? 700 : 500);
+      // Ballistic movers fly straight at constant speed FOREVER:
+      // decaying their extrapolation (the old shared rule) made
+      // shells visibly slow down then lurch forward whenever
+      // delivery bunched — in a dodge game that reads as pure lag.
+      // Other movers keep a gentle decay that only starts at
+      // 200 ms, so a late push resumes from a closer position and
+      // the catch-up correction stays small.
+      var decay = e.bal ? 1 : (extra <= 200 ? 1 : Math.max(0.6, 1 - (extra - 200) / 750));
       var dist = (extra / TICK_MS_CLIENT) * decay;
       gx = e.tx + (e.vx || 0) * dist; gy = e.ty + (e.vy || 0) * dist;
     } else if (rt <= e.atP) { gx = e.px; gy = e.py; }
@@ -9893,7 +9905,7 @@ function tick() {
       S._nmAt = Date.now();
       var medM = function (a) { if (!a || !a.length) return null; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; };
       var fpsM = S._fpsAvg ? Math.round(1000 / S._fpsAvg) : null;
-      var rttM = medM(S._rttH), gapM = medM(S._gapH);
+      var rttM = medM(S._rttH), gapM = pctOf(S._gapH, 0.9) || medM(S._gapH);
       var hN = 0, hW = 0;
       if (S._hitch) { var cutH = Date.now() - 10000; S._hitch = S._hitch.filter(function (h) { return h.t > cutH; }); hN = S._hitch.length; for (var hi = 0; hi < hN; hi++) if (S._hitch[hi].d > hW) hW = S._hitch[hi].d; }
       nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '') + (document.body.classList.contains('lite') ? ' · LITE' : '');
