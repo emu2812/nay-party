@@ -6879,7 +6879,7 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
    width/height (a full repaint of this giant bordered circle on every
    patch). The old width/height transition is gone with it: the 125ms
    patch cadence steps the shrink, which reads fine at ring speed. */
-.aring.dynring { width: 100%; height: 100%; }
+.aring.dynring { width: 100%; height: 100%; transition: transform .13s linear; }
 .aring.danger { border-color: #FF4757; box-shadow: 0 0 34px rgba(255,71,87,.75), inset 0 0 50px rgba(255,71,87,.35); animation: ringPulse .5s ease-in-out infinite alternate; }
 @keyframes ringPulse { from { filter: brightness(1); } to { filter: brightness(1.7); } }
 .ablob { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 2; }
@@ -9428,7 +9428,26 @@ function moveEl(node, x, y, fam, vx, vy) {
   } else if (Math.abs(e.tx - e.px) > 3 || Math.abs(e.ty - e.py) > 3) {
     // Teleport (spawn / respawn): restart the interpolation history
     // here instead of gliding across the arena.
-    e.px = e.tx; e.py = e.ty; e.atP = e.atS; e.x = e.tx; e.y = e.ty;
+    e.px = e.tx; e.py = e.ty; e.atP = e.atS; e.x = e.tx; e.y = e.ty; e.corrX = 0; e.corrY = 0;
+  } else {
+    // Non-predicted mover (bots, other players): the new anchor's
+    // projection almost never equals the position the render has
+    // reached by extrapolating the PREVIOUS anchor — bot steering,
+    // decaying knockback and wall bounces all bend the true path
+    // between pushes. Snapping to the new projection at every push
+    // is a ~15 Hz step train across the whole scene (the "frames
+    // keep skipping" feel, worst in Day Ra where knockback velocity
+    // decays every tick). Store the gap as an offset instead;
+    // rafLoop adds it to the fresh projection and decays it over
+    // ~85 ms, so the path bends smoothly into the new anchor.
+    // Project on the RENDER clock (now minus the adaptive delay),
+    // not wall-clock now: rafLoop draws at rt, so an offset measured
+    // against "now" is wrong by vx * delay and the render jumps by
+    // exactly that error whenever the delay is engaged.
+    var rtN = serverNow() - (S._rDelayCur || 0) / 1000;
+    var ageN = Math.min(Math.max((rtN - e.atS) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
+    e.corrX = e.x - (e.tx + e.vx * ageN);
+    e.corrY = e.y - (e.ty + e.vy * ageN);
   }
 }
 function rafLoop(ts) {
@@ -9561,6 +9580,17 @@ function rafLoop(ts) {
       gx = e.tx + (e.vx || 0) * dist; gy = e.ty + (e.vy || 0) * dist;
     } else if (rt <= e.atP) { gx = e.px; gy = e.py; }
     else { var f = (rt - e.atP) / (e.atS - e.atP); gx = e.px + (e.tx - e.px) * f; gy = e.py + (e.ty - e.py) * f; }
+    // Apply the anchor-arrival offset (see moveEl): the rendered
+    // path starts from where the eye actually was and the offset
+    // decays exponentially, so velocity changes between pushes
+    // bend the path instead of stepping it.
+    if (e.corrX || e.corrY) {
+      var cfN = Math.exp(-dt / 85);
+      e.corrX = (e.corrX || 0) * cfN; e.corrY = (e.corrY || 0) * cfN;
+      if (Math.abs(e.corrX) < 0.004) e.corrX = 0;
+      if (Math.abs(e.corrY) < 0.004) e.corrY = 0;
+      gx += e.corrX; gy += e.corrY;
+    }
     e.x = gx; e.y = gy;
     writePos(e, rect);
   }
