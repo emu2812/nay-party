@@ -921,7 +921,12 @@ export class RoomStore {
       // save (even on error — the first advance may have moved the sim),
       // then push the fresh personalized views to every socket.
       advance(room);
-      const err = att.role === 'host' ? hostDispatch(room, body) : playerAction(room, player, body);
+      // A 'tick' message is a pure loop-driver: the sender noticed
+      // state pushes had gone quiet (the alarm path can stall for
+      // seconds at the platform level) and asks the object to advance
+      // and broadcast NOW, inside this message handler — the handler
+      // path has never shown the alarm path's stalls. No dispatch.
+      const err = body.action === 'tick' ? null : (att.role === 'host' ? hostDispatch(room, body) : playerAction(room, player, body));
       if (err) {
         await this._saveIfChanged(loaded);
         try { ws.send(JSON.stringify({ type: 'error', error: err })); } catch (e) { /* socket dying */ }
@@ -9545,6 +9550,16 @@ function tick() {
   if (!v || !S.role) return;
   var t = serverNow();
   var g = v.game;
+  // Stall rescue: during play the server pushes state ~16x/s over
+  // this socket. If pushes have been silent for >250 ms the alarm
+  // driving the loop has stalled at the platform level — drive the
+  // loop from here instead: a 'tick' message makes the server
+  // advance and broadcast inside its message handler, which has
+  // never shown the alarm path's multi-second stalls. Costs nothing
+  // while pushes are healthy (the branch simply never fires).
+  if (g && v.phase === 'playing' && S.lastWsAt && Date.now() - S.lastWsAt > 250 && wsOpen() && !wsStale()) {
+    try { wsConn.send(JSON.stringify({ action: 'tick' })); } catch (e) {}
+  }
   var cd = el('cdnum');
   if (g && g.phase === 'countdown' && cd) {
     var sec = Math.max(1, Math.ceil((g.endsAt - t) / 1000));
