@@ -1,4 +1,5 @@
 /*__ENGINE_BUNDLE__*/
+/*__PAGE_V__*/
 export default {
   async fetch(request, env, ctx) {
     // A malformed request target must never escape as an unhandled
@@ -14,6 +15,12 @@ export default {
       // so home-network stalls cannot touch the picture. Versioned by
       // content hash in the URL, hence immutable caching.
       return new Response(ENGINE_JS, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=31536000, immutable' } });
+    }
+    if (path === '/api/version') {
+      // Build fingerprint of the served page: open tabs poll this
+      // between games and reload themselves when a new build ships,
+      // so a stale tab can never keep running an old version.
+      return new Response(JSON.stringify({ build: PAGE_V }), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
     }
     if (!path.startsWith('/api/')) {
       return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });

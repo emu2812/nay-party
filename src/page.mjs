@@ -947,6 +947,22 @@ function poll() {
     } else if (v && v.error && v.error.indexOf('không hợp lệ') >= 0) clearSession();
   });
 }
+var PAGE_V = '__PAGEV__';
+var vchkN = 0;
+function versionCheck() {
+  // Between games only: if the server has a newer build than this
+  // open tab, reload once — a stale tab must never keep playing an
+  // old version (it would miss fixes like LOCAL PLAY entirely).
+  if (!S.code || S.localActive) return;
+  if (S.view && S.view.phase === 'playing') return;
+  fetch('/api/version').then(function (r) { return r.json(); }).then(function (j) {
+    if (!j || !j.build || j.build === PAGE_V) return;
+    var last = +(sessionStorage.getItem('np_vreload') || 0);
+    if (Date.now() - last < 300000) return;
+    try { sessionStorage.setItem('np_vreload', '' + Date.now()); } catch (e) {}
+    location.reload();
+  }).catch(function () {});
+}
 // ---------------------------------------------------------------------
 // LOCAL PLAY: when a room holds ONLY people at this screen (keyboard
 // seats, the host's own seat) plus bots, the game simulation runs IN
@@ -980,8 +996,10 @@ function localMirror() {
   var room = E.newRoom(v.code, 'local');
   room.phase = v.phase;
   room.players = [];
+  L.mirrorSeats = {};
   for (var i = 0; i < v.players.length; i++) {
     var p = v.players[i];
+    L.mirrorSeats[p.seat] = true;
     room.players.push({ seat: p.seat, name: p.name, type: p.type, difficulty: p.difficulty || 'vua', score: p.score || 0, local: p.local ? true : undefined, scheme: p.scheme || 0, hostSeat: p.hostSeat ? true : undefined, token: 'local-' + p.seat });
   }
   return room;
@@ -1011,6 +1029,7 @@ function localStart(body) {
   for (var i = 0; i < room.players.length; i++) L.startScores[room.players[i].seat] = room.players[i].score || 0;
   api('/api/rooms/' + S.code + '/action', { role: 'host', token: S.token, action: 'localPlay', on: true }, function () {});
   L.timer = setInterval(localTick, 31);
+  toast('Đang chơi TẠI CHỖ trên máy này — mạng lag cũng không ảnh hưởng ván này.');
   return true;
 }
 function localTick() {
@@ -1026,7 +1045,9 @@ function localSyncResults() {
   var room = L.room; if (!room) return;
   var deltas = {};
   for (var i = 0; i < room.players.length; i++) { var p = room.players[i]; var d = (p.score || 0) - (L.startScores[p.seat] || 0); if (d) deltas[p.seat] = d; }
-  api('/api/rooms/' + S.code + '/action', { role: 'host', token: S.token, action: 'syncLocalResults', deltas: deltas, lastGame: room.lastGame || null }, function (v) {
+  var bots = [];
+  for (var j = 0; j < room.players.length; j++) { var bp = room.players[j]; if (bp.type === 'bot' && !(L.mirrorSeats && L.mirrorSeats[bp.seat])) bots.push({ seat: bp.seat, difficulty: bp.difficulty || 'vua' }); }
+  api('/api/rooms/' + S.code + '/action', { role: 'host', token: S.token, action: 'syncLocalResults', deltas: deltas, bots: bots, lastGame: room.lastGame || null }, function (v) {
     if (v && v.ok) { localStop(); S.view = v; S.sig = ''; render(); }
     else if (L.active) { L.syncTries++; if (L.syncTries <= 5) { L.synced = false; L.syncNextAt = Date.now() + 3000; } }
   });
@@ -3400,6 +3421,7 @@ function tick() {
   watchdog();
   wsWatchdog();
   if (S.role === 'host' && S.code) engLoad();
+  vchkN = (vchkN + 1) % 400; if (vchkN === 0) versionCheck();
   var v = S.view;
   if (!v || !S.role) return;
   var t = serverNow();
@@ -3436,7 +3458,8 @@ function tick() {
       var rttM = medM(S._rttH), gapM = pctOf(gapHistM, 0.9) || medM(gapHistM);
       var hN = 0, hW = 0;
       if (S._hitch) { var cutH = Date.now() - 10000; S._hitch = S._hitch.filter(function (h) { return h.t > cutH; }); hN = S._hitch.length; for (var hi = 0; hi < hN; hi++) if (S._hitch[hi].d > hW) hW = S._hitch[hi].d; }
-      nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (S._lastSrc ? ' · ' + S._lastSrc : '') + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '') + (document.body.classList.contains('lite') ? ' · LITE' : '');
+      if (S.localActive) nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · TẠI CHỖ — không qua mạng' + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '') + (document.body.classList.contains('lite') ? ' · LITE' : '');
+      else nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (S._lastSrc ? ' · ' + S._lastSrc : '') + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '') + (document.body.classList.contains('lite') ? ' · LITE' : '');
       nmEl.style.display = '';
     }
   } else if (nmEl) nmEl.style.display = 'none';

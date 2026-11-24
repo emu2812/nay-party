@@ -25,6 +25,10 @@ const hash = createHash('sha256').update(engineBrowser).digest('hex').slice(0, 1
 if (!main.includes('/*__ENGINE_BUNDLE__*/')) throw new Error('main.mjs is missing the /*__ENGINE_BUNDLE__*/ marker');
 main = main.replace('/*__ENGINE_BUNDLE__*/', 'const ENGINE_JS = ' + JSON.stringify(engineBrowser) + ';');
 page = page.split('__ENGV__').join(hash);
+const pageHash = createHash('sha256').update(page).digest('hex').slice(0, 10);
+if (!main.includes('/*__PAGE_V__*/')) throw new Error('main.mjs is missing the /*__PAGE_V__*/ marker');
+main = main.replace('/*__PAGE_V__*/', 'const PAGE_V = ' + JSON.stringify(pageHash) + ';');
+page = page.split('__PAGEV__').join(pageHash);
 
 const out = engine1 + roomstore + engine2 + main + page;
 writeFileSync('worker.mjs', out);

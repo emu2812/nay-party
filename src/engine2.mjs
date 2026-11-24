@@ -4985,6 +4985,17 @@ function hostAction(room, body) {
     // per-seat score deltas into the room totals and mirror the
     // results phase, so every surface agrees on the standings.
     if (room.game) return 'Đang có ván trên máy chủ.';
+    // Bots the local game added (quickStart fill) join the server
+    // roster first, so their deltas land and a rematch sees the
+    // same headcount the local game played with.
+    if (Array.isArray(body.bots)) {
+      for (const b of body.bots) {
+        const seat = b && b.seat;
+        if (!Number.isInteger(seat) || seat < 2 || seat > MAX_SEATS || playerAt(room, seat)) continue;
+        room.players.push({ seat, type: 'bot', name: 'Máy', difficulty: DIFFS.includes(b.difficulty) ? b.difficulty : 'vua', score: 0 });
+      }
+      room.players.sort((x, y) => x.seat - y.seat);
+    }
     const deltas = body.deltas && typeof body.deltas === 'object' ? body.deltas : {};
     for (const seatKey of Object.keys(deltas)) {
       const seat = parseInt(seatKey, 10);
