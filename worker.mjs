@@ -7457,7 +7457,7 @@ function poll() {
   if (wsOpen() && tPoll - lastPollAt < gateMs) return;
   lastPollAt = tPoll;
   api(stateUrl(), null, function (v) {
-    if (v && v.ok) { S.failN = 0; S.failSince = 0; if (!viewStale(v)) { S.view = v; noteServerTime(v.serverNow); render(); patchPositions(v); hostKbAutoSeat(v); } noteOk(); return; }
+    if (v && v.ok) { S.failN = 0; S.failSince = 0; if (!viewStale(v)) { var gapP = Date.now(); if (S.lastStateAt) { S._gapH = S._gapH || []; S._gapH.push(gapP - S.lastStateAt); if (S._gapH.length > 20) S._gapH.shift(); } S.lastStateAt = gapP; S.view = v; noteServerTime(v.serverNow); render(); patchPositions(v); hostKbAutoSeat(v); } noteOk(); return; }
     if (v && v.net) {
       // No answer at all (offline / DNS / non-JSON reply): the room may
       // well still exist, so keep waiting — but never spin on the
@@ -7596,7 +7596,8 @@ function wsEnsure() {
       // server-offset, watchdog stamp, render. The push-freshness stamp
       // is separate: only a real pushed state proves the socket lives.
       var gapNow = Date.now();
-      if (S.lastWsAt) { S._gapH = S._gapH || []; S._gapH.push(gapNow - S.lastWsAt); if (S._gapH.length > 20) S._gapH.shift(); }
+      if (S.lastStateAt) { S._gapH = S._gapH || []; S._gapH.push(gapNow - S.lastStateAt); if (S._gapH.length > 20) S._gapH.shift(); }
+      S.lastStateAt = gapNow;
       S.lastWsAt = gapNow;
       S.failN = 0; S.failSince = 0; S.view = msg.view; noteServerTime(msg.view.serverNow); noteOk(); render(); patchPositions(msg.view);
     } else if (msg.type === 'pong') {
@@ -7644,6 +7645,7 @@ function serverNow() { return Date.now() + S.serverOffset; }
 // delivered something newer: applying the stale copy regressed
 // the whole view (ring radius pulsing backwards, HUD flicker,
 // anchor statistics poisoned) roughly once a second.
+function medOf(a) { if (!a || !a.length) return null; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; }
 function viewStale(v) {
   return !!(v && S.view && typeof v.serverNow === 'number' && typeof S.view.serverNow === 'number' && v.serverNow < S.view.serverNow);
 }
@@ -8202,7 +8204,7 @@ function hostStage(v) {
       h += '<div class="afield" id="afield"><div class="aring dynring" id="aring" style="transform:translate(-50%,-50%) scale(' + (g.arenaR * 25 / 300) + ')"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
       for (var aI = 0; aI < v.players.length; aI++) { var ap = v.players[aI]; h += '<div class="ablob" id="ablob-' + ap.seat + '" style="left:50%;top:50%;color:' + COLORS[ap.color] + '">' + orbSVG(ap.color, 46) + '<div class="aname">' + esc(ap.name) + '</div><div class="alives" id="alives-' + ap.seat + '"></div></div>'; }
       h += '</div>';
-      h += '<p class="center">Rơi khỏi vòng là mất 1 mạng · Hết mạng là bị loại · Người trụ lại cuối cùng thắng!</p>';
+
     }
   } else if (g.id === 'ne-dan') {
     if (g.phase === 'dodge') {
@@ -8210,7 +8212,7 @@ function hostStage(v) {
       h += '<div class="afield" id="afield"><div class="aring dynring" id="aring" style="transform:translate(-50%,-50%) scale(' + (g.arenaR * 25 / 300) + ')"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
       for (var dI = 0; dI < v.players.length; dI++) { var dp = v.players[dI]; h += '<div class="ablob" id="ablob-' + dp.seat + '" style="left:50%;top:50%;color:' + COLORS[dp.color] + '">' + orbSVG(dp.color, 46) + '<div class="aname">' + esc(dp.name) + '</div><div class="alives" id="alives-' + dp.seat + '"></div></div>'; }
       h += '</div>';
-      h += '<p class="center">Đạn bay càng lúc càng dày · Hết mạng là bị loại · Người sống sót cuối cùng thắng!</p>';
+
     }
   } else if (g.id === 'keo-co') {
     if (g.phase === 'pull') {
@@ -8221,7 +8223,7 @@ function hostStage(v) {
       h += '<div class="scorebar">';
       for (var tI = 0; tI < v.players.length; tI++) { var tp = v.players[tI]; var tm = tp.seat % 2 === 1 ? 'A' : 'B'; h += '<span class="scorechip">' + blobSVG(tp.color, tp.mood, 28) + ' ' + esc(tp.name) + ' · Đội ' + tm + ' · <span id="tugpress-' + tp.seat + '">' + (g.presses ? (g.presses[tp.seat] || 0) : 0) + '</span> lần kéo</span>'; }
       h += '</div>';
-      h += '<p class="center">Kéo nút thắt vàng chạm mép phía đội mình là thắng ngay!</p>';
+
     }
   } else if (g.id === 'chia-cuop') {
     var pa = g.pair ? playerOf(v, g.pair[0]) : null; var pb = g.pair ? playerOf(v, g.pair[1]) : null;
@@ -8233,7 +8235,7 @@ function hostStage(v) {
       h += '<div class="baloo" style="font-size:24px">Đang thương lượng… hai người cứ thuyết phục nhau đi!</div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 60000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
       if (g.chat) for (var cI2 = 0; cI2 < g.chat.length; cI2++) { var cp = playerOf(v, g.chat[cI2].seat); h += '<div class="chatrow">' + blobSVG(cp ? cp.color : 'blue', 'cuoi', 26) + ' <b>' + esc(cp ? cp.name : '') + ':</b> ' + esc(g.chat[cI2].text) + '</div>'; }
-      h += '<p class="center">Hết giờ thương lượng sẽ tới lúc chọn bí mật: CHIA hay CƯỚP…</p>';
+
     } else if (g.phase === 'choose') {
       h += '<div class="baloo" style="font-size:26px">Đang chọn bí mật… không ai biết ai chọn gì!</div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 15000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
@@ -9487,7 +9489,26 @@ function rafLoop(ts) {
     // plus a breath — because their extrapolation is exact: what
     // matters in a dodge game is that a shell is drawn where it IS,
     // not where it was a tenth of a second ago.
-    var rt = nowS;
+    // The render clock trails real time by a delay sized from the
+    // MEASURED push cadence: while pushes arrive at tick rate
+    // (~63 ms) the delay is zero and movers dead-reckon exactly as
+    // before, but when the channel degrades (a measured median gap
+    // of 118 ms on the user's own screen, with a fast 30 ms ping —
+    // the alarm path, not the network) the delay grows to cover
+    // the gap and the segment interpolation below takes over, so
+    // the world glides across late pushes instead of snapping at
+    // each one. The player's own blob is unaffected: it renders
+    // from local prediction at ~now on a separate branch.
+    var gapMed = medOf(S._gapH) || 63;
+    var rDelayT = gapMed <= 75 ? 0 : Math.min(140, Math.max(40, gapMed * 0.9));
+    // The delay itself must glide toward its target (<=2 ms per
+    // frame): the rolling median steps as samples enter and leave,
+    // and a stepping delay makes the render clock wobble, which is
+    // visible as judder all by itself.
+    if (S._rDelayCur === undefined) S._rDelayCur = rDelayT;
+    else if (S._rDelayCur < rDelayT) S._rDelayCur = Math.min(rDelayT, S._rDelayCur + 2);
+    else if (S._rDelayCur > rDelayT) S._rDelayCur = Math.max(rDelayT, S._rDelayCur - 2);
+    var rt = nowS - S._rDelayCur / 1000;
     var gx, gy;
     if (e.atS == null || e.atP == null || e.atS <= e.atP || rt >= e.atS) {
       // Past the newest anchor: extrapolate the velocity. Ballistic
@@ -11325,7 +11346,11 @@ function lkPanelBody(v, seat) {
   }
   if (g.id === 'cheo-thuyen' && g.phase === 'row') return '<div class="lpline">🚣 Phím A = chèo theo nhịp!</div>';
   if (g.id === 'keo-co') return '<div class="lpline">🪢 Nhấn liên tục phím B để KÉO!</div>';
-  if (LK_PAD_GAMES[g.id]) return '<div class="lpline">🎮 Di chuyển + A/B/X/Y bằng bộ phím của bạn</div>';
+  // Pad games need no panel body while playing: the header chip
+  // (name + key set) is the whole panel. The repeated "move with
+  // your key set" sentence was on every panel, in every game, all
+  // the time — pure clutter over the field corners.
+  if (LK_PAD_GAMES[g.id]) return '';
   return '';
 }
 function lkPanelHTML(v, loc, idx) {
