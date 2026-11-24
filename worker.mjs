@@ -7145,14 +7145,10 @@ function tlChipsHTML(cards, sm) {
   for (var i = 0; i < cards.length; i++) h += '<span class="tlcard2' + (sm ? ' sm' : '') + (tlCardRed(cards[i]) ? ' red' : '') + '">' + tlCardLabel(cards[i]) + '</span>';
   return h;
 }
-// Experiment modes for lag bisection on the user's own machine
-// (URL-gated, default off — the normal game is untouched):
-//   ?sm=raw  world movers render by pure dead reckoning from the
-//            newest anchor: no interpolation buffer, no smoothing
-//            spring. Tests whether the smoothing stack is the feel.
-//   ?sm=min  raw + all effects/trails and local panels off.
-//            Tests whether page weight (DOM effects) is the feel.
-var SM_MODE = (function () { try { var q = location.search || ''; if (q.indexOf('sm=min') >= 0) return 'min'; if (q.indexOf('sm=raw') >= 0) return 'raw'; } catch (e) {} return ''; })();
+// Rendering is deliberately PLAIN (user's order after the A/B
+// experiment builds): world movers dead-reckon from the newest
+// anchor — no interpolation buffer, no smoothing spring — and
+// decorative effects stay muted during play (see fxMuted).
 var S = { role: null, code: null, token: null, seat: null, view: null, sig: '', serverOffset: 0,
   audio: null, muted: localStorage.getItem('np_muted') === '1', lastCd: -1, lastTickSec: -1,
   fxReveal: '', fxRound: '', fxConfetti: '', blobN: 0, fxP: null, _nb: null, _koT: 0, _smT: 0,
@@ -7461,7 +7457,7 @@ function poll() {
   if (wsOpen() && tPoll - lastPollAt < gateMs) return;
   lastPollAt = tPoll;
   api(stateUrl(), null, function (v) {
-    if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; noteServerTime(v.serverNow); noteOk(); render(); patchPositions(v); hostKbAutoSeat(v); return; }
+    if (v && v.ok) { S.failN = 0; S.failSince = 0; if (!viewStale(v)) { S.view = v; noteServerTime(v.serverNow); render(); patchPositions(v); hostKbAutoSeat(v); } noteOk(); return; }
     if (v && v.net) {
       // No answer at all (offline / DNS / non-JSON reply): the room may
       // well still exist, so keep waiting — but never spin on the
@@ -7509,7 +7505,7 @@ function poll() {
 function act(body, cb) {
   body.role = S.role; body.token = S.token;
   api('/api/rooms/' + S.code + '/action', body, function (v) {
-    if (v && v.ok) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
+    if (v && v.ok && !viewStale(v)) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
     else if (v && v.error && v.error.indexOf('Không thấy phòng này') >= 0) { clearSession(); toast('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.'); }
     else if (v && v.error && v.error.indexOf('không hợp lệ') >= 0) clearSession();
     else if (v && v.error) toast(v.error);
@@ -7524,7 +7520,7 @@ function act(body, cb) {
 function tlSend(body) {
   body.role = S.role; body.token = S.token;
   api('/api/rooms/' + S.code + '/action', body, function (v) {
-    if (v && v.ok) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
+    if (v && v.ok && !viewStale(v)) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
     else if (v && v.error) toast(v.error);
   });
 }
@@ -7641,6 +7637,16 @@ function serverNow() { return Date.now() + S.serverOffset; }
 // fastest delivery), and jitter stops moving the clock. A sample
 // hours below the current estimate means the clock itself stepped
 // — re-seed then.
+// A state view older than the one already on screen must never
+// replace it. The HTTP poll (every ~900ms in play) and action
+// responses are generated when the request lands and arrive a
+// round trip later, by which time the WebSocket has usually
+// delivered something newer: applying the stale copy regressed
+// the whole view (ring radius pulsing backwards, HUD flicker,
+// anchor statistics poisoned) roughly once a second.
+function viewStale(v) {
+  return !!(v && S.view && typeof v.serverNow === 'number' && typeof S.view.serverNow === 'number' && v.serverNow < S.view.serverNow);
+}
 function noteServerTime(sn) {
   if (!sn) return;
   var now = Date.now();
@@ -8973,7 +8979,16 @@ function countUp(row) {
     if (p >= 1) clearInterval(iv);
   }, 40);
 }
+// Decorative effects are MUTED while a game is playing (user's
+// order: strip every excess effect for smoothness). Spark bursts,
+// ghosts, trails, warning pings, screen shakes and the slow-mo
+// class all create DOM nodes and force style/layout work in the
+// middle of play; the essential feedback that remains is the hit
+// flash on the blob itself and the K.O. banner (plain class/text
+// changes, no new nodes).
+function fxMuted() { return !!(S.view && S.view.phase === 'playing'); }
 function fxSparks(field, x, y, colorHex, n, fam) {
+  if (fxMuted()) return;
   var fp = famPct(fam || 'std', x, y);
   for (var i = 0; i < n; i++) {
     var s = document.createElement('span');
@@ -8994,6 +9009,7 @@ function fxSparks(field, x, y, colorHex, n, fam) {
   }
 }
 function fxGhost(field, pos, colorName) {
+  if (fxMuted()) return;
   var s = document.createElement('span');
   s.className = 'fx-ghost';
   s.style.left = PX(pos.x) + '%';
@@ -9004,6 +9020,7 @@ function fxGhost(field, pos, colorName) {
   setTimeout(function () { s.remove(); }, 540);
 }
 function fxTrail(field, ball) {
+  if (fxMuted()) return;
   var s = document.createElement('span');
   s.className = 'fx-trail';
   s.style.left = PX(ball.x) + '%';
@@ -9012,6 +9029,7 @@ function fxTrail(field, ball) {
   setTimeout(function () { s.remove(); }, 320);
 }
 function fxWarn(field, ball) {
+  if (fxMuted()) return;
   var cx = Math.max(-15, Math.min(15, ball.x)), cy = Math.max(-8.5, Math.min(8.5, ball.y));
   var s = document.createElement('span');
   s.className = 'awarn';
@@ -9028,23 +9046,25 @@ function fxKO(name) {
   S._koT = setTimeout(function () { b.classList.remove('show'); }, 1600);
 }
 function fxShake(field, big) {
+  if (fxMuted()) return;
   var cls = big ? 'shake-big' : 'shake';
-  field.classList.remove('shake'); field.classList.remove('shake-big'); void field.offsetWidth;
-  field.classList.add(cls);
+  field.classList.remove('shake'); field.classList.remove('shake-big');
+  requestAnimationFrame(function () { field.classList.add(cls); });
   setTimeout(function () { field.classList.remove(cls); }, big ? 480 : 330);
 }
 function fxSlowmo(field) {
+  if (fxMuted()) return;
   field.classList.add('slowmo');
   if (S._smT) clearTimeout(S._smT);
   S._smT = setTimeout(function () { field.classList.remove('slowmo'); }, 620);
 }
 function fxFlash(seat) {
   var node = el('ablob-' + seat); if (!node) return;
-  node.classList.remove('hitflash'); void node.offsetWidth; node.classList.add('hitflash');
+  node.classList.remove('hitflash');
+  requestAnimationFrame(function () { node.classList.add('hitflash'); });
   setTimeout(function () { node.classList.remove('hitflash'); }, 240);
 }
 function arenaFX(v, g) {
-  if (SM_MODE === 'min') return; // experiment mode: no effects at all
   var field = el('afield');
   var key = g.id + '|' + g.round + '|' + g.phase;
   if (!S.fxP || S.fxP.key !== key) {
@@ -9159,10 +9179,6 @@ function arenaFX(v, g) {
       if (near) {
         P.nearCd = nowMs + 900;
         sfxWhoosh();
-        if (field) {
-          field.classList.remove('pulse'); void field.offsetWidth; field.classList.add('pulse');
-          setTimeout(function () { field.classList.remove('pulse'); }, 240);
-        }
       }
     }
     P.ballN = g.balls.length;
@@ -9281,7 +9297,12 @@ function moverMode(node) {
 function writePos(e, rect) {
   var parent = e.el.parentElement;
   if (!parent) return;
-  rect = rect || parent.getBoundingClientRect();
+  // The field's size is cached across frames: measuring it forces
+  // a synchronous layout of the whole page, and doing that inside
+  // the frame loop (or at every mover spawn) is a steady tax on
+  // weak machines. The cache is dropped on window resize.
+  rect = rect || (parent.id === 'afield' ? S.fieldRect : null) || parent.getBoundingClientRect();
+  if (parent.id === 'afield' && rect.width) S.fieldRect = rect;
   if (!rect.width) return;
   var p = famPct(e.fam, e.x, e.y);
   var t = 'translate3d(' + (p[0] / 100 * rect.width).toFixed(1) + 'px,' + (p[1] / 100 * rect.height).toFixed(1) + 'px,0)';
@@ -9381,7 +9402,7 @@ function rafLoop(ts) {
   // this makes the page itself cheaper exactly when it matters.
   S._ftAcc = (S._ftAcc || 0) + dt; S._ftN = (S._ftN || 0) + 1;
   if (dt > 25) S._ftSlow = (S._ftSlow || 0) + 1;
-  if (dt > 50) { S._hitch = S._hitch || []; S._hitch.push({ t: Date.now(), d: Math.round(dt) }); if (S._hitch.length > 60) S._hitch.shift(); }
+  if (dt > 25) { S._hitch = S._hitch || []; S._hitch.push({ t: Date.now(), d: Math.round(dt) }); if (S._hitch.length > 60) S._hitch.shift(); }
   if (dt > 120) S._ftBlock = true;
   if (S._ftN >= 50) {
     var avgF = S._ftAcc / S._ftN; var slowN = S._ftSlow || 0; var blocked = !!S._ftBlock; S._ftAcc = 0; S._ftN = 0; S._ftSlow = 0; S._ftBlock = false;
@@ -9466,7 +9487,7 @@ function rafLoop(ts) {
     // plus a breath — because their extrapolation is exact: what
     // matters in a dodge game is that a shell is drawn where it IS,
     // not where it was a tenth of a second ago.
-    var rt = SM_MODE ? nowS : nowS - (e.bal ? Math.min(Math.max((S.transitMs || 40) + 12, 30), 90) : (S.interpMs || INTERP_MS));
+    var rt = nowS;
     var gx, gy;
     if (e.atS == null || e.atP == null || e.atS <= e.atP || rt >= e.atS) {
       // Past the newest anchor: extrapolate the velocity. Ballistic
@@ -9480,16 +9501,7 @@ function rafLoop(ts) {
       gx = e.tx + (e.vx || 0) * dist; gy = e.ty + (e.vy || 0) * dist;
     } else if (rt <= e.atP) { gx = e.px; gy = e.py; }
     else { var f = (rt - e.atP) / (e.atS - e.atP); gx = e.px + (e.tx - e.px) * f; gy = e.py + (e.ty - e.py) * f; }
-    // Chase-smooth the target instead of writing it raw: raw
-    // anchor segments make the rendered velocity step at every
-    // push (baseline measurement: mean |dv| per frame ~= the
-    // whole per-frame travel — motion pulses instead of gliding).
-    // A short time-constant spring low-passes those steps.
-    if (SM_MODE) { e.x = gx; e.y = gy; }
-    else {
-      var cf2 = 1 - Math.exp(-dt / (e.bal ? 22 : 50));
-      e.x += (gx - e.x) * cf2; e.y += (gy - e.y) * cf2;
-    }
+    e.x = gx; e.y = gy;
     writePos(e, rect);
   }
 }
@@ -11102,7 +11114,7 @@ function localAct(seat, body) {
   // phase turned) must never kick the big screen out of its own room.
   body.role = 'host'; body.token = S.token; body.forSeat = seat;
   api('/api/rooms/' + S.code + '/action', body, function (v) {
-    if (v && v.ok) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
+    if (v && v.ok && !viewStale(v)) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
     else if (v && v.error) toast(v.error);
   });
 }
@@ -11325,7 +11337,6 @@ function lkPanelHTML(v, loc, idx) {
   return h + '</div>';
 }
 function renderLocalPanels() {
-  if (SM_MODE === 'min') { var bx0 = el('localpanels'); if (bx0 && bx0.innerHTML) bx0.innerHTML = ''; return; }
   var box = el('localpanels');
   if (!box) { box = document.createElement('div'); box.id = 'localpanels'; document.body.appendChild(box); }
   var v = S.view;
@@ -11348,10 +11359,12 @@ function renderLocalPanels() {
       }
     }
   }
-  if (S.role !== 'host' || !v || v.phase !== 'playing' || !v.game || !v.locals || !v.locals.length) { if (box.innerHTML) box.innerHTML = ''; return; }
+  if (S.role !== 'host' || !v || v.phase !== 'playing' || !v.game || !v.locals || !v.locals.length) { if (S._panelH) { S._panelH = ''; box.innerHTML = ''; } return; }
   var h = '';
   for (var i = 0; i < v.locals.length && i < 4; i++) h += lkPanelHTML(v, v.locals[i], i);
-  if (box.innerHTML !== h) box.innerHTML = h;
+  // Compare against the stored string, not box.innerHTML: reading
+  // innerHTML back serializes the subtree on every 150 ms tick.
+  if (S._panelH !== h) { S._panelH = h; box.innerHTML = h; }
 }
 function lkTranslate(seat, bit) {
   var v = S.view; var g = v.game; if (!g) return;
@@ -11425,6 +11438,7 @@ window.addEventListener('blur', function () {
   wsEnsure();
   render();
   if (RAF_OK) requestAnimationFrame(rafLoop);
+  window.addEventListener('resize', function () { S.fieldRect = null; });
   setInterval(poll, 800);
   setInterval(tick, 150);
   setInterval(function () {
