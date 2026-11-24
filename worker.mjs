@@ -7632,11 +7632,9 @@ function noteServerTime(sn) {
   var sample = sn - now;
   if (S.serverOffset == null || sample > S.serverOffset || S.serverOffset - sample > 3600000) S.serverOffset = sample;
   // Rolling delivery stats for the interpolation buffer: how far
-  // apart anchors are generated and how long they take to arrive.
-  // The buffer must cover interval + transit, or the render time
-  // falls outside the anchor pair and motion freezes/snaps (the
-  // first fixed-100ms version measured worse than the old code on a
-  // 126ms-cadence poll path for exactly this reason).
+  // apart anchors are generated, how long they take to arrive, and
+  // how much that arrival time spreads (jitter). The buffer below
+  // sizes itself from all three.
   var tr = Math.max(0, (now + (S.serverOffset || 0)) - sn);
   if (S._lastSn && sn > S._lastSn) {
     S._ivH = S._ivH || []; S._ivH.push(sn - S._lastSn); if (S._ivH.length > 24) S._ivH.shift();
@@ -7647,7 +7645,18 @@ function noteServerTime(sn) {
   }
   if (S._ivH && S._ivH.length >= 4 && S._trH && S._trH.length >= 4) {
     var med = function (a) { var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; };
-    S.interpMs = Math.min(520, Math.max(100, med(S._ivH) + med(S._trH)));
+    // Render delay for non-predicted movers. This used to be a full
+    // anchor interval + transit (>=100 ms by construction): the
+    // player's own blob is predicted at ~now while shells and other
+    // players rendered 100+ ms in the past — two different time
+    // frames on one field, so in Né Đạn a shell visually 1 unit
+    // away was already hitting you. Ballistic movers extrapolate
+    // exactly, so the buffer only needs to cover transit plus a
+    // third of an interval of jitter slack.
+    S.transitMs = med(S._trH);
+    var trH = S._trH.slice().sort(function (a, b) { return a - b; });
+    var spread = trH.length ? trH[Math.floor(trH.length * 0.9)] - med(S._trH) : 0;
+    S.interpMs = Math.min(260, Math.max(35, med(S._trH) + med(S._ivH) * 0.35 + Math.min(Math.max(spread, 0), 120)));
   }
 }
 
@@ -9306,7 +9315,8 @@ function moveEl(node, x, y, fam, vx, vy) {
   if (!e || e.el !== node) {
     node.style.left = '0px'; node.style.top = '0px';
     var at0 = (S._anchorT || serverNow());
-    e = S.raf[node.id] = { el: node, fam: fam, mode: moverMode(node), x: x, y: y, px: x, py: y, atP: at0, tx: x, ty: y, vx: vx || 0, vy: vy || 0, atS: at0, lastSpdX: vx ? Math.abs(vx) : null, lastSpdY: vy ? Math.abs(vy) : null };
+    var cls0 = ' ' + (node.className || '') + ' ';
+    e = S.raf[node.id] = { el: node, fam: fam, mode: moverMode(node), bal: (cls0.indexOf(' ashell ') >= 0 || cls0.indexOf(' aball ') >= 0), x: x, y: y, px: x, py: y, atP: at0, tx: x, ty: y, vx: vx || 0, vy: vy || 0, atS: at0, lastSpdX: vx ? Math.abs(vx) : null, lastSpdY: vy ? Math.abs(vy) : null };
     writePos(e);
     return;
   }
@@ -9422,15 +9432,21 @@ function rafLoop(ts) {
     // the rendered path. If render time runs past the newest anchor
     // (a push is late), extrapolate its velocity for at most 80 ms,
     // then hold until the next anchor arrives.
-    var rt = nowS - (S.interpMs || INTERP_MS);
+    // Ballistic movers (shells) get a much shorter delay — transit
+    // plus a breath — because their extrapolation is exact: what
+    // matters in a dodge game is that a shell is drawn where it IS,
+    // not where it was a tenth of a second ago.
+    var rt = nowS - (e.bal ? Math.min(Math.max((S.transitMs || 40) + 12, 30), 90) : (S.interpMs || INTERP_MS));
     var gx, gy;
     if (e.atS == null || e.atP == null || e.atS <= e.atP || rt >= e.atS) {
-      // Past the newest anchor: extrapolate with a decaying
-      // velocity (gone by +250 ms) instead of running at full speed
-      // into a dead stop — a late push then resumes from a closer
-      // position and the catch-up snap shrinks.
-      var extra = e.atS == null ? 0 : Math.min(Math.max(rt - e.atS, 0), 250);
-      var dist = (extra / TICK_MS_CLIENT) * (1 - extra / 500);
+      // Past the newest anchor: extrapolate the velocity. Ballistic
+      // movers (shells) fly straight at constant speed, so the
+      // first 120 ms extrapolate at full speed exactly; the decay
+      // only fades in after that, so a late push still resumes from
+      // a closer position and the catch-up snap shrinks.
+      var extra = e.atS == null ? 0 : Math.min(Math.max(rt - e.atS, 0), 280);
+      var decay = extra <= 120 ? 1 : 1 - (extra - 120) / 500;
+      var dist = (extra / TICK_MS_CLIENT) * decay;
       gx = e.tx + (e.vx || 0) * dist; gy = e.ty + (e.vy || 0) * dist;
     } else if (rt <= e.atP) { gx = e.px; gy = e.py; }
     else { var f = (rt - e.atP) / (e.atS - e.atP); gx = e.px + (e.tx - e.px) * f; gy = e.py + (e.ty - e.py) * f; }
