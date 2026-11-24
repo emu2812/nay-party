@@ -7487,7 +7487,7 @@ function poll() {
   if (wsOpen() && tPoll - lastPollAt < gateMs) return;
   lastPollAt = tPoll;
   api(stateUrl(), null, function (v) {
-    if (v && v.ok) { S.failN = 0; S.failSince = 0; if (!viewStale(v)) { var gapP = Date.now(); if (S.lastStateAt) { S._gapH = S._gapH || []; S._gapH.push(gapP - S.lastStateAt); if (S._gapH.length > 20) S._gapH.shift(); } S.lastStateAt = gapP; S.view = v; noteServerTime(v.serverNow); render(); patchPositions(v); hostKbAutoSeat(v); } noteOk(); return; }
+    if (v && v.ok) { S.failN = 0; S.failSince = 0; if (!viewStale(v)) { var gapP = Date.now(); if (S.lastStateAt) { S._gapH = S._gapH || []; S._gapH.push(gapP - S.lastStateAt); if (S._gapH.length > 20) S._gapH.shift(); } S.lastStateAt = gapP; S._lastSrc = 'http'; S.view = v; noteServerTime(v.serverNow); render(); patchPositions(v); hostKbAutoSeat(v); } noteOk(); return; }
     if (v && v.net) {
       // No answer at all (offline / DNS / non-JSON reply): the room may
       // well still exist, so keep waiting — but never spin on the
@@ -7627,6 +7627,12 @@ function wsEnsure() {
       // is separate: only a real pushed state proves the socket lives.
       var gapNow = Date.now();
       if (S.lastStateAt) { S._gapH = S._gapH || []; S._gapH.push(gapNow - S.lastStateAt); if (S._gapH.length > 20) S._gapH.shift(); }
+      // WS-only gap history: the poll fallback (120 ms in play) also
+      // feeds _gapH, so the mixed history cannot tell whether the
+      // socket itself delivers at tick rate. The render buffer and
+      // the meter read the socket's own cadence when it has samples.
+      if (S.lastWsAt) { S._gapWs = S._gapWs || []; S._gapWs.push(gapNow - S.lastWsAt); if (S._gapWs.length > 20) S._gapWs.shift(); }
+      S._lastSrc = 'ws';
       S.lastStateAt = gapNow;
       S.lastWsAt = gapNow;
       S.failN = 0; S.failSince = 0; S.view = msg.view; noteServerTime(msg.view.serverNow); noteOk(); render(); patchPositions(msg.view);
@@ -9566,8 +9572,9 @@ function rafLoop(ts) {
     // and snapped all match long. The 90th-percentile gap is the
     // honest size of the hole the buffer must cover. On a truly
     // clean channel (p90 <= 85 ms) the delay stays zero.
-    var gapP90 = pctOf(S._gapH, 0.9) || medOf(S._gapH) || 63;
-    var rDelayT = gapP90 <= 85 ? 0 : Math.min(200, Math.max(40, (gapP90 - 25) * 0.8));
+    var gapHist = (S._gapWs && S._gapWs.length >= 6) ? S._gapWs : S._gapH;
+    var gapP90 = pctOf(gapHist, 0.9) || medOf(gapHist) || 63;
+    var rDelayT = gapP90 <= 85 ? 0 : Math.min(240, Math.max(40, (gapP90 - 15) * 0.9));
     // The delay itself must glide toward its target (<=2 ms per
     // frame): the rolling median steps as samples enter and leave,
     // and a stepping delay makes the render clock wobble, which is
@@ -9905,10 +9912,11 @@ function tick() {
       S._nmAt = Date.now();
       var medM = function (a) { if (!a || !a.length) return null; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; };
       var fpsM = S._fpsAvg ? Math.round(1000 / S._fpsAvg) : null;
-      var rttM = medM(S._rttH), gapM = pctOf(S._gapH, 0.9) || medM(S._gapH);
+      var gapHistM = (S._gapWs && S._gapWs.length >= 6) ? S._gapWs : S._gapH;
+      var rttM = medM(S._rttH), gapM = pctOf(gapHistM, 0.9) || medM(gapHistM);
       var hN = 0, hW = 0;
       if (S._hitch) { var cutH = Date.now() - 10000; S._hitch = S._hitch.filter(function (h) { return h.t > cutH; }); hN = S._hitch.length; for (var hi = 0; hi < hN; hi++) if (S._hitch[hi].d > hW) hW = S._hitch[hi].d; }
-      nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '') + (document.body.classList.contains('lite') ? ' · LITE' : '');
+      nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (S._lastSrc ? ' · ' + S._lastSrc : '') + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '') + (document.body.classList.contains('lite') ? ' · LITE' : '');
       nmEl.style.display = '';
     }
   } else if (nmEl) nmEl.style.display = 'none';
