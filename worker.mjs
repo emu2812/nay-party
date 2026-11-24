@@ -747,6 +747,7 @@ export class RoomStore {
     this.lastSent = new Map();
   }
   async fetch(request) {
+    this._lastDrive = Date.now();
     const path = new URL(request.url).pathname;
     if (path === '/get' && request.method === 'GET') {
       const entry = await this.state.storage.get('room');
@@ -852,7 +853,19 @@ export class RoomStore {
         // not off whenever this handler happens to finish. Handler work
         // plus platform delivery latency used to inflate every cycle
         // from 62.5 ms to ~100 ms, and state pushes inherited the gap.
-        let target = (base || Date.now()) + TICK_MS;
+        // DRIVEN MODE: while any client is actively driving the loop
+        // (the host page's tick pump, pad messages, polls — every
+        // contact stamps _lastDrive), the alarm demotes itself to a
+        // 1 s backstop. Alarm invocations are the free plan's scarcest
+        // resource (each bills as a full request — a tick-rate alarm
+        // is ~57,600 billed requests per room-hour against a 100,000
+        // per DAY free budget, plus a billed row-write per setAlarm),
+        // while incoming WebSocket messages bill at 20:1, so the pump
+        // is ~50x cheaper per drive. If no client has driven for
+        // 250 ms (old page build, frozen host tab), the alarm resumes
+        // the full tick metronome — the game never depends on the pump.
+        const driven = this._lastDrive && (Date.now() - this._lastDrive) < 250;
+        let target = (base || Date.now()) + (driven ? 1000 : TICK_MS);
         const nowMs = Date.now();
         if (target <= nowMs) target = nowMs + 5;
         this._alarmFor = target;
@@ -922,13 +935,14 @@ export class RoomStore {
         player = room.players.find((p) => p.type === 'human' && !p.local && !p.hostSeat && p.seat === att.seat && p.token === att.token) || null;
         if (!player) { this._bye(ws); return; }
       }
+      this._lastDrive = Date.now();
       // Tick-pump rate gate: the host page drives the loop with
-      // 'tick' messages every ~50 ms while playing; anything faster
-      // than 30 ms spacing is redundant (the sim is time-based, so
+      // 'tick' messages every ~30 ms while playing; anything faster
+      // than 20 ms spacing is redundant (the sim is time-based, so
       // extra advances add nothing) and is dropped before any work.
       if (body.action === 'tick') {
         const nowT = Date.now();
-        if (this._lastPumpAt && nowT - this._lastPumpAt < 30) return;
+        if (this._lastPumpAt && nowT - this._lastPumpAt < 20) return;
         this._lastPumpAt = nowT;
       }
       // The HTTP action pipeline, verbatim: advance, dispatch, advance,
@@ -11569,14 +11583,14 @@ window.addEventListener('blur', function () {
     if (S.role !== 'host' || !S.view || S.view.phase !== 'playing' || !S.view.game) return;
     if (!wsOpen() || wsStale()) return;
     var nowP = Date.now();
-    if (S._pumpAt && nowP - S._pumpAt < 50) return;
-    if (S.lastStateAt && nowP - S.lastStateAt < 35) return;
+    if (S._pumpAt && nowP - S._pumpAt < 30) return;
+    if (S.lastStateAt && nowP - S.lastStateAt < 25) return;
     S._pumpAt = nowP;
     try { wsConn.send(JSON.stringify({ action: 'tick' })); } catch (e) {}
-  }, 50);
+  }, 30);
   setInterval(function () {
     var v = S.view;
-    if (v && v.game && ((v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend') || (v.game.id === 'nguoi-que' && v.game.phase === 'fight') || (v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple') || (v.game.id === 'da-bong' && (v.game.phase === 'soccer' || v.game.phase === 'goal')) || (v.game.id === 'ech-op' && (v.game.phase === 'frog' || v.game.phase === 'frogClear')) || (v.game.id === 'can-goc' && (v.game.phase === 'shell' || v.game.phase === 'boom')))) poll();
+    if (v && v.game && ((v.game.id === 'cao-boi' && (v.game.phase === 'wait' || v.game.phase === 'go')) || (v.game.id === 'day-ra' && v.game.phase === 'arena') || (v.game.id === 'ne-dan' && v.game.phase === 'dodge') || (v.game.id === 'keo-co' && v.game.phase === 'pull') || (v.game.id === 'cuop-sao' && v.game.phase === 'steal') || (v.game.id === 'giu-vuong-mien' && v.game.phase === 'crown') || (v.game.id === 'son-san' && v.game.phase === 'splat') || (v.game.id === 'chung-mot-than' && v.game.phase === 'shared') || (v.game.id === 'day-hop' && v.game.phase === 'box') || (v.game.id === 'cheo-thuyen' && v.game.phase === 'row') || (v.game.id === 'xe-tank' && v.game.phase === 'tank') || (v.game.id === 'dat-bom' && v.game.phase === 'bomber') || (v.game.id === 'thu-thanh' && v.game.phase === 'defend') || (v.game.id === 'nguoi-que' && v.game.phase === 'fight') || (v.game.id === 'den-lua-nuoc' && v.game.phase === 'temple') || (v.game.id === 'da-bong' && (v.game.phase === 'soccer' || v.game.phase === 'goal')) || (v.game.id === 'ech-op' && (v.game.phase === 'frog' || v.game.phase === 'frogClear')) || (v.game.id === 'can-goc' && (v.game.phase === 'shell' || v.game.phase === 'boom')))) { if (!wsOpen() || wsStale()) poll(); }
   }, 120);
 })();
 </script>
