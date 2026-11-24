@@ -953,13 +953,21 @@ function versionCheck() {
   // Between games only: if the server has a newer build than this
   // open tab, reload once — a stale tab must never keep playing an
   // old version (it would miss fixes like LOCAL PLAY entirely).
-  if (!S.code || S.localActive) return;
+  // Never yank a game in progress (local or server); every other
+  // phase — lobby, choosing, results — is fair game, and localStop
+  // calls this directly so back-to-back local games cannot carry
+  // an old build through a whole session.
+  if (!S.code) return;
   if (S.view && S.view.phase === 'playing') return;
   fetch('/api/version').then(function (r) { return r.json(); }).then(function (j) {
     if (!j || !j.build || j.build === PAGE_V) return;
     var last = +(sessionStorage.getItem('np_vreload') || 0);
-    if (Date.now() - last < 300000) return;
-    try { sessionStorage.setItem('np_vreload', '' + Date.now()); } catch (e) {}
+    var lastFor = '';
+    try { lastFor = sessionStorage.getItem('np_vreload_for') || ''; } catch (e) {}
+    // Anti-loop guard applies only to the SAME target build: a
+    // second deploy within 5 minutes must still reach the tab.
+    if (Date.now() - last < 300000 && lastFor === j.build) return;
+    try { sessionStorage.setItem('np_vreload', '' + Date.now()); sessionStorage.setItem('np_vreload_for', j.build); } catch (e) {}
     location.reload();
   }).catch(function () {});
 }
@@ -1063,6 +1071,9 @@ function localSyncResults() {
 function localStop() {
   if (L.timer) { clearInterval(L.timer); L.timer = null; }
   L.active = false; S.localActive = false; L.room = null;
+  // A local game just ended: this is the exact moment a stale tab
+  // must catch a newer build, before the next game starts.
+  versionCheck();
 }
 function localAbort() {
   // Any engine fault drops back to the server path for the next
@@ -2179,7 +2190,7 @@ function hostStage(v) {
     var turnP3 = g.turn ? playerOf(v, g.turn) : null;
     var windTxt = !g.wind ? 'không gió' : (g.wind > 0 ? '→ ' + g.wind : '← ' + (-g.wind));
     h += '<div class="scorebar"><span class="scorechip">Lượt: <b>' + (turnP3 ? esc(turnP3.name) : '—') + '</b></span><span class="scorechip">🌬️ Gió: <b>' + windTxt + '</b></span>';
-    if (g.phase === 'aim' && turnP3 && g.cannons && g.cannons[g.turn]) h += '<span class="scorechip">Góc ' + g.cannons[g.turn].angle + '° · Lực ' + g.cannons[g.turn].power + '</span>';
+    if (g.phase === 'aim' && turnP3 && g.cannons && g.cannons[g.turn]) h += '<span class="scorechip" id="aiminfo">Góc ' + g.cannons[g.turn].angle + '° · Lực ' + g.cannons[g.turn].power + '</span>';
     h += '</div>';
     if (g.phase === 'aim') h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     h += '<div class="afield art" id="afield"><div class="artwrap"><svg viewBox="0 0 320 180" preserveAspectRatio="none">';
@@ -2204,7 +2215,7 @@ function hostStage(v) {
       var rad9 = cn.angle * Math.PI / 180;
       var bx9 = Math.round(cx9 + cn.face * Math.cos(rad9) * 15), by9 = Math.round((cy9 - 4) - Math.sin(rad9) * 15);
       if (g.turn === np9.seat && g.phase !== 'boom') h += '<circle cx="' + cx9 + '" cy="' + (cy9 - 4) + '" r="12" fill="none" stroke="#FFE066" stroke-width="2" stroke-dasharray="4 3"/>';
-      h += '<line x1="' + cx9 + '" y1="' + (cy9 - 4) + '" x2="' + bx9 + '" y2="' + by9 + '" stroke="#2B3442" stroke-width="4.4" stroke-linecap="round"/>';
+      h += '<line id="barrel-' + np9.seat + '" x1="' + cx9 + '" y1="' + (cy9 - 4) + '" x2="' + bx9 + '" y2="' + by9 + '" stroke="#2B3442" stroke-width="4.4" stroke-linecap="round"/>';
       h += '<circle cx="' + cx9 + '" cy="' + (cy9 - 4) + '" r="7" fill="' + colr + '" stroke="rgba(0,0,0,.4)" stroke-width="1.6"/>';
       h += '<rect x="' + (cx9 - 10) + '" y="' + (cy9 - 20) + '" width="20" height="3.6" fill="rgba(0,0,0,.45)"/><rect x="' + (cx9 - 10) + '" y="' + (cy9 - 20) + '" width="' + Math.round(20 * Math.max(0, cn.hp) / 100) + '" height="3.6" fill="' + (cn.hp > 40 ? '#58C472' : '#FF5A3C') + '"/>';
       h += '<text x="' + cx9 + '" y="' + (cy9 + 13) + '" font-size="8.5" font-weight="700" fill="#fff" text-anchor="middle" style="text-shadow:0 1px 2px #000">' + esc(np9.name) + '</text>';
@@ -2396,7 +2407,12 @@ function viewSig(v) {
         : [g.id, g.phase, g.chamber, g.hearts, g.fliesEaten, g.lastRound];
     } else if (g.id === 'can-goc') {
       var ck = '';
-      if (g.cannons) for (var cs in g.cannons) { var cc9 = g.cannons[cs]; ck += cs + ':' + cc9.hp + (cc9.alive ? 1 : 0) + ':' + cc9.angle + ':' + cc9.power + ':' + cc9.face + ';'; }
+      if (g.cannons) for (var cs in g.cannons) { var cc9 = g.cannons[cs]; ck += cs + ':' + cc9.hp + (cc9.alive ? 1 : 0) + ':' + cc9.face + ';'; }
+      // angle/power are NOT in the signature: they change on every
+      // tick while aiming, and each signature change rebuilds the
+      // whole SVG stage (160-segment terrain) — the aim collapse
+      // found by the weak-profile sweep. patchPositions updates
+      // the barrel lines and the aim chip directly instead.
       gp = pl ? [g.id, g.phase, g.turn, g.wind, g.myTurn, g.myCannon, ck, g.boom, g.lastRound]
         : [g.id, g.phase, g.turn, g.wind, ck, g.shell ? 's' : '', g.boom, g.lastRound];
     } else {
@@ -3348,6 +3364,19 @@ function patchPositions(v) {
     if (shp && g.shell) moveEl(shp, g.shell.x, g.shell.y, 'std', g.shell.vx, g.shell.vy);
     var aa9 = el('aimangle'); if (aa9 && g.myCannon) aa9.textContent = g.myCannon.angle;
     var ap9 = el('aimpower'); if (ap9 && g.myCannon) ap9.textContent = g.myCannon.power;
+    // Aim visuals patch in place (see the signature note): the
+    // angle/power chip and every cannon's barrel follow the live
+    // values without a stage rebuild.
+    var ai9 = el('aiminfo');
+    if (ai9 && g.cannons && g.turn && g.cannons[g.turn]) { var ait = 'Góc ' + g.cannons[g.turn].angle + '° · Lực ' + g.cannons[g.turn].power; if (ai9._t !== ait) { ai9._t = ait; ai9.textContent = ait; } }
+    if (g.cannons) for (var cs2 in g.cannons) {
+      var cn9 = g.cannons[cs2]; if (!cn9 || !cn9.alive) continue;
+      var bl9 = el('barrel-' + cs2); if (!bl9) continue;
+      var rd9 = cn9.angle * Math.PI / 180;
+      var bx9b = Math.round((cn9.x + 16) * 10 + cn9.face * Math.cos(rd9) * 15);
+      var by9b = Math.round((cn9.y + 9) * 10 - 4 - Math.sin(rd9) * 15);
+      if (bl9._bx !== bx9b || bl9._by !== by9b) { bl9._bx = bx9b; bl9._by = by9b; bl9.setAttribute('x2', bx9b); bl9.setAttribute('y2', by9b); }
+    }
     arenaFX(v, g);
   }
   if ((g.id === 'cuop-sao' || g.id === 'giu-vuong-mien' || g.id === 'son-san') && g.blobs) {
@@ -3410,17 +3439,25 @@ function patchPositions(v) {
   }
   if (g.id === 'cheo-thuyen' && g.phase === 'row') {
     var pctR = Math.max(0, Math.min(100, (g.distance || 0) / (g.course || 400) * 100));
-    var rp4 = el('rowprog'); if (rp4) rp4.style.width = pctR + '%';
-    var rd = el('rowdist'); if (rd) rd.textContent = Math.round(g.distance || 0);
-    var bt = el('aboat'); if (bt) bt.style.left = (4 + pctR * 0.9) + '%';
-    var rb2 = el('rowbeat'); if (rb2) rb2.textContent = g.beat || 1;
-    for (var rhSeat in g.hits || {}) { var rh = el('rowhit-' + rhSeat); if (rh) rh.textContent = g.hits[rhSeat]; }
+    // Every write below is value-guarded: this block runs on every
+    // patch (30x/s locally), and unguarded style.left/width writes
+    // force a layout pass each time — on software rendering that
+    // alone capped this game near 30 fps (weak-profile sweep).
+    var rp4 = el('rowprog'); if (rp4 && rp4._w !== pctR) { rp4._w = pctR; rp4.style.width = pctR + '%'; }
+    var rd = el('rowdist'); var rdt = Math.round(g.distance || 0); if (rd && rd._t !== rdt) { rd._t = rdt; rd.textContent = rdt; }
+    var bt = el('aboat'); var bl5 = 4 + pctR * 0.9; if (bt && bt._l !== bl5) { bt._l = bl5; bt.style.left = bl5 + '%'; }
+    var rb2 = el('rowbeat'); var rbt = g.beat || 1; if (rb2 && rb2._t !== rbt) { rb2._t = rbt; rb2.textContent = rbt; }
+    for (var rhSeat in g.hits || {}) { var rh = el('rowhit-' + rhSeat); if (rh && rh._t !== g.hits[rhSeat]) { rh._t = g.hits[rhSeat]; rh.textContent = g.hits[rhSeat]; } }
     var ring2 = el('beating');
     if (ring2 && g.nextBeatAt) {
       var toBeat = g.nextBeatAt - t;
       var pr = Math.max(0, Math.min(1, 1 - toBeat / 1000));
-      ring2.style.opacity = (0.2 + 0.8 * pr).toFixed(2);
-      ring2.style.transform = 'scale(' + (0.65 + 0.45 * pr).toFixed(2) + ')';
+      var prB = Math.round(pr * 20) / 20;
+      if (ring2._p !== prB) {
+        ring2._p = prB;
+        ring2.style.opacity = (0.2 + 0.8 * prB).toFixed(2);
+        ring2.style.transform = 'scale(' + (0.65 + 0.45 * prB).toFixed(2) + ')';
+      }
     }
     var rbtn = el('rowbtn');
     if (rbtn && g.nextBeatAt && g.rowStart != null) {
@@ -3439,7 +3476,7 @@ function tick() {
   watchdog();
   wsWatchdog();
   if (S.role === 'host' && S.code) engLoad();
-  vchkN = (vchkN + 1) % 400; if (vchkN === 0) versionCheck();
+  vchkN = (vchkN + 1) % 200; if (vchkN === 0) versionCheck();
   var v = S.view;
   if (!v || !S.role) return;
   var t = serverNow();
