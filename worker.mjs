@@ -902,7 +902,12 @@ export class RoomStore {
       let body = null;
       try { body = JSON.parse(message); } catch (e) { return; }
       if (!body || typeof body !== 'object' || Array.isArray(body)) return;
-      if (body.action === 'ping') return; // tolerated no-op; protocol pings are the runtime's job
+      if (body.action === 'ping') {
+        // App-level RTT probe for the on-screen meter: answer on
+        // this socket immediately, without touching room state.
+        try { ws.send(JSON.stringify({ type: 'pong', t: body.t || 0 })); } catch (e) {}
+        return;
+      }
       let att = {};
       try { att = ws.deserializeAttachment() || {}; } catch (e) { /* treated as bad identity below */ }
       const loaded = await this._loadRoom();
@@ -7078,6 +7083,8 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
    recover. A plain smooth game beats a pretty slideshow. */
 body.lite .ablob svg, body.lite .afrog svg, body.lite .ablob.holder svg, body.lite .abomb, body.lite .acrystal, body.lite .astar, body.lite .aboat, body.lite .crownglow { filter: none !important; }
 body.lite #afield, body.lite .card, body.lite .gamecard { box-shadow: none !important; }
+/* Live device meter (fps / ping / push cadence) shown while playing. */
+#netmeter { position: fixed; left: 10px; bottom: 10px; z-index: 9998; background: rgba(10,10,20,.72); color: #B7F0C0; font: 700 12px/1.5 system-ui, sans-serif; padding: 3px 9px; border-radius: 999px; cursor: pointer; user-select: none; }
 /* Local keyboard players: per-seat overlay panels on the host screen.
    The container is created by JS and appended to <body> (never inside
    #app, whose innerHTML render() rebuilds); panels are display-only —
@@ -7577,8 +7584,12 @@ function wsEnsure() {
       // Applied EXACTLY like a successful poll: fresh view, fresh
       // server-offset, watchdog stamp, render. The push-freshness stamp
       // is separate: only a real pushed state proves the socket lives.
-      S.lastWsAt = Date.now();
+      var gapNow = Date.now();
+      if (S.lastWsAt) { S._gapH = S._gapH || []; S._gapH.push(gapNow - S.lastWsAt); if (S._gapH.length > 20) S._gapH.shift(); }
+      S.lastWsAt = gapNow;
       S.failN = 0; S.failSince = 0; S.view = msg.view; noteServerTime(msg.view.serverNow); noteOk(); render(); patchPositions(msg.view);
+    } else if (msg.type === 'pong') {
+      if (msg.t) { S._rttH = S._rttH || []; S._rttH.push(Date.now() - msg.t); if (S._rttH.length > 10) S._rttH.shift(); }
     } else if (msg.type === 'error' && msg.error) {
       toast(msg.error);
     } else if (msg.type === 'bye') {
@@ -9320,8 +9331,13 @@ function moveEl(node, x, y, fam, vx, vy) {
     var ageT = Math.min(Math.max((serverNow() - e.atS) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
     var projX = e.tx + e.vx * ageT, projY = e.ty + e.vy * ageT;
     var ddx = projX - e.x, ddy = projY - e.y;
+    // Trust the prediction more when the anchor is old: a stale
+    // projection describes where the character WAS, and dragging
+    // the render back toward it on every push is what rubber-bands
+    // turns on a slow connection.
+    var blend = ageT * TICK_MS_CLIENT > 200 ? 0.08 : ageT * TICK_MS_CLIENT > 100 ? 0.14 : 0.22;
     if (Math.abs(ddx) > 2.5 || Math.abs(ddy) > 2.5) { e.x = projX; e.y = projY; }
-    else { e.x += ddx * 0.22; e.y += ddy * 0.22; }
+    else { e.x += ddx * blend; e.y += ddy * blend; }
   } else if (Math.abs(e.tx - e.px) > 3 || Math.abs(e.ty - e.py) > 3) {
     // Teleport (spawn / respawn): restart the interpolation history
     // here instead of gliding across the arena.
@@ -9341,6 +9357,7 @@ function rafLoop(ts) {
   S._ftAcc = (S._ftAcc || 0) + dt; S._ftN = (S._ftN || 0) + 1;
   if (S._ftN >= 50) {
     var avgF = S._ftAcc / S._ftN; S._ftAcc = 0; S._ftN = 0;
+    S._fpsAvg = avgF;
     var bd = document.body;
     if (bd) {
       if (avgF > 23 && !bd.classList.contains('lite')) bd.classList.add('lite');
@@ -9701,6 +9718,29 @@ function tick() {
   if (g && v.phase === 'playing' && S.lastWsAt && Date.now() - S.lastWsAt > 250 && wsOpen() && !wsStale()) {
     try { wsConn.send(JSON.stringify({ action: 'tick' })); } catch (e) {}
   }
+  // On-screen meter while playing: real numbers from THIS device —
+  // frame rate, socket round trip, push cadence — so a lag report
+  // carries data instead of impressions. Click to hide.
+  var nmEl = el('netmeter');
+  if (v.phase === 'playing' && !S.meterOff) {
+    if (!nmEl) {
+      nmEl = document.createElement('div'); nmEl.id = 'netmeter'; nmEl.title = 'Số đo trên máy này — bấm để ẩn';
+      nmEl.addEventListener('click', function () { S.meterOff = true; nmEl.style.display = 'none'; });
+      document.body.appendChild(nmEl);
+    }
+    if (!S._pingAt || Date.now() - S._pingAt > 2000) {
+      S._pingAt = Date.now();
+      if (wsOpen()) { try { wsConn.send(JSON.stringify({ action: 'ping', t: Date.now() })); } catch (e) {} }
+    }
+    if (!S._nmAt || Date.now() - S._nmAt > 500) {
+      S._nmAt = Date.now();
+      var medM = function (a) { if (!a || !a.length) return null; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; };
+      var fpsM = S._fpsAvg ? Math.round(1000 / S._fpsAvg) : null;
+      var rttM = medM(S._rttH), gapM = medM(S._gapH);
+      nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—');
+      nmEl.style.display = '';
+    }
+  } else if (nmEl) nmEl.style.display = 'none';
   var cd = el('cdnum');
   if (g && g.phase === 'countdown' && cd) {
     var sec = Math.max(1, Math.ceil((g.endsAt - t) / 1000));
