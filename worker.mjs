@@ -7094,6 +7094,12 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 #app.perf .blobbob, #app.perf .tpool, #app.perf .tpool::after, #app.perf .tgem i,
 #app.perf .ffly, #app.perf .pip.now, #app.perf .aring.danger, #app.perf .astar,
 #app.perf .acrown, #app.perf .agoal, #app.perf .crownglow { animation-play-state: paused; }
+/* Spawned movers carry .pop (one-shot spawnPop from scale .2): the
+   pause above must never freeze THAT animation, or a spawned star
+   stays a ~7px dot for the whole match — exactly what happened in
+   Cuop Sao, where a human player saw no stars while bots farmed
+   them. One-shot pops always run. */
+#app.perf .pop { animation-play-state: running; }
 #app.perf .abomb, #app.perf .awarn { animation-play-state: running; }
 /* PERF MODE also sheds the per-frame paint cost: a drop-shadow filter
    on a MOVING element re-rasterizes its blur every frame, and the
