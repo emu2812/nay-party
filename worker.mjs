@@ -1141,6 +1141,21 @@ const IMP_CHAT_LINES = [
 // seat that left between rounds must not resurrect), and clear padPrev
 // so a held button reads as a fresh rising edge on the round's first
 // tick (a held A fires at once, a held B dashes at once).
+// Held-pad bitmask for the view: lets every screen predict a
+// REMOTE human's blob from their last known input (the same trick
+// local seats already use), instead of rendering it a full round
+// trip behind the server. Bits: up1 down2 left4 right8 a16 b32
+// x64 y128. Only human seats get one — bots have no pad.
+function padMask(pad) {
+  if (!pad) return 0;
+  // Server pads are stored with short keys (u/d/l/r) by the pad
+  // action handler; the client decodes the mask back into its own
+  // long-key pad shape in predPadFor.
+  let m = 0;
+  if (pad.u) m |= 1; if (pad.d) m |= 2; if (pad.l) m |= 4; if (pad.r) m |= 8;
+  if (pad.a) m |= 16; if (pad.b) m |= 32; if (pad.x) m |= 64; if (pad.y) m |= 128;
+  return m;
+}
 function preservePads(room) {
   const g = room.game;
   const kept = {};
@@ -5436,14 +5451,14 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
+      if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
   } else if (g.id === 'ne-dan') {
     v.arenaR = ARENA_R0;
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
+      if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
     v.balls = (g.balls || []).map((b) => ({ x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, vx: Math.round(b.vx * 100) / 100, vy: Math.round(b.vy * 100) / 100 }));
   } else if (g.id === 'keo-co') {
@@ -5468,7 +5483,7 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
+      if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
     v.stars = (g.stars || []).map((s) => ({ id: s.id, x: s.x, y: s.y, gold: s.gold }));
     v.banked = g.banked;
@@ -5478,7 +5493,7 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
+      if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
     v.hold = g.hold;
     v.crown = g.crown ? { holder: g.crown.holder, x: Math.round(g.crown.x * 100) / 100, y: Math.round(g.crown.y * 100) / 100 } : null;
@@ -5488,7 +5503,7 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
+      if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
     v.grid = g.grid;
     v.counts = splatCounts(room);
@@ -5520,7 +5535,7 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 };
+      if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
     v.crate = g.crate ? { x: g.crate.x, y: g.crate.y, vx: g.crate.vx || 0, vy: g.crate.vy || 0 } : null;
     v.goal = g.goal;
@@ -9348,6 +9363,15 @@ function predPadFor(id) {
     for (var i = 0; i < v.locals.length; i++) {
       if (v.locals[i].seat === seat) { var st = LK[seat]; return st ? st.pad : null; }
     }
+  }
+  // Remote human (phone/APK player): the view carries their last
+  // held pad as a bitmask — predict from it exactly like a local
+  // seat. It is at most one push cadence old, and the anchor
+  // reconcile keeps it honest. Bots carry no mask and stay on the
+  // interpolation path.
+  var vb = v.game.blobs ? v.game.blobs[seat] : null;
+  if (vb && typeof vb.pm === 'number') {
+    return { up: !!(vb.pm & 1), down: !!(vb.pm & 2), left: !!(vb.pm & 4), right: !!(vb.pm & 8), a: !!(vb.pm & 16), b: !!(vb.pm & 32), x: !!(vb.pm & 64), y: !!(vb.pm & 128) };
   }
   return null;
 }
