@@ -7066,6 +7066,18 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 #app.perf .ffly, #app.perf .pip.now, #app.perf .aring.danger, #app.perf .astar,
 #app.perf .acrown, #app.perf .agoal, #app.perf .crownglow { animation-play-state: paused; }
 #app.perf .abomb, #app.perf .awarn { animation-play-state: running; }
+/* PERF MODE also sheds the per-frame paint cost: a drop-shadow filter
+   on a MOVING element re-rasterizes its blur every frame, and the
+   player blobs wear one each. During field play the glow goes (the
+   crown holder keeps a single cheaper shadow — one element only);
+   everything returns when the game ends. */
+#app.perf .ablob svg, #app.perf .afrog svg, #app.perf .afrog.carry svg { filter: none; }
+#app.perf .ablob.holder svg { filter: drop-shadow(0 0 10px #FFC93D); }
+/* LITE MODE (adaptive, set by rafLoop when this device cannot hold
+   ~45fps): shed shadows and blur filters page-wide until frames
+   recover. A plain smooth game beats a pretty slideshow. */
+body.lite .ablob svg, body.lite .afrog svg, body.lite .ablob.holder svg, body.lite .abomb, body.lite .acrystal, body.lite .astar, body.lite .aboat, body.lite .crownglow { filter: none !important; }
+body.lite #afield, body.lite .card, body.lite .gamecard { box-shadow: none !important; }
 /* Local keyboard players: per-seat overlay panels on the host screen.
    The container is created by JS and appended to <body> (never inside
    #app, whose innerHTML render() rebuilds); panels are display-only —
@@ -7527,11 +7539,15 @@ function wsOpen() { return !!wsConn && wsConn.readyState === 1; }
 // silence mid-play means the channel is dead.
 function wsStale() {
   if (!wsOpen()) return false;
-  if (!S.lastWsAt) return false;
-  if (Date.now() - S.lastWsAt <= 2000) return false;
   if (!S.view || S.view.phase !== 'playing') return false;
   if (!S.view.game || S.view.game.phase === 'countdown') return false;
-  return true;
+  // A socket that opened but never delivered a single push is just
+  // as dead as one that went silent — the old guard required a first
+  // message before it could ever fire, so a blackholed connection
+  // (NAT/proxy eating the return path) pinned the page to a corpse
+  // socket and the slow poll gate forever.
+  if (!S.lastWsAt) return !!(S.wsOpenAt && Date.now() - S.wsOpenAt > 3000);
+  return Date.now() - S.lastWsAt > 2000;
 }
 function wsWatchdog() {
   if (!wsStale()) return;
@@ -7551,6 +7567,7 @@ function wsEnsure() {
   try { sock = new WebSocket(wsUrl()); } catch (e) { wsSchedule(); return; }
   wsConn = sock;
   S.lastWsAt = 0;
+  S.wsOpenAt = Date.now();
   sock.onopen = function () { wsBackoff = 0; };
   sock.onmessage = function (ev) {
     var msg = null;
@@ -9304,7 +9321,7 @@ function moveEl(node, x, y, fam, vx, vy) {
     var projX = e.tx + e.vx * ageT, projY = e.ty + e.vy * ageT;
     var ddx = projX - e.x, ddy = projY - e.y;
     if (Math.abs(ddx) > 2.5 || Math.abs(ddy) > 2.5) { e.x = projX; e.y = projY; }
-    else { e.x += ddx * 0.3; e.y += ddy * 0.3; }
+    else { e.x += ddx * 0.22; e.y += ddy * 0.22; }
   } else if (Math.abs(e.tx - e.px) > 3 || Math.abs(e.ty - e.py) > 3) {
     // Teleport (spawn / respawn): restart the interpolation history
     // here instead of gliding across the arena.
@@ -9316,6 +9333,21 @@ function rafLoop(ts) {
   var nowMs = typeof ts === 'number' ? ts : performance.now();
   var dt = S.rafLast ? Math.min(100, nowMs - S.rafLast) : 16;
   S.rafLast = nowMs;
+  // Adaptive lite mode: average the frame time over 50-frame
+  // windows; if this device cannot hold ~45fps, shed the expensive
+  // paint work (body.lite CSS) until frames recover for 3 straight
+  // windows. Weak hardware feels "lag" no network fix can cure —
+  // this makes the page itself cheaper exactly when it matters.
+  S._ftAcc = (S._ftAcc || 0) + dt; S._ftN = (S._ftN || 0) + 1;
+  if (S._ftN >= 50) {
+    var avgF = S._ftAcc / S._ftN; S._ftAcc = 0; S._ftN = 0;
+    var bd = document.body;
+    if (bd) {
+      if (avgF > 23 && !bd.classList.contains('lite')) bd.classList.add('lite');
+      else if (avgF < 17 && bd.classList.contains('lite')) { S._liteOk = (S._liteOk || 0) + 1; if (S._liteOk >= 3) { bd.classList.remove('lite'); S._liteOk = 0; } }
+      else if (avgF >= 17) S._liteOk = 0;
+    }
+  }
   var field = el('afield');
   if (field && !field.classList.contains('raf-on')) field.classList.add('raf-on');
   var slow = !!(field && field.classList.contains('slowmo'));
@@ -9346,8 +9378,16 @@ function rafLoop(ts) {
       var pdx = (pp.r ? 1 : 0) - (pp.l ? 1 : 0), pdy = (pp.d ? 1 : 0) - (pp.u ? 1 : 0);
       var ageTk = Math.min(Math.max((nowS - (e.atS || nowS)) / TICK_MS_CLIENT, 0), 6);
       var fresh = Math.max(0, 1 - ageTk / 2.5);
-      if (pdx !== 0 && e.lastSpdX != null) e.x += pdx * e.lastSpdX * dtT; else e.x += (e.vx || 0) * fresh * dtT;
-      if (pdy !== 0 && e.lastSpdY != null) e.y += pdy * e.lastSpdY * dtT; else e.y += (e.vy || 0) * fresh * dtT;
+      // Speed seed: every predicted game's stepper moves its blobs
+      // at the arena step (STEP_X 0.167 / STEP_Y 0.094 per tick), so
+      // a press from standstill predicts at that speed until the
+      // first anchor reports the true one. Without the seed the
+      // first press of every stop-and-go waited a full round trip
+      // for an observed speed (measured 170 ms on a zero-delay rig).
+      var spdX = e.lastSpdX != null ? e.lastSpdX : 0.167;
+      var spdY = e.lastSpdY != null ? e.lastSpdY : 0.094;
+      if (pdx !== 0) e.x += pdx * spdX * dtT; else e.x += (e.vx || 0) * fresh * dtT;
+      if (pdy !== 0) e.y += pdy * spdY * dtT; else e.y += (e.vy || 0) * fresh * dtT;
       writePos(e, rect);
       continue;
     }
