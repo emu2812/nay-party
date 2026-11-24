@@ -1008,7 +1008,14 @@ function localMirror() {
 function localApply() {
   var E = window.__NP_ENGINE; if (!E || !L.room) return;
   var v = E.buildView(L.room, 'host', null);
-  S.view = v; S.sig = ''; render(); patchPositions(v);
+  // NOTE: S.sig must NOT be cleared here. Clearing it defeats
+  // render()'s signature gate and rebuilds the entire app DOM on
+  // every tick — under software rendering that saturates the
+  // raster threads and collapses the frame rate to single digits
+  // (found by weak-profile bisection, 2026-11-24). The server push
+  // path never clears it either; structural changes flow through
+  // the signature exactly as they do there.
+  S.view = v; render(); patchPositions(v);
 }
 function localDispatch(body) {
   var E = window.__NP_ENGINE; if (!E || !L.room) return 'Phòng tại chỗ chưa sẵn sàng.';
