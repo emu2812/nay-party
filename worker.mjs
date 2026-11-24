@@ -7078,6 +7078,12 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
    everything returns when the game ends. */
 #app.perf .ablob svg, #app.perf .afrog svg, #app.perf .afrog.carry svg { filter: none; }
 #app.perf .ablob.holder svg { filter: drop-shadow(0 0 10px #FFC93D); }
+/* Same logic for paint: a moving element's box-shadow forces the
+   browser to repaint its blurred halo every frame, and Né Đạn
+   fills the field with triple-shadowed balls plus trail ghosts.
+   During field play the glow shadows go; the shapes keep their
+   gradient bodies, so the field still reads at a glance. */
+#app.perf .aball, #app.perf .ashell, #app.perf .fx-trail, #app.perf .aring { box-shadow: none; }
 /* LITE MODE (adaptive, set by rafLoop when this device cannot hold
    ~45fps): shed shadows and blur filters page-wide until frames
    recover. A plain smooth game beats a pretty slideshow. */
@@ -9366,15 +9372,19 @@ function rafLoop(ts) {
   // this makes the page itself cheaper exactly when it matters.
   S._ftAcc = (S._ftAcc || 0) + dt; S._ftN = (S._ftN || 0) + 1;
   if (dt > 25) S._ftSlow = (S._ftSlow || 0) + 1;
+  if (dt > 50) { S._hitch = S._hitch || []; S._hitch.push({ t: Date.now(), d: Math.round(dt) }); if (S._hitch.length > 60) S._hitch.shift(); }
+  if (dt > 120) S._ftBlock = true;
   if (S._ftN >= 50) {
-    var avgF = S._ftAcc / S._ftN; var slowN = S._ftSlow || 0; S._ftAcc = 0; S._ftN = 0; S._ftSlow = 0;
+    var avgF = S._ftAcc / S._ftN; var slowN = S._ftSlow || 0; var blocked = !!S._ftBlock; S._ftAcc = 0; S._ftN = 0; S._ftSlow = 0; S._ftBlock = false;
     S._fpsAvg = avgF;
     var bd = document.body;
     if (bd) {
       // Trigger on hitches, not just a low average: a page that
-      // averages 58 fps but drops a 100 ms frame every few seconds
-      // FEELS broken, and its average still looks healthy.
-      if ((avgF > 23 || slowN >= 8) && !bd.classList.contains('lite')) bd.classList.add('lite');
+      // averages 58 fps but freezes 200 ms every few seconds FEELS
+      // broken while its average still looks healthy — and a single
+      // long block produces only ONE slow frame sample, so count
+      // blocks explicitly.
+      if ((avgF > 23 || slowN >= 8 || blocked) && !bd.classList.contains('lite')) bd.classList.add('lite');
       else if (avgF < 17 && slowN <= 2 && bd.classList.contains('lite')) { S._liteOk = (S._liteOk || 0) + 1; if (S._liteOk >= 3) { bd.classList.remove('lite'); S._liteOk = 0; } }
       else if (avgF >= 17) S._liteOk = 0;
     }
@@ -9770,7 +9780,9 @@ function tick() {
       var medM = function (a) { if (!a || !a.length) return null; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; };
       var fpsM = S._fpsAvg ? Math.round(1000 / S._fpsAvg) : null;
       var rttM = medM(S._rttH), gapM = medM(S._gapH);
-      nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (document.body.classList.contains('lite') ? ' · LITE' : '');
+      var hN = 0, hW = 0;
+      if (S._hitch) { var cutH = Date.now() - 10000; S._hitch = S._hitch.filter(function (h) { return h.t > cutH; }); hN = S._hitch.length; for (var hi = 0; hi < hN; hi++) if (S._hitch[hi].d > hW) hW = S._hitch[hi].d; }
+      nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '') + (document.body.classList.contains('lite') ? ' · LITE' : '');
       nmEl.style.display = '';
     }
   } else if (nmEl) nmEl.style.display = 'none';
