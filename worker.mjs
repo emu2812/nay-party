@@ -7083,6 +7083,7 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
    recover. A plain smooth game beats a pretty slideshow. */
 body.lite .ablob svg, body.lite .afrog svg, body.lite .ablob.holder svg, body.lite .abomb, body.lite .acrystal, body.lite .astar, body.lite .aboat, body.lite .crownglow { filter: none !important; }
 body.lite #afield, body.lite .card, body.lite .gamecard { box-shadow: none !important; }
+body.lite .aball, body.lite .ashell, body.lite .aring, body.lite .ablob { box-shadow: none !important; }
 /* Live device meter (fps / ping / push cadence) shown while playing. */
 #netmeter { position: fixed; left: 10px; bottom: 10px; z-index: 9998; background: rgba(10,10,20,.72); color: #B7F0C0; font: 700 12px/1.5 system-ui, sans-serif; padding: 3px 9px; border-radius: 999px; cursor: pointer; user-select: none; }
 /* Local keyboard players: per-seat overlay panels on the host screen.
@@ -9341,13 +9342,12 @@ function moveEl(node, x, y, fam, vx, vy) {
     var ageT = Math.min(Math.max((serverNow() - e.atS) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
     var projX = e.tx + e.vx * ageT, projY = e.ty + e.vy * ageT;
     var ddx = projX - e.x, ddy = projY - e.y;
-    // Trust the prediction more when the anchor is old: a stale
-    // projection describes where the character WAS, and dragging
-    // the render back toward it on every push is what rubber-bands
-    // turns on a slow connection.
-    var blend = ageT * TICK_MS_CLIENT > 200 ? 0.08 : ageT * TICK_MS_CLIENT > 100 ? 0.14 : 0.22;
-    if (Math.abs(ddx) > 2.5 || Math.abs(ddy) > 2.5) { e.x = projX; e.y = projY; }
-    else { e.x += ddx * blend; e.y += ddy * blend; }
+    // Do not drag the render toward the projection here: an
+    // instant pull once per push is a 16 Hz step train on the
+    // player's own character (reads as vibration). Store the
+    // correction; rafLoop applies it as a smooth spring.
+    if (Math.abs(ddx) > 2.5 || Math.abs(ddy) > 2.5) { e.x = projX; e.y = projY; e.corrX = 0; e.corrY = 0; }
+    else { e.corrX = ddx; e.corrY = ddy; }
   } else if (Math.abs(e.tx - e.px) > 3 || Math.abs(e.ty - e.py) > 3) {
     // Teleport (spawn / respawn): restart the interpolation history
     // here instead of gliding across the arena.
@@ -9365,13 +9365,17 @@ function rafLoop(ts) {
   // windows. Weak hardware feels "lag" no network fix can cure —
   // this makes the page itself cheaper exactly when it matters.
   S._ftAcc = (S._ftAcc || 0) + dt; S._ftN = (S._ftN || 0) + 1;
+  if (dt > 25) S._ftSlow = (S._ftSlow || 0) + 1;
   if (S._ftN >= 50) {
-    var avgF = S._ftAcc / S._ftN; S._ftAcc = 0; S._ftN = 0;
+    var avgF = S._ftAcc / S._ftN; var slowN = S._ftSlow || 0; S._ftAcc = 0; S._ftN = 0; S._ftSlow = 0;
     S._fpsAvg = avgF;
     var bd = document.body;
     if (bd) {
-      if (avgF > 23 && !bd.classList.contains('lite')) bd.classList.add('lite');
-      else if (avgF < 17 && bd.classList.contains('lite')) { S._liteOk = (S._liteOk || 0) + 1; if (S._liteOk >= 3) { bd.classList.remove('lite'); S._liteOk = 0; } }
+      // Trigger on hitches, not just a low average: a page that
+      // averages 58 fps but drops a 100 ms frame every few seconds
+      // FEELS broken, and its average still looks healthy.
+      if ((avgF > 23 || slowN >= 8) && !bd.classList.contains('lite')) bd.classList.add('lite');
+      else if (avgF < 17 && slowN <= 2 && bd.classList.contains('lite')) { S._liteOk = (S._liteOk || 0) + 1; if (S._liteOk >= 3) { bd.classList.remove('lite'); S._liteOk = 0; } }
       else if (avgF >= 17) S._liteOk = 0;
     }
   }
@@ -9415,6 +9419,13 @@ function rafLoop(ts) {
       var spdY = e.lastSpdY != null ? e.lastSpdY : 0.094;
       if (pdx !== 0) e.x += pdx * spdX * dtT; else e.x += (e.vx || 0) * fresh * dtT;
       if (pdy !== 0) e.y += pdy * spdY * dtT; else e.y += (e.vy || 0) * fresh * dtT;
+      // Continuous reconcile spring (~80 ms): applies the stored
+      // correction from the latest anchor gradually, every frame.
+      if (e.corrX || e.corrY) {
+        var cf3 = 1 - Math.exp(-dt / 80);
+        var ax3 = (e.corrX || 0) * cf3, ay3 = (e.corrY || 0) * cf3;
+        e.x += ax3; e.y += ay3; e.corrX -= ax3; e.corrY -= ay3;
+      }
       writePos(e, rect);
       continue;
     }
@@ -9450,7 +9461,13 @@ function rafLoop(ts) {
       gx = e.tx + (e.vx || 0) * dist; gy = e.ty + (e.vy || 0) * dist;
     } else if (rt <= e.atP) { gx = e.px; gy = e.py; }
     else { var f = (rt - e.atP) / (e.atS - e.atP); gx = e.px + (e.tx - e.px) * f; gy = e.py + (e.ty - e.py) * f; }
-    e.x = gx; e.y = gy;
+    // Chase-smooth the target instead of writing it raw: raw
+    // anchor segments make the rendered velocity step at every
+    // push (baseline measurement: mean |dv| per frame ~= the
+    // whole per-frame travel — motion pulses instead of gliding).
+    // A short time-constant spring low-passes those steps.
+    var cf2 = 1 - Math.exp(-dt / (e.bal ? 22 : 50));
+    e.x += (gx - e.x) * cf2; e.y += (gy - e.y) * cf2;
     writePos(e, rect);
   }
 }
@@ -9753,7 +9770,7 @@ function tick() {
       var medM = function (a) { if (!a || !a.length) return null; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; };
       var fpsM = S._fpsAvg ? Math.round(1000 / S._fpsAvg) : null;
       var rttM = medM(S._rttH), gapM = medM(S._gapH);
-      nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—');
+      nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (document.body.classList.contains('lite') ? ' · LITE' : '');
       nmEl.style.display = '';
     }
   } else if (nmEl) nmEl.style.display = 'none';
