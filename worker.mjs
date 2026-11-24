@@ -6032,6 +6032,25 @@ function hostAction(room, body) {
     createGame(room, body.game);
     return null;
   }
+  if (a === 'quickStart') {
+    // One-tap start from the chooser: the host tapped a game the room
+    // is short of players for, so fill empty seats with bots (Vừa)
+    // up to the game's minimum and start immediately — nobody should
+    // have to walk the seat grid adding bots by hand first.
+    if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Đang chơi, không chọn game khác được.';
+    if (!GAMES[body.game]) return 'Không có game này.';
+    const err = startCheck(room);
+    if (err) return err;
+    if (room.players.length > maxSeats(body.game)) return GAMES[body.game].name + ' chỉ chơi được tối đa ' + maxSeats(body.game) + ' người chơi — phòng đang có ' + room.players.length + ' người, xoá bớt Máy hoặc chọn game khác nhé.';
+    for (let s = 2; s <= MAX_SEATS && room.players.length < minSeats(body.game); s++) {
+      if (!playerAt(room, s)) room.players.push({ seat: s, type: 'bot', name: 'Máy', difficulty: 'vua', score: 0 });
+    }
+    room.players.sort((x, y) => x.seat - y.seat);
+    if (room.players.length < minSeats(body.game)) return GAMES[body.game].name + ' cần ít nhất ' + minSeats(body.game) + ' người chơi mới chơi được (thêm Máy hoặc rủ thêm bạn).';
+    clearPlaylist(room);
+    createGame(room, body.game);
+    return null;
+  }
   if (a === 'playlistStart') {
     if (room.phase !== 'choosing' && room.phase !== 'lobby' && room.phase !== 'results' && room.phase !== 'podium') return 'Đang chơi, không bắt đầu liên hoàn được.';
     const err = startCheck(room);
@@ -7987,6 +8006,9 @@ function hostHTML(v) {
       }
       var small = gm.cat === 'coop' ? '1 trận hợp tác · Cả đội cùng nhận điểm theo hạng' : (gm.rounds > 1 ? gm.rounds + ' vòng · Vòng cuối ×2 điểm' : '1 trận sống còn · 300/200/100/50');
       if (lockWhy) {
+        if (gm.min && nP < gm.min) {
+          return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="quickStart" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">▶ Thiếu ' + (gm.min - nP) + ' người — chạm để thêm Máy và chơi ngay</p></button>';
+        }
         return '<button class="gamecard pllock" style="background:' + GCOLORS[gm.id] + '" data-cmd="startLocked" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">' + lockWhy + '</p></button>';
       }
       return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">' + rangeTxt + ' · ' + small + '</p></button>';
@@ -10275,6 +10297,9 @@ function runCmd(node) {
   } else if (cmd === 'start') {
     sfxTap();
     act({ action: 'startGame', game: node.getAttribute('data-game') });
+  } else if (cmd === 'quickStart') {
+    sfxTap();
+    act({ action: 'quickStart', game: node.getAttribute('data-game') });
   } else if (cmd === 'startLocked') {
     var lgm = gameMeta(S.view, node.getAttribute('data-game'));
     if (lgm && S.view) toast(lgm.name + ' chơi được với ' + lgm.min + '–' + lgm.max + ' người — phòng đang có ' + S.view.players.length + ' người. Thêm/xoá Máy hoặc rủ thêm bạn nhé.');
@@ -10444,6 +10469,12 @@ document.addEventListener('input', function (ev) {
     var idx = +t.id.slice(1);
     var next = el('d' + (idx + 1));
     if (next) next.focus();
+    else if (idx === 5) {
+      // Last digit in and the name is already filled (it is
+      // remembered between visits): join right away, no extra tap.
+      var jn2 = el('joinName');
+      if (jn2 && jn2.value.trim()) { var jb = document.querySelector('[data-cmd="join"]'); if (jb) jb.click(); }
+    }
   }
 });
 // Per-game action-button sets for the phone gamepad (mirrors the
