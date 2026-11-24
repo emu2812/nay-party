@@ -7427,7 +7427,7 @@ function poll() {
   if (wsOpen() && tPoll - lastPollAt < gateMs) return;
   lastPollAt = tPoll;
   api(stateUrl(), null, function (v) {
-    if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; S.serverOffset = v.serverNow - Date.now(); noteOk(); render(); patchPositions(v); hostKbAutoSeat(v); return; }
+    if (v && v.ok) { S.failN = 0; S.failSince = 0; S.view = v; noteServerTime(v.serverNow); noteOk(); render(); patchPositions(v); hostKbAutoSeat(v); return; }
     if (v && v.net) {
       // No answer at all (offline / DNS / non-JSON reply): the room may
       // well still exist, so keep waiting — but never spin on the
@@ -7475,7 +7475,7 @@ function poll() {
 function act(body, cb) {
   body.role = S.role; body.token = S.token;
   api('/api/rooms/' + S.code + '/action', body, function (v) {
-    if (v && v.ok) { S.view = v; S.serverOffset = v.serverNow - Date.now(); S.sig = ''; noteOk(); render(); }
+    if (v && v.ok) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
     else if (v && v.error && v.error.indexOf('Không thấy phòng này') >= 0) { clearSession(); toast('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.'); }
     else if (v && v.error && v.error.indexOf('không hợp lệ') >= 0) clearSession();
     else if (v && v.error) toast(v.error);
@@ -7490,7 +7490,7 @@ function act(body, cb) {
 function tlSend(body) {
   body.role = S.role; body.token = S.token;
   api('/api/rooms/' + S.code + '/action', body, function (v) {
-    if (v && v.ok) { S.view = v; S.serverOffset = v.serverNow - Date.now(); S.sig = ''; noteOk(); render(); }
+    if (v && v.ok) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
     else if (v && v.error) toast(v.error);
   });
 }
@@ -7561,7 +7561,7 @@ function wsEnsure() {
       // server-offset, watchdog stamp, render. The push-freshness stamp
       // is separate: only a real pushed state proves the socket lives.
       S.lastWsAt = Date.now();
-      S.failN = 0; S.failSince = 0; S.view = msg.view; S.serverOffset = msg.view.serverNow - Date.now(); noteOk(); render(); patchPositions(msg.view);
+      S.failN = 0; S.failSince = 0; S.view = msg.view; noteServerTime(msg.view.serverNow); noteOk(); render(); patchPositions(msg.view);
     } else if (msg.type === 'error' && msg.error) {
       toast(msg.error);
     } else if (msg.type === 'bye') {
@@ -7586,6 +7586,42 @@ function wsDrop() {
   if (wsConn) { var s = wsConn; wsConn = null; s.onclose = null; try { s.close(); } catch (e) {} }
 }
 function serverNow() { return Date.now() + S.serverOffset; }
+// Clock discipline: a view's serverNow is stamped when the server
+// GENERATED it, so (serverNow - receipt time) = true offset MINUS
+// that view's transit delay. Adopting every sample raw (the old
+// code) baked each delivery's jitter straight into the clock —
+// anchor ages wobbled by the full jitter swing and rendered goals
+// teleported back and forth (measured: 78 one-frame jumps > 0.3
+// units and ~3 s of frozen frames in 10 s on a swinging connection).
+// Track the MAXIMUM sample instead: transit can only subtract from
+// it, so the maximum is the least-contaminated estimate (the
+// fastest delivery), and jitter stops moving the clock. A sample
+// hours below the current estimate means the clock itself stepped
+// — re-seed then.
+function noteServerTime(sn) {
+  if (!sn) return;
+  var now = Date.now();
+  var sample = sn - now;
+  if (S.serverOffset == null || sample > S.serverOffset || S.serverOffset - sample > 3600000) S.serverOffset = sample;
+  // Rolling delivery stats for the interpolation buffer: how far
+  // apart anchors are generated and how long they take to arrive.
+  // The buffer must cover interval + transit, or the render time
+  // falls outside the anchor pair and motion freezes/snaps (the
+  // first fixed-100ms version measured worse than the old code on a
+  // 126ms-cadence poll path for exactly this reason).
+  var tr = Math.max(0, (now + (S.serverOffset || 0)) - sn);
+  if (S._lastSn && sn > S._lastSn) {
+    S._ivH = S._ivH || []; S._ivH.push(sn - S._lastSn); if (S._ivH.length > 24) S._ivH.shift();
+  }
+  if (sn !== S._lastSn) {
+    S._trH = S._trH || []; S._trH.push(tr); if (S._trH.length > 24) S._trH.shift();
+    S._lastSn = sn;
+  }
+  if (S._ivH && S._ivH.length >= 4 && S._trH && S._trH.length >= 4) {
+    var med = function (a) { var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; };
+    S.interpMs = Math.min(520, Math.max(100, med(S._ivH) + med(S._trH)));
+  }
+}
 
 var DUR = { 'do-vui': 15000, 'keo-co': 20000 };
 var GCOLORS = {
@@ -9178,6 +9214,10 @@ function syncBlasts(blasts) {
 // left/top percentages and the CSS transitions carry the motion.
 var RAF_OK = typeof requestAnimationFrame === 'function';
 var RAF_TAU = 30;
+// Snapshot-interpolation delay for non-predicted movers: the render
+// runs this far behind the newest anchor, between the last two
+// anchors, so delivery jitter cannot move the rendered path.
+var INTERP_MS = 100;
 var TICK_MS_CLIENT = 62.5;
 function moverMode(node) {
   var c = ' ' + (node.className || '') + ' ';
@@ -9237,20 +9277,38 @@ function moveEl(node, x, y, fam, vx, vy) {
   var e = S.raf[node.id];
   if (!e || e.el !== node) {
     node.style.left = '0px'; node.style.top = '0px';
-    e = S.raf[node.id] = { el: node, fam: fam, mode: moverMode(node), x: x, y: y, tx: x, ty: y, vx: vx || 0, vy: vy || 0, atS: (S._anchorT || serverNow()), lastSpdX: vx ? Math.abs(vx) : null, lastSpdY: vy ? Math.abs(vy) : null };
+    var at0 = (S._anchorT || serverNow());
+    e = S.raf[node.id] = { el: node, fam: fam, mode: moverMode(node), x: x, y: y, px: x, py: y, atP: at0, tx: x, ty: y, vx: vx || 0, vy: vy || 0, atS: at0, lastSpdX: vx ? Math.abs(vx) : null, lastSpdY: vy ? Math.abs(vy) : null };
     writePos(e);
     return;
   }
-  e.tx = x; e.ty = y; e.vx = vx || 0; e.vy = vy || 0; e.atS = (S._anchorT || serverNow()); e.fam = fam;
+  var newAtS = (S._anchorT || serverNow());
+  if (newAtS < e.atS) return; // stale / out-of-order view: anchors never run backward
+  if (newAtS === e.atS && x === e.tx && y === e.ty) { e.vx = vx || 0; e.vy = vy || 0; e.fam = fam; return; } // the same view re-applied by tick/render is not a new anchor
+  // Keep the previous anchor: non-predicted movers are rendered by
+  // interpolating between the last two anchors on the server clock,
+  // which is what makes their motion immune to delivery jitter.
+  e.px = e.tx; e.py = e.ty; e.atP = e.atS;
+  e.tx = x; e.ty = y; e.vx = vx || 0; e.vy = vy || 0; e.atS = newAtS; e.fam = fam;
   if (predPadFor(node.id)) {
     // Remember the last nonzero per-axis speed the server reported
-    // (magnitude only — the held pad supplies the sign), and snap
-    // instead of gliding when a fresh anchor lands far from the
-    // predicted render (ring-out respawn / teleport): a glide from
-    // a stale spot would read as a long rubber-band.
+    // (magnitude only — the held pad supplies the sign) for the
+    // local integration in rafLoop, then reconcile softly: project
+    // the fresh anchor to "now" along its own velocity and pull the
+    // render a third of the way toward it. Only a true teleport
+    // (ring-out respawn) snaps outright — the old hard snap at 2.5u
+    // fired on ordinary jitter corrections too and read as a jerk.
     if (e.vx) e.lastSpdX = Math.abs(e.vx);
     if (e.vy) e.lastSpdY = Math.abs(e.vy);
-    if (Math.abs(e.tx - e.x) > 2.5 || Math.abs(e.ty - e.y) > 2.5) { e.x = e.tx; e.y = e.ty; }
+    var ageT = Math.min(Math.max((serverNow() - e.atS) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
+    var projX = e.tx + e.vx * ageT, projY = e.ty + e.vy * ageT;
+    var ddx = projX - e.x, ddy = projY - e.y;
+    if (Math.abs(ddx) > 2.5 || Math.abs(ddy) > 2.5) { e.x = projX; e.y = projY; }
+    else { e.x += ddx * 0.3; e.y += ddy * 0.3; }
+  } else if (Math.abs(e.tx - e.px) > 3 || Math.abs(e.ty - e.py) > 3) {
+    // Teleport (spawn / respawn): restart the interpolation history
+    // here instead of gliding across the arena.
+    e.px = e.tx; e.py = e.ty; e.atP = e.atS; e.x = e.tx; e.y = e.ty;
   }
 }
 function rafLoop(ts) {
@@ -9261,7 +9319,6 @@ function rafLoop(ts) {
   var field = el('afield');
   if (field && !field.classList.contains('raf-on')) field.classList.add('raf-on');
   var slow = !!(field && field.classList.contains('slowmo'));
-  var k = 1 - Math.exp(-dt / RAF_TAU);
   var ks = 1 - Math.exp(-dt / (RAF_TAU * 6));
   var nowS = serverNow();
   var rectCache = [];
@@ -9273,33 +9330,54 @@ function rafLoop(ts) {
     var rect = null;
     for (var ci = 0; ci < rectCache.length; ci++) if (rectCache[ci][0] === parent) { rect = rectCache[ci][1]; break; }
     if (!rect) { rect = parent.getBoundingClientRect(); rectCache.push([parent, rect]); }
-    // Lead is measured on the SERVER clock (nowS vs the anchor's own
-    // server stamp), so network transit and apply delay count toward
-    // the extrapolation instead of silently trailing behind the sim.
-    var lead = Math.min(Math.max((nowS - (e.atS || nowS)) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
-    var gx = e.tx + e.vx * lead, gy = e.ty + e.vy * lead;
     var pp = predPadFor(id);
     if (pp) {
-      // Own character: steer by the LIVE pad, per axis. A driven axis
-      // predicts at the last observed speed; an IDLE axis caps the
-      // stale-velocity lead at one tick — full lead on a just-released
-      // axis was the measured post-release overshoot (the render kept
-      // drifting on the old velocity until the stopped anchor landed),
-      // while one tick still gives shoves and knockback their start.
+      // Own character — client-side prediction by INTEGRATION: each
+      // frame advances the render by the live pad at the last speed
+      // the server reported, so input answers on the very next frame
+      // and no network swing can move the goalposts (the old
+      // anchor-age extrapolation teleported its goal back and forth
+      // whenever delivery jittered — the measured jerk). A free axis
+      // follows the anchor velocity with a freshness fade: a stale
+      // velocity is probably over, which is what keeps a released
+      // key or a finished shove from drifting on. moveEl reconciles
+      // softly each time a fresh anchor lands.
+      var dtT = dt / TICK_MS_CLIENT;
       var pdx = (pp.r ? 1 : 0) - (pp.l ? 1 : 0), pdy = (pp.d ? 1 : 0) - (pp.u ? 1 : 0);
-      var leadP = Math.min(lead + 2.0, 400 / TICK_MS_CLIENT);
-      if (pdx !== 0 && e.lastSpdX != null) gx = e.tx + pdx * e.lastSpdX * leadP;
-      else gx = e.tx + e.vx * Math.min(lead, 1);
-      if (pdy !== 0 && e.lastSpdY != null) gy = e.ty + pdy * e.lastSpdY * leadP;
-      else gy = e.ty + e.vy * Math.min(lead, 1);
-    }
-    var kk = slow && field && field.contains(e.el) ? ks : k;
-    var dx = gx - e.x, dy = gy - e.y;
-    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
-      if (e.x !== gx || e.y !== gy) { e.x = gx; e.y = gy; writePos(e, rect); }
+      var ageTk = Math.min(Math.max((nowS - (e.atS || nowS)) / TICK_MS_CLIENT, 0), 6);
+      var fresh = Math.max(0, 1 - ageTk / 2.5);
+      if (pdx !== 0 && e.lastSpdX != null) e.x += pdx * e.lastSpdX * dtT; else e.x += (e.vx || 0) * fresh * dtT;
+      if (pdy !== 0 && e.lastSpdY != null) e.y += pdy * e.lastSpdY * dtT; else e.y += (e.vy || 0) * fresh * dtT;
+      writePos(e, rect);
       continue;
     }
-    e.x += dx * kk; e.y += dy * kk;
+    if (slow && field && field.contains(e.el)) {
+      // The brief slow-mo celebration keeps its legacy glide.
+      var leadS = Math.min(Math.max((nowS - (e.atS || nowS)) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
+      var sx = e.tx + e.vx * leadS - e.x, sy = e.ty + e.vy * leadS - e.y;
+      e.x += sx * ks; e.y += sy * ks;
+      writePos(e, rect);
+      continue;
+    }
+    // Everyone else — snapshot interpolation on the server clock:
+    // render the mover as it was INTERP_MS ago, between the last
+    // two anchors. Delivery jitter changes WHEN anchors land, never
+    // the rendered path. If render time runs past the newest anchor
+    // (a push is late), extrapolate its velocity for at most 80 ms,
+    // then hold until the next anchor arrives.
+    var rt = nowS - (S.interpMs || INTERP_MS);
+    var gx, gy;
+    if (e.atS == null || e.atP == null || e.atS <= e.atP || rt >= e.atS) {
+      // Past the newest anchor: extrapolate with a decaying
+      // velocity (gone by +250 ms) instead of running at full speed
+      // into a dead stop — a late push then resumes from a closer
+      // position and the catch-up snap shrinks.
+      var extra = e.atS == null ? 0 : Math.min(Math.max(rt - e.atS, 0), 250);
+      var dist = (extra / TICK_MS_CLIENT) * (1 - extra / 500);
+      gx = e.tx + (e.vx || 0) * dist; gy = e.ty + (e.vy || 0) * dist;
+    } else if (rt <= e.atP) { gx = e.px; gy = e.py; }
+    else { var f = (rt - e.atP) / (e.atS - e.atP); gx = e.px + (e.tx - e.px) * f; gy = e.py + (e.ty - e.py) * f; }
+    e.x = gx; e.y = gy;
     writePos(e, rect);
   }
 }
@@ -10234,7 +10312,7 @@ function runCmd(node) {
       if (!(v && v.ok)) { toast(v && v.error ? v.error : 'Không tạo được phòng.'); return; }
       S.role = 'host'; S.code = v.code; S.token = v.hostToken; S.seat = null; S.phoneMode = true;
       api('/api/rooms/' + S.code + '/action', { role: 'host', token: S.token, action: 'hostJoin', name: pmName }, function (v2) {
-        if (v2 && v2.ok) { S.view = v2; S.serverOffset = v2.serverNow - Date.now(); }
+        if (v2 && v2.ok) { S.view = v2; noteServerTime(v2.serverNow); }
         else if (v2 && v2.error) toast(v2.error);
         if (pmName) npSaveIdentity(pmName);
         npSaveRecent({ code: S.code, role: 'host', name: pmName, token: S.token, seat: null, phone: true });
@@ -10250,7 +10328,7 @@ function runCmd(node) {
     api('/api/rooms/' + rc.code + '/state?role=' + rc.role + '&token=' + encodeURIComponent(rc.token), null, function (v) {
       if (v && v.ok) {
         S.role = rc.role; S.code = rc.code; S.token = rc.token; S.seat = rc.seat || null; S.phoneMode = !!rc.phone;
-        S.view = v; S.serverOffset = v.serverNow - Date.now(); noteOk(); saveSession(); S.sig = ''; poll(); render();
+        S.view = v; noteServerTime(v.serverNow); noteOk(); saveSession(); S.sig = ''; poll(); render();
       } else if (v && v.error && !v.net && v.error.indexOf('Không thấy phòng này') >= 0) {
         npDropRecent(rc.code);
         toast('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.');
@@ -10887,7 +10965,7 @@ function localAct(seat, body) {
   // phase turned) must never kick the big screen out of its own room.
   body.role = 'host'; body.token = S.token; body.forSeat = seat;
   api('/api/rooms/' + S.code + '/action', body, function (v) {
-    if (v && v.ok) { S.view = v; S.serverOffset = v.serverNow - Date.now(); S.sig = ''; noteOk(); render(); }
+    if (v && v.ok) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
     else if (v && v.error) toast(v.error);
   });
 }
