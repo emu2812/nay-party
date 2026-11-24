@@ -6039,8 +6039,9 @@ function hostAction(room, body) {
     // have to walk the seat grid adding bots by hand first.
     if (room.phase !== 'lobby' && room.phase !== 'choosing') return 'Đang chơi, không chọn game khác được.';
     if (!GAMES[body.game]) return 'Không có game này.';
-    const err = startCheck(room);
-    if (err) return err;
+    // Only startCheck's human half applies here — its "at least 2
+    // players" half is exactly what the fill below provides.
+    if (humanCount(room) < 1) return 'Cần ít nhất 1 người chơi bằng điện thoại mới bắt đầu được.';
     if (room.players.length > maxSeats(body.game)) return GAMES[body.game].name + ' chỉ chơi được tối đa ' + maxSeats(body.game) + ' người chơi — phòng đang có ' + room.players.length + ' người, xoá bớt Máy hoặc chọn game khác nhé.';
     for (let s = 2; s <= MAX_SEATS && room.players.length < minSeats(body.game); s++) {
       if (!playerAt(room, s)) room.players.push({ seat: s, type: 'bot', name: 'Máy', difficulty: 'vua', score: 0 });
