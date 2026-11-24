@@ -7145,6 +7145,14 @@ function tlChipsHTML(cards, sm) {
   for (var i = 0; i < cards.length; i++) h += '<span class="tlcard2' + (sm ? ' sm' : '') + (tlCardRed(cards[i]) ? ' red' : '') + '">' + tlCardLabel(cards[i]) + '</span>';
   return h;
 }
+// Experiment modes for lag bisection on the user's own machine
+// (URL-gated, default off — the normal game is untouched):
+//   ?sm=raw  world movers render by pure dead reckoning from the
+//            newest anchor: no interpolation buffer, no smoothing
+//            spring. Tests whether the smoothing stack is the feel.
+//   ?sm=min  raw + all effects/trails and local panels off.
+//            Tests whether page weight (DOM effects) is the feel.
+var SM_MODE = (function () { try { var q = location.search || ''; if (q.indexOf('sm=min') >= 0) return 'min'; if (q.indexOf('sm=raw') >= 0) return 'raw'; } catch (e) {} return ''; })();
 var S = { role: null, code: null, token: null, seat: null, view: null, sig: '', serverOffset: 0,
   audio: null, muted: localStorage.getItem('np_muted') === '1', lastCd: -1, lastTickSec: -1,
   fxReveal: '', fxRound: '', fxConfetti: '', blobN: 0, fxP: null, _nb: null, _koT: 0, _smT: 0,
@@ -9036,6 +9044,7 @@ function fxFlash(seat) {
   setTimeout(function () { node.classList.remove('hitflash'); }, 240);
 }
 function arenaFX(v, g) {
+  if (SM_MODE === 'min') return; // experiment mode: no effects at all
   var field = el('afield');
   var key = g.id + '|' + g.round + '|' + g.phase;
   if (!S.fxP || S.fxP.key !== key) {
@@ -9457,7 +9466,7 @@ function rafLoop(ts) {
     // plus a breath — because their extrapolation is exact: what
     // matters in a dodge game is that a shell is drawn where it IS,
     // not where it was a tenth of a second ago.
-    var rt = nowS - (e.bal ? Math.min(Math.max((S.transitMs || 40) + 12, 30), 90) : (S.interpMs || INTERP_MS));
+    var rt = SM_MODE ? nowS : nowS - (e.bal ? Math.min(Math.max((S.transitMs || 40) + 12, 30), 90) : (S.interpMs || INTERP_MS));
     var gx, gy;
     if (e.atS == null || e.atP == null || e.atS <= e.atP || rt >= e.atS) {
       // Past the newest anchor: extrapolate the velocity. Ballistic
@@ -9476,8 +9485,11 @@ function rafLoop(ts) {
     // push (baseline measurement: mean |dv| per frame ~= the
     // whole per-frame travel — motion pulses instead of gliding).
     // A short time-constant spring low-passes those steps.
-    var cf2 = 1 - Math.exp(-dt / (e.bal ? 22 : 50));
-    e.x += (gx - e.x) * cf2; e.y += (gy - e.y) * cf2;
+    if (SM_MODE) { e.x = gx; e.y = gy; }
+    else {
+      var cf2 = 1 - Math.exp(-dt / (e.bal ? 22 : 50));
+      e.x += (gx - e.x) * cf2; e.y += (gy - e.y) * cf2;
+    }
     writePos(e, rect);
   }
 }
@@ -11313,6 +11325,7 @@ function lkPanelHTML(v, loc, idx) {
   return h + '</div>';
 }
 function renderLocalPanels() {
+  if (SM_MODE === 'min') { var bx0 = el('localpanels'); if (bx0 && bx0.innerHTML) bx0.innerHTML = ''; return; }
   var box = el('localpanels');
   if (!box) { box = document.createElement('div'); box.id = 'localpanels'; document.body.appendChild(box); }
   var v = S.view;
