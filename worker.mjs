@@ -6894,6 +6894,28 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
    patch). The old width/height transition is gone with it: the 125ms
    patch cadence steps the shrink, which reads fine at ring speed. */
 .aring.dynring { width: 100%; height: 100%; transition: transform .13s linear; }
+/* Mini live field on the PHONE player page: until now a phone
+   player in an arena game saw only a D-pad and a hint to watch the
+   TV — anyone playing from another room or house played blind and
+   (rightly) called it lag. The same patchPositions/rafLoop
+   machinery drives this field; movers shrink to phone scale. */
+.afield.pfield { width: 100%; margin: 0 auto 8px; }
+.afield.pfield.wide { width: 100%; }
+.pfield .ablob svg { width: 28px; height: 28px; }
+.pfield .afrog svg { width: 30px; height: 30px; }
+.pfield .achar svg { width: 26px; height: 26px; }
+.pfield .aname { font-size: 9px; padding: 0 5px; }
+.pfield .alives { font-size: 8px; }
+.pfield .aball { width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; }
+.pfield .ashell { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; }
+.pfield .aslime { width: 17px; height: 17px; margin: -8.5px 0 0 -8.5px; }
+.pfield .aslime.big { width: 26px; height: 26px; margin: -13px 0 0 -13px; }
+.pfield .abarrel { width: 19px; height: 5px; margin-top: -2.5px; }
+.pfield .abomb { font-size: 15px; }
+.pfield .astar { font-size: 15px; }
+.pfield .astar.gold { font-size: 22px; }
+.pfield .acrown svg { width: 27px; height: 27px; }
+.pfield .tgem { font-size: 13px; }
 .aring.danger { border-color: #FF4757; box-shadow: 0 0 34px rgba(255,71,87,.75), inset 0 0 50px rgba(255,71,87,.35); animation: ringPulse .5s ease-in-out infinite alternate; }
 @keyframes ringPulse { from { filter: brightness(1); } to { filter: brightness(1.7); } }
 .ablob { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 2; }
@@ -10010,12 +10032,54 @@ function playerHTML(v) {
   if (v.phase === 'final') return h + finalHTML(v, false);
   return h + '<div class="card center"><h2>Đang tải…</h2></div>';
 }
+// Mini live field for the phone player page (see the .pfield CSS
+// note): the same static mover elements the host stage builds, so
+// the shared patchPositions + rafLoop machinery animates them from
+// the player's own view — including prediction of the player's own
+// blob. Scenery that patchPositions only touches through guarded
+// lookups is omitted; gameplay statics (ring, paint grid, crown,
+// shared blob, crate + maze, soccer ball) are mirrored.
+var PFIELD_PHASES = { 'day-ra': 'arena', 'ne-dan': 'dodge', 'cuop-sao': 'steal', 'giu-vuong-mien': 'crown', 'son-san': 'splat', 'xe-tank': 'tank', 'dat-bom': 'bomber', 'thu-thanh': 'defend', 'chung-mot-than': 'shared', 'day-hop': 'box', 'nguoi-que': 'fight', 'den-lua-nuoc': 'temple', 'ech-op': 'frog', 'da-bong': 'soccer', 'can-goc': 'shell' };
+function pfieldHTML(v, g) {
+  if (!g || PFIELD_PHASES[g.id] !== g.phase && !(g.id === 'da-bong' && g.phase === 'goal') && !(g.id === 'ech-op' && g.phase === 'frogClear') && !(g.id === 'can-goc' && g.phase === 'boom')) return '';
+  var h = '<div class="afield pfield' + (g.id === 'da-bong' ? ' wide' : '') + '" id="afield">';
+  if (g.id === 'day-ra' || g.id === 'ne-dan') h += '<div class="aring dynring" id="aring" style="transform:translate(-50%,-50%) scale(' + ((g.arenaR || 12) * 25 / 300) + ')"></div>';
+  else h += '<div class="aring" id="aring"></div>';
+  if (g.id === 'son-san' && g.grid) {
+    h += '<div class="splatgrid">';
+    for (var gi = 0; gi < 180; gi++) { var gs = g.grid[gi]; var gp = gs ? playerOf(v, gs) : null; h += '<div class="scell" id="scell-' + gi + '"' + (gp ? ' style="background:' + COLORS[gp.color] + '"' : '') + '></div>'; }
+    h += '</div>';
+  }
+  if (g.id === 'giu-vuong-mien') h += '<div class="acrown" id="acrown" style="left:50%;top:50%">' + crownSVG(60) + '</div>';
+  if (g.id === 'chung-mot-than' && g.star) h += '<div class="astar gold" id="cstar" style="left:' + PX(g.star.x) + '%;top:' + PY(g.star.y) + '%">★</div>';
+  if (g.id === 'day-hop') {
+    if (g.goal) h += '<div class="agoal" style="' + rectStyle(g.goal) + '">ĐÍCH</div>';
+    if (g.walls) for (var wi = 0; wi < g.walls.length; wi++) h += '<div class="awallseg" style="' + rectStyle(g.walls[wi]) + '"></div>';
+    h += '<div class="acrate" id="acrate" style="left:50%;top:50%">📦</div>';
+  }
+  if (g.id === 'da-bong' && g.ball) h += '<div class="sball" id="sball" style="left:' + ((g.ball.x + 19) / 38 * 100) + '%;top:' + ((g.ball.y + 9.6) / 19.2 * 100) + '%"></div>';
+  if (g.id === 'chung-mot-than') {
+    h += '<div class="ablob" id="sharedblob" style="left:50%;top:50%">' + sharedOrbSVG(v, 66) + '<div class="aname">CẢ ĐỘI</div></div>';
+  } else if (g.id !== 'can-goc') {
+    for (var i = 0; i < v.players.length; i++) {
+      var p = v.players[i];
+      if (g.id === 'den-lua-nuoc') { h += '<div class="achar" id="achar-' + p.seat + '" style="left:50%;top:50%">' + orbSVG(p.color, 52) + '<div class="aname">' + esc(p.name) + '</div></div>'; continue; }
+      if (g.id === 'ech-op') { h += '<div class="afrog" id="afrog-' + p.seat + '" style="left:50%;top:50%">' + frogSVG(p.color, null) + '<div class="aname">' + esc(p.name) + '</div></div>'; continue; }
+      if (g.id === 'nguoi-que') { h += '<div class="ablob" id="ablob-' + p.seat + '" style="left:50%;top:50%;color:' + COLORS[p.color] + '"><span id="fig-' + p.seat + '">' + orbSVG(p.color, 62) + '</span><div class="aname">' + esc(p.name) + '</div><div class="alives" id="alives-' + p.seat + '"></div><div id="dmg-' + p.seat + '"></div></div>'; continue; }
+      if (g.id === 'xe-tank' || g.id === 'dat-bom') { h += '<div class="ablob" id="ablob-' + p.seat + '" style="left:50%;top:50%;color:' + COLORS[p.color] + '"><span class="orbwrap">' + orbSVG(p.color, 62) + '<span class="abarrel" id="barrel-' + p.seat + '"></span></span><div class="aname">' + esc(p.name) + '</div><div class="alives" id="alives-' + p.seat + '"></div></div>'; continue; }
+      h += '<div class="ablob" id="ablob-' + p.seat + '" style="left:50%;top:50%;color:' + COLORS[p.color] + '">' + orbSVG(p.color, 62) + '<div class="aname">' + esc(p.name) + '</div><div class="alives" id="alives-' + p.seat + '"></div></div>';
+    }
+  }
+  h += '</div>';
+  return h;
+}
 function playerGame(v) {
   var g = v.game;
   var me = playerOf(v, S.seat);
   var h = '<div class="stage pstage g-' + g.id + (isActionGame(g.id) ? ' neon-stage' : '') + '">';
   if (g.phase === 'countdown') { h += '<div class="center baloo" style="font-size:26px">' + esc(g.name) + '</div>' + countdownHTML(g) + '</div>'; return h; }
   h += '<h2>' + esc(g.name) + (g.id === 'ma-soi' ? ' · Đêm ' + (g.night || g.round) : (g.id === 'ca-ngua' || g.id === 'tien-len') ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
+  h += pfieldHTML(v, g);
   if (g.id === 'do-vui') {
     if (g.phase === 'question') {
       h += '<div class="baloo" style="font-size:22px">' + esc(g.question) + '</div>';
