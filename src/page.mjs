@@ -516,9 +516,10 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
    During field play the glow shadows go; the shapes keep their
    gradient bodies, so the field still reads at a glance. */
 #app.perf .aball, #app.perf .ashell, #app.perf .fx-trail, #app.perf .aring { box-shadow: none; }
-/* LITE MODE (adaptive, set by rafLoop when this device cannot hold
-   ~45fps): shed shadows and blur filters page-wide until frames
-   recover. A plain smooth game beats a pretty slideshow. */
+/* LITE MODE (Round 22: toggle removed from rafLoop — Round 21 FLAT
+   already shed the heavy paint everywhere, and toggling mid-game cost
+   a full style recalc per switch. Rules stay, unused, for a future
+   round to revive deliberately.) */
 body.lite .ablob svg, body.lite .afrog svg, body.lite .ablob.holder svg, body.lite .abomb, body.lite .acrystal, body.lite .astar, body.lite .aboat, body.lite .crownglow { filter: none !important; }
 body.lite #afield, body.lite .card, body.lite .gamecard { box-shadow: none !important; }
 body.lite .aball, body.lite .ashell, body.lite .aring, body.lite .ablob { box-shadow: none !important; }
@@ -870,6 +871,12 @@ function watchdog() {
 var lastPollAt = 0;
 function poll() {
   if (!S.code) return;
+  // Round 22: while a local game runs, the engine in this page IS the
+  // source of truth — there is no server state to fetch, and the HTTP
+  // poll + wsEnsure churn below only competes with the game for the
+  // main thread and the network. localStop() clears S.localActive, so
+  // the safety-net poll resumes on its own for the next game.
+  if (S.localActive) return;
   wsEnsure();
   // While the WebSocket channel is live it pushes every change the
   // moment it happens, so polling demotes itself to a ~2s safety net.
@@ -1025,14 +1032,30 @@ function localStart(body) {
   L.startScores = {};
   for (var i = 0; i < room.players.length; i++) L.startScores[room.players[i].seat] = room.players[i].score || 0;
   api('/api/rooms/' + S.code + '/action', { role: 'host', token: S.token, action: 'localPlay', on: true }, function () {});
-  L.timer = setInterval(localTick, 31);
+  // Round 22: NO second clock. The local engine used to advance on its
+  // own 31ms timer while rafLoop rendered on the frame clock — under a
+  // bursty load the two clocks drifted and bunched, which reads as
+  // judder even when the average fps looks like 60. Advance now runs
+  // inside rafLoop (see localTick's call site there): one clock, a
+  // frame is drawn exactly when the sim steps for it. advance() is
+  // time-based (ticks fire on nextTickAt, with catch-up), so stepping
+  // it per frame cannot change game speed. Only a browser without
+  // requestAnimationFrame keeps the old timer as a fallback.
+  if (typeof requestAnimationFrame !== 'function') L.timer = setInterval(localTick, 31);
   toast('Đang chơi TẠI CHỖ trên máy này — mạng lag cũng không ảnh hưởng ván này.');
   return true;
 }
 function localTick() {
+  // Round 22: called once per animation frame from rafLoop — NOT from
+  // a timer any more. One clock drives sim + render in local mode.
   if (!L.active || !L.room) return;
   var E = window.__NP_ENGINE;
   try { E.advance(L.room); localApply(); } catch (e) { localAbort(); return; }
+  // The local engine ticking proves this page is alive. Server contact
+  // is gated off while local (poll/tick/pump, Round 22), so without
+  // this stamp the stale-view watchdog would reload the page mid-game
+  // the moment the network went quiet.
+  S.lastOkAt = Date.now();
   if (L.room.phase === 'playing') L.wasPlaying = true;
   if (L.room.phase === 'results' && !L.synced && Date.now() >= (L.syncNextAt || 0)) { L.synced = true; localSyncResults(); }
   else if (L.room.phase === 'lobby') localStop();
@@ -3011,30 +3034,24 @@ function rafLoop(ts) {
   var nowMs = typeof ts === 'number' ? ts : performance.now();
   var dt = S.rafLast ? Math.min(100, nowMs - S.rafLast) : 16;
   S.rafLast = nowMs;
-  // Adaptive lite mode: average the frame time over 50-frame
-  // windows; if this device cannot hold ~45fps, shed the expensive
-  // paint work (body.lite CSS) until frames recover for 3 straight
-  // windows. Weak hardware feels "lag" no network fix can cure —
-  // this makes the page itself cheaper exactly when it matters.
+  // Round 22 — single clock: drive the local engine here, on the frame
+  // clock, instead of the old separate 31ms timer (see localStart).
+  // localTick may stop the game (lobby/choosing/results-sync); the rest
+  // of the frame then renders the resulting view as usual. If this tab
+  // is hidden, rAF pauses and the game pauses with it — advance() is
+  // time-based, so on return it catches up (max 8 ticks, then resync)
+  // instead of corrupting state.
+  if (L.active && L.room) localTick();
+  // Round 22: the adaptive lite toggle is GONE. Round 21 FLAT removed
+  // the heavy paint everywhere, so there is nothing left for lite mode
+  // to shed — but toggling body.lite mid-game forced a full style
+  // recalc on every switch, which itself caused a visible hitch. The
+  // frame-time window now only feeds the fps average (meter) and the
+  // hitch log (the meter's "khựng N" readout). body.lite CSS stays in
+  // place, unused, so a future round can revive it deliberately.
   S._ftAcc = (S._ftAcc || 0) + dt; S._ftN = (S._ftN || 0) + 1;
-  if (dt > 25) S._ftSlow = (S._ftSlow || 0) + 1;
   if (dt > 25) { S._hitch = S._hitch || []; S._hitch.push({ t: Date.now(), d: Math.round(dt) }); if (S._hitch.length > 60) S._hitch.shift(); }
-  if (dt > 120) S._ftBlock = true;
-  if (S._ftN >= 50) {
-    var avgF = S._ftAcc / S._ftN; var slowN = S._ftSlow || 0; var blocked = !!S._ftBlock; S._ftAcc = 0; S._ftN = 0; S._ftSlow = 0; S._ftBlock = false;
-    S._fpsAvg = avgF;
-    var bd = document.body;
-    if (bd) {
-      // Trigger on hitches, not just a low average: a page that
-      // averages 58 fps but freezes 200 ms every few seconds FEELS
-      // broken while its average still looks healthy — and a single
-      // long block produces only ONE slow frame sample, so count
-      // blocks explicitly.
-      if ((avgF > 23 || slowN >= 8 || blocked) && !bd.classList.contains('lite')) bd.classList.add('lite');
-      else if (avgF < 17 && slowN <= 2 && bd.classList.contains('lite')) { S._liteOk = (S._liteOk || 0) + 1; if (S._liteOk >= 3) { bd.classList.remove('lite'); S._liteOk = 0; } }
-      else if (avgF >= 17) S._liteOk = 0;
-    }
-  }
+  if (S._ftN >= 50) { S._fpsAvg = S._ftAcc / S._ftN; S._ftAcc = 0; S._ftN = 0; }
   var field = el('afield');
   if (field && !field.classList.contains('raf-on')) field.classList.add('raf-on');
   var slow = !!(field && field.classList.contains('slowmo'));
@@ -3454,10 +3471,19 @@ function patchPositions(v) {
 }
 
 function tick() {
-  watchdog();
-  wsWatchdog();
-  if (S.role === 'host' && S.code) engLoad();
-  vchkN = (vchkN + 1) % 200; if (vchkN === 0) versionCheck();
+  // Round 22: while a local game runs, the server-side machinery below
+  // is dead weight — watchdog/wsWatchdog/engLoad/versionCheck and the
+  // stall-rescue 'tick' all assume the server drives the game. The
+  // local engine stamps S.lastOkAt itself every frame (see localTick),
+  // so the watchdog stays quiet without any server contact. The meter,
+  // countdown and timer bars further down KEEP running: they are local
+  // UI and the user reads them during local play.
+  if (!S.localActive) {
+    watchdog();
+    wsWatchdog();
+    if (S.role === 'host' && S.code) engLoad();
+    vchkN = (vchkN + 1) % 200; if (vchkN === 0) versionCheck();
+  }
   var v = S.view;
   if (!v || !S.role) return;
   var t = serverNow();
@@ -3469,7 +3495,7 @@ function tick() {
   // advance and broadcast inside its message handler, which has
   // never shown the alarm path's multi-second stalls. Costs nothing
   // while pushes are healthy (the branch simply never fires).
-  if (g && v.phase === 'playing' && S.lastWsAt && Date.now() - S.lastWsAt > 250 && wsOpen() && !wsStale()) {
+  if (g && v.phase === 'playing' && !S.localActive && S.lastWsAt && Date.now() - S.lastWsAt > 250 && wsOpen() && !wsStale()) {
     try { wsConn.send(JSON.stringify({ action: 'tick' })); } catch (e) {}
   }
   // On-screen meter while playing: real numbers from THIS device —
@@ -3484,7 +3510,7 @@ function tick() {
     }
     if (!S._pingAt || Date.now() - S._pingAt > 2000) {
       S._pingAt = Date.now();
-      if (wsOpen()) { try { wsConn.send(JSON.stringify({ action: 'ping', t: Date.now() })); } catch (e) {} }
+      if (!S.localActive && wsOpen()) { try { wsConn.send(JSON.stringify({ action: 'ping', t: Date.now() })); } catch (e) {} }
     }
     if (!S._nmAt || Date.now() - S._nmAt > 500) {
       S._nmAt = Date.now();
@@ -3494,8 +3520,8 @@ function tick() {
       var rttM = medM(S._rttH), gapM = pctOf(gapHistM, 0.9) || medM(gapHistM);
       var hN = 0, hW = 0;
       if (S._hitch) { var cutH = Date.now() - 10000; S._hitch = S._hitch.filter(function (h) { return h.t > cutH; }); hN = S._hitch.length; for (var hi = 0; hi < hN; hi++) if (S._hitch[hi].d > hW) hW = S._hitch[hi].d; }
-      if (S.localActive) nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · TẠI CHỖ — không qua mạng' + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '') + (document.body.classList.contains('lite') ? ' · LITE' : '');
-      else nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (S._lastSrc ? ' · ' + S._lastSrc : '') + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '') + (document.body.classList.contains('lite') ? ' · LITE' : '');
+      if (S.localActive) nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · TẠI CHỖ — không qua mạng' + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '');
+      else nmEl.textContent = '⚡ ' + (fpsM ? fpsM + ' fps' : '— fps') + ' · ping ' + (rttM != null ? rttM + 'ms' : '—') + ' · nhịp ' + (gapM != null ? gapM + 'ms' : '—') + (S._lastSrc ? ' · ' + S._lastSrc : '') + (hN ? ' · khựng ' + hN + ' (nặng nhất ' + hW + 'ms)' : '');
       nmEl.style.display = '';
     }
   } else if (nmEl) nmEl.style.display = 'none';
@@ -5199,6 +5225,12 @@ window.addEventListener('blur', function () {
   // time-based, so pump + alarm together can never double-step
   // the simulation.
   setInterval(function () {
+    // Round 22: the pump drives the SERVER loop — in local mode the
+    // server is not driving anything (S.view is the local view, but it
+    // still reports phase 'playing'), so pumping here only spams the
+    // socket mid local game. Gated off while local; resumes on its own
+    // when the next server-path game starts.
+    if (S.localActive) return;
     if (S.role !== 'host' || !S.view || S.view.phase !== 'playing' || !S.view.game) return;
     if (!wsOpen() || wsStale()) return;
     var nowP = Date.now();
