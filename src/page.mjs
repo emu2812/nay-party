@@ -3084,7 +3084,7 @@ function moveEl(node, x, y, fam, vx, vy) {
     // not wall-clock now: rafLoop draws at rt, so an offset measured
     // against "now" is wrong by vx * delay and the render jumps by
     // exactly that error whenever the delay is engaged.
-    var rtN = serverNow() - (S._rDelayCur || 0) / 1000;
+    var rtN = serverNow() - (S._rDelayCur || 0); // _rDelayCur is in ms, like serverNow() — dividing by 1000 made the render delay a no-op (Round 32 fix)
     var ageN = Math.min(Math.max((rtN - e.atS) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
     e.corrX = e.x - (e.tx + e.vx * ageN);
     e.corrY = e.y - (e.ty + e.vy * ageN);
@@ -3217,7 +3217,7 @@ function rafLoop(ts) {
     if (S._rDelayCur === undefined) S._rDelayCur = rDelayT;
     else if (S._rDelayCur < rDelayT) S._rDelayCur = Math.min(rDelayT, S._rDelayCur + 2);
     else if (S._rDelayCur > rDelayT) S._rDelayCur = Math.max(rDelayT, S._rDelayCur - 2);
-    var rt = nowS - S._rDelayCur / 1000;
+    var rt = nowS - S._rDelayCur; // ms clock minus ms delay (the old /1000 silently zeroed the jitter buffer — Round 32)
     var gx, gy;
     if (e.atS == null || e.atP == null || e.atS <= e.atP || rt >= e.atS) {
       // Past the newest anchor: extrapolate the velocity.
@@ -3229,7 +3229,7 @@ function rafLoop(ts) {
       // Other movers keep a gentle decay that only starts at
       // 200 ms, so a late push resumes from a closer position and
       // the catch-up correction stays small.
-      var decay = e.bal ? 1 : (extra <= 200 ? 1 : Math.max(0.6, 1 - (extra - 200) / 750));
+      var decay = 1; // Round 32: no velocity decay on overrun — pad-driven movers keep their speed in the sim during a delivery hole, so decaying the extrapolation only manufactured a slow-down/surge cycle at every late push; the arrival spring absorbs the (smaller) resume error.
       var dist = (extra / TICK_MS_CLIENT) * decay;
       gx = e.tx + (e.vx || 0) * dist; gy = e.ty + (e.vy || 0) * dist;
     } else if (rt <= e.atP) { gx = e.px; gy = e.py; }
