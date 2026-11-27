@@ -77,8 +77,9 @@ button.tlcard.red { color: #D81F3C; }
 button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; box-shadow: 0 2px 0 rgba(0,0,0,.3); background: #FFF3C4; }
 button.tlcard b { display: block; font-size: 21px; }
 button.tlcard i { display: block; font-style: normal; font-size: 18px; }
-.tlstage { background: #7C4A21; border-radius: 230px; padding: 13px; max-width: 940px; margin: 10px auto; }
-.tlfelt { position: relative; height: 440px; border-radius: 200px; background: #0B6E39; border: 3px solid #E9C46A; overflow: hidden; }
+.tlstage { background: #7C4A21; border-radius: 240px; padding: 13px; max-width: 1140px; margin: 10px auto; }
+.tlfelt { position: relative; height: 500px; border-radius: 220px; background: #0B6E39; border: 3px solid #E9C46A; overflow: hidden; }
+.tlcoin { display: inline-block; margin-top: 2px; background: rgba(0,0,0,.5); color: #FFD76A; font-weight: 800; font-size: 13px; border-radius: 999px; padding: 1px 9px; }
 .tlfelt::before { content: ''; position: absolute; left: 6%; right: 6%; top: 9%; bottom: 9%; border: 2px solid rgba(255,255,255,.16); border-radius: 30px; }
 .tlseat { position: absolute; transform: translate(-50%, -50%); text-align: center; width: 132px; z-index: 2; }
 .tlava { width: 60px; height: 60px; border-radius: 50%; border: 3px solid #E9C46A; background: #173F2C; display: flex; align-items: center; justify-content: center; margin: 0 auto; overflow: hidden; }
@@ -98,12 +99,17 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .tlbig i { display: block; font-style: normal; font-size: 22px; }
 .tlbig.red { color: #D81F3C; }
 .tlkind { display: inline-block; margin-top: 12px; background: #FFC93D; color: #4A2503; border-radius: 999px; padding: 2px 16px; font-weight: 800; font-size: 16px; }
-.wolfscene { position: relative; height: 480px; border-radius: 26px; overflow: hidden; background: #16264C; border: 3px solid #0B0E1A; margin: 10px auto; max-width: 940px; }
-.wolfscene.day { background: #7FB2E0; }
+.wolfscene { position: relative; height: 480px; border-radius: 26px; overflow: hidden; background-color: #0C1830; background-image: radial-gradient(2px 2px at 22px 30px, rgba(255,255,255,.85) 50%, transparent 51%), radial-gradient(1.5px 1.5px at 70px 84px, rgba(255,255,255,.55) 50%, transparent 51%), radial-gradient(1.5px 1.5px at 118px 44px, rgba(255,255,255,.7) 50%, transparent 51%); background-size: 150px 120px, 210px 170px, 260px 200px; border: 3px solid #0B0E1A; margin: 10px auto; max-width: 940px; }
+.wpine { position: absolute; bottom: 24px; width: 56px; background: #060D1D; clip-path: polygon(50% 0, 76% 32%, 63% 32%, 85% 60%, 69% 60%, 90% 90%, 57% 90%, 57% 100%, 43% 100%, 43% 90%, 10% 90%, 31% 60%, 15% 60%, 37% 32%, 24% 32%); z-index: 0; }
+.whouse::after { content: ''; position: absolute; left: 50%; top: 58%; width: 16%; height: 14%; margin-left: -8%; background: #FFD76A; opacity: .9; border-radius: 1px; }
+.worb::before { content: ''; position: absolute; inset: -16px; border-radius: 50%; background: rgba(255,244,214,.13); }
+.wolfscene.day { background-color: #7FB2E0; background-image: none; }
+.wolfscene.day .whouse::after { opacity: 0; }
+.wolfscene.day .wpine { background: #2C4A73; }
 .worb { position: absolute; right: 38px; top: 24px; width: 62px; height: 62px; border-radius: 50%; background: #F5F0D8; }
 .wolfscene.day .worb { background: #FFD93D; }
 .whouses { position: absolute; left: 0; right: 0; bottom: 0; height: 92px; display: flex; align-items: flex-end; gap: 7px; padding: 0 12px; }
-.whouse { flex: 1; background: #0D1526; clip-path: polygon(0 100%, 0 34%, 50% 0, 100% 34%, 100% 100%); }
+.whouse { flex: 1; position: relative; background: #0D1526; clip-path: polygon(0 100%, 0 34%, 50% 0, 100% 34%, 100% 100%); }
 .wolfscene.day .whouse { background: #3D5A80; }
 .wseat { position: absolute; transform: translate(-50%, -50%); text-align: center; width: 118px; z-index: 2; }
 .wava { width: 56px; height: 56px; border-radius: 50%; border: 3px solid #E9C46A; background: #1D3557; display: flex; align-items: center; justify-content: center; margin: 0 auto; overflow: hidden; }
@@ -341,6 +347,9 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .g-da-bong .afield { background-color: #2E8B47; background-image: repeating-linear-gradient(90deg, rgba(255,255,255,.055) 0 64px, rgba(255,255,255,0) 64px 128px); }
 .g-da-bong .afield::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; background: rgba(255,255,255,.45); transform: translateX(-50%); pointer-events: none; }
 .g-da-bong .afield::after { content: ''; position: absolute; left: 50%; top: 50%; width: 17%; aspect-ratio: 1; border: 3px solid rgba(255,255,255,.45); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.g-dat-bom .afield { background-color: #2E7D3B; background-image: linear-gradient(45deg, #379548 25%, transparent 25%, transparent 75%, #379548 75%), linear-gradient(45deg, #379548 25%, transparent 25%, transparent 75%, #379548 75%); background-size: 92px 92px; background-position: 0 0, 46px 46px; }
+.bsoft { background-image: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 2px, transparent 2px 13px); }
+.bhard { border-top: 3px solid #637691; }
 .aring { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%;
   background: transparent;
   border: 3px solid #78DCFF; }
@@ -2037,7 +2046,7 @@ function hostStage(v) {
     var wNight = g.phase === 'night';
     var wEmb = { night: '🌙', dawn: '🌅', discuss: '🗣️', vote: '🗳️', execute: '⚖️', wolfEnd: '🏁' }[g.phase] || '🐺';
     var wTxt = { night: 'Cả làng đang ngủ…', dawn: 'Trời sáng rồi!', discuss: 'Ai là sói trong làng?', vote: 'Làng treo cổ ai?', execute: 'Kết quả bỏ phiếu', wolfEnd: (g.winner === 'soi' ? '🐺 Bầy sói thắng!' : '🎉 Dân làng thắng!') }[g.phase] || '';
-    h += '<div class="wolfscene' + (wNight ? '' : ' day') + '"><div class="worb"></div><div class="whouses">'
+    h += '<div class="wolfscene' + (wNight ? '' : ' day') + '"><div class="worb"></div><i class="wpine" style="left:0.5%;height:128px"></i><i class="wpine" style="left:7%;height:96px"></i><i class="wpine" style="right:7%;height:104px"></i><i class="wpine" style="right:0.5%;height:136px"></i><div class="whouses">'
       + '<div class="whouse" style="height:64px"></div><div class="whouse" style="height:84px"></div><div class="whouse" style="height:56px"></div><div class="whouse" style="height:78px"></div><div class="whouse" style="height:62px"></div><div class="whouse" style="height:88px"></div><div class="whouse" style="height:58px"></div></div>'
       + '<div class="wcenter"><div class="wemblem">' + wEmb + '</div><div><span class="wctext">' + wTxt + '</span></div></div>';
     var nW = v.players.length;
@@ -2147,7 +2156,8 @@ function hostStage(v) {
         var cnt9 = g.counts ? (g.counts[pp9.seat] || 0) : 0;
         h += '<div class="tlseat' + (g.turn === pp9.seat ? ' turn' : '') + '" style="left:' + sx9.toFixed(1) + '%;top:' + sy9.toFixed(1) + '%">'
           + '<div class="tlava">' + blobSVG(pp9.color, pp9.mood, 46) + '</div>'
-          + '<div class="tlname">' + esc(pp9.name) + '</div>';
+          + '<div class="tlname">' + esc(pp9.name) + '</div>'
+          + '<div><span class="tlcoin">🪙 ' + ((pp9.liveScore != null ? pp9.liveScore : pp9.score) || 0) + '</span></div>';
         if (fin9 >= 0) h += '<div><span class="tlbadge gold">🏆 Hạng ' + (fin9 + 1) + '</span></div>';
         else if (cnt9 > 0) h += '<div class="tlfan"><i></i><i></i><i></i><span class="tlcnt">×' + cnt9 + '</span></div>';
         if (g.leader === pp9.seat && fin9 < 0) h += '<div><span class="tlbadge gold">Cái</span></div>';
@@ -2795,6 +2805,8 @@ function syncDyn(items, prefix, cls, decorate) {
   var field = el('afield');
   if (!field) return;
   var seen = {};
+  var reg = S._dynReg || (S._dynReg = {});
+  var myReg = reg[prefix] || (reg[prefix] = {});
   for (var i = 0; i < items.length; i++) {
     var it = items[i]; var id = prefix + it.id; seen[id] = 1;
     var n = el(id);
@@ -2805,10 +2817,13 @@ function syncDyn(items, prefix, cls, decorate) {
       n.classList.add('pop');
       field.appendChild(n);
     }
+    myReg[id] = n;
     moveEl(n, it.x, it.y, 'std', it.vx, it.vy);
   }
-  var olds = field.querySelectorAll('.' + cls);
-  for (var j = 0; j < olds.length; j++) if (!seen[olds[j].id]) olds[j].remove();
+  // Prune from the JS registry instead of a querySelectorAll sweep
+  // over the field on every apply (profiled Round 30: the sweeps
+  // were a steady per-step tax in shell/slime-heavy games).
+  for (var rid in myReg) if (!seen[rid]) { var rn = el(rid) || myReg[rid]; if (rn) rn.remove(); delete myReg[rid]; if (S.raf) delete S.raf[rid]; }
 }
 // Index-keyed variant for the dodge/shared balls (no server id): nodes
 // are nball-<index>, created/pruned as the ball count changes, so the
@@ -2827,10 +2842,12 @@ function syncDynIdx(items, prefix, cls) {
     }
     moveEl(n, items[i].x, items[i].y, 'std', items[i].vx, items[i].vy);
   }
-  var olds = field.querySelectorAll('.' + cls);
-  for (var j = 0; j < olds.length; j++) {
-    var idx = +(olds[j].id || '').slice(prefix.length);
-    if (!(idx >= 0 && idx < items.length)) olds[j].remove();
+  var reg2 = S._dynReg || (S._dynReg = {});
+  var myReg2 = reg2[prefix] || (reg2[prefix] = {});
+  for (var i2 = 0; i2 < items.length; i2++) myReg2[prefix + i2] = el(prefix + i2);
+  for (var rid2 in myReg2) {
+    var idx2 = +(rid2 || '').slice(prefix.length);
+    if (!(idx2 >= 0 && idx2 < items.length)) { var rn2 = el(rid2) || myReg2[rid2]; if (rn2) rn2.remove(); delete myReg2[rid2]; if (S.raf) delete S.raf[rid2]; }
   }
 }
 // Né Laze beams, keyed by laser id. A beam's geometry never moves,
@@ -2897,8 +2914,10 @@ function syncBlasts(blasts) {
       }
     }
   }
-  var olds = field.querySelectorAll('.ablast');
-  for (var k = 0; k < olds.length; k++) if (!seen[olds[k].id]) olds[k].remove();
+  var regB = S._dynReg || (S._dynReg = {});
+  var myRegB = regB['blast-'] || (regB['blast-'] = {});
+  for (var sid in seen) { var sn = el(sid); if (sn) myRegB[sid] = sn; }
+  for (var ridB in myRegB) if (!seen[ridB]) { var rnB = el(ridB) || myRegB[ridB]; if (rnB) rnB.remove(); delete myRegB[ridB]; }
 }
 // ---------------------------------------------------------------------
 // rAF position interpolation, transform edition. patchPositions records
@@ -3279,11 +3298,11 @@ function patchPositions(v) {
       var bn = el('ablob-' + bSeat);
       if (bn) {
         moveEl(bn, bb.x, bb.y, 'std', bb.vx, bb.vy);
-        bn.style.opacity = bb.alive ? '1' : '0.25';
+        setOp(bn, bb.alive ? '1' : '0.25');
         if (bn._air !== !!bb.air) { bn._air = !!bb.air; bn.classList.toggle('air', bn._air); }
       }
       var lv = el('alives-' + bSeat);
-      if (lv) lv.textContent = '\u2764'.repeat(bb.lives);
+      setT(lv, '\u2764'.repeat(bb.lives));
     }
     var ring = el('aring');
     // Ring size rides a transform scale on the fixed full-field basis
@@ -3292,7 +3311,7 @@ function patchPositions(v) {
     // without repainting the giant bordered circle on every patch.
     if (ring && g.arenaR) { ring.style.transform = 'translate(-50%, -50%) scale(' + (g.arenaR * 25 / 300) + ')'; }
     var ml = el('mylives');
-    if (ml && g.blobs[S.seat]) ml.textContent = '\u2764'.repeat(g.blobs[S.seat].lives);
+    if (ml && g.blobs[S.seat]) setT(ml, '\u2764'.repeat(g.blobs[S.seat].lives));
   }
   if (g.id === 'ne-dan' && g.lasers) syncLasers(g.lasers);
   if ((g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) arenaFX(v, g);
@@ -3319,21 +3338,24 @@ function patchPositions(v) {
     if (g.soft) {
       var softSet = {};
       for (var sfI = 0; sfI < g.soft.length; sfI++) softSet[g.soft[sfI][0] + ',' + g.soft[sfI][1]] = 1;
-      var softEls = document.querySelectorAll('.bsoft');
+      var fldS = el('afield');
+      var softEls = (fldS && fldS._softEls) || document.querySelectorAll('.bsoft');
+      if (fldS && !fldS._softEls) fldS._softEls = softEls;
       for (var sfJ = 0; sfJ < softEls.length; sfJ++) {
         var sfKey = (softEls[sfJ].id || '').slice(6);
-        softEls[sfJ].style.display = softSet[sfKey] ? '' : 'none';
+        var sfD = softSet[sfKey] ? '' : 'none';
+        if (softEls[sfJ]._sd !== sfD) { softEls[sfJ]._sd = sfD; softEls[sfJ].style.display = sfD; }
       }
     }
     if (g.blasts) syncBlasts(g.blasts);
   }
   if (g.id === 'thu-thanh') {
     if (g.slimes) syncDyn(g.slimes, 'slime-', 'aslime', function (n, it) { n.className = 'aslime' + (it.big ? ' big' : ''); n.innerHTML = '<i></i><i></i>'; });
-    var ch2 = el('crystalhp'); if (ch2 && g.crystal) ch2.textContent = g.crystal.hp;
-    var chh = el('crystalhearts'); if (chh && g.crystal) chh.textContent = '\u2764'.repeat(Math.max(0, g.crystal.hp));
-    var kn = el('killn'); if (kn) kn.textContent = g.kills || 0;
-    var chp2 = el('crystalhp2'); if (chp2 && g.crystal) chp2.textContent = g.crystal.hp;
-    var kn2 = el('killn2'); if (kn2) kn2.textContent = g.kills || 0;
+    var ch2 = el('crystalhp'); if (ch2 && g.crystal) setT(ch2, g.crystal.hp);
+    var chh = el('crystalhearts'); if (chh && g.crystal) setT(chh, '\u2764'.repeat(Math.max(0, g.crystal.hp)));
+    var kn = el('killn'); if (kn) setT(kn, g.kills || 0);
+    var chp2 = el('crystalhp2'); if (chp2 && g.crystal) setT(chp2, g.crystal.hp);
+    var kn2 = el('killn2'); if (kn2) setT(kn2, g.kills || 0);
   }
   if (g.id === 'nguoi-que' && g.blobs) {
     for (var qSeat in g.blobs) {
@@ -3387,8 +3409,8 @@ function patchPositions(v) {
     }
     var sbl = el('sball');
     if (sbl && g.ball) moveEl(sbl, g.ball.x, g.ball.y, 'soc', g.ball.vx, g.ball.vy);
-    var sd9 = el('scoredo'); if (sd9 && g.scoreboard) sd9.textContent = g.scoreboard.do;
-    var sx9 = el('scorexanh'); if (sx9 && g.scoreboard) sx9.textContent = g.scoreboard.xanh;
+    var sd9 = el('scoredo'); if (sd9 && g.scoreboard) setT(sd9, g.scoreboard.do);
+    var sx9 = el('scorexanh'); if (sx9 && g.scoreboard) setT(sx9, g.scoreboard.xanh);
     arenaFX(v, g);
   }
   if (g.id === 'ech-op') {
@@ -3397,8 +3419,8 @@ function patchPositions(v) {
         var fb9 = g.frogs[fSeat];
         var fn9 = el('afrog-' + fSeat);
         if (!fn9) continue;
-        if (fb9.state === 'in') { fn9.style.display = 'none'; continue; }
-        fn9.style.display = '';
+        if (fb9.state === 'in') { if (fn9._sd !== 'none') { fn9._sd = 'none'; fn9.style.display = 'none'; } continue; }
+        if (fn9._sd !== '') { fn9._sd = ''; fn9.style.display = ''; }
         moveEl(fn9, fb9.x, fb9.y, 'std', fb9.vx, fb9.vy);
         var stKey = fb9.state + ':' + (fb9.bellySeat || '');
         if (fn9.dataset.st !== stKey) {
