@@ -83,15 +83,14 @@ export const GAMES = {
   'do-vui': { name: 'Đố Vui Tốc Độ', desc: 'Trả lời đúng và nhanh nhất', rounds: 8, cat: 'versus', min: 2, max: 12 },
   'day-ra': { name: 'Đẩy Ra Khỏi Sàn', desc: 'Gamepad: đẩy hết đối thủ khỏi sàn tròn!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'ne-dan': { name: 'Né Laze', desc: 'Né tia laze: nhảy qua tia thấp, đứng yên tránh tia cao!', rounds: 1, cat: 'versus', min: 2, max: 8 },
-  'keo-co': { name: 'Kéo Co', desc: 'Hai đội bấm nút B, kéo nút thắt về phía mình!', rounds: 1, cat: 'versus', min: 2, max: 12 },
   // Rounds for Chia Hay Cướp are dynamic: one round per seated player
   // (pairs rotate, see beginRound), so `rounds` here is only nominal.
   'cuop-sao': { name: 'Cướp Sao', desc: 'Gamepad: nhặt sao, xô đối thủ cho rơi sao!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'giu-vuong-mien': { name: 'Giữ Vương Miện', desc: 'Gamepad: giành vương miện và giữ càng lâu càng tốt!', rounds: 1, cat: 'versus', min: 2, max: 8 },
-  'son-san': { name: 'Sơn Sàn', desc: 'Gamepad: chạy sơn sàn, chiếm thật nhiều ô!', rounds: 1, cat: 'versus', min: 2, max: 8 },
-  'cao-boi': { name: 'Cao Bồi', desc: 'Đợi hiệu lệnh BẮN — rút súng nhanh nhất!', rounds: 5, cat: 'versus', min: 2, max: 8 },
   'xe-tank': { name: 'Xe Tăng Đấu Trường', desc: 'Gamepad: lái xe tăng, bắn hạ đối thủ, núp sau vật chắn!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'dat-bom': { name: 'Đặt Bom', desc: 'Gamepad: đặt bom phá tường gỗ, né vụ nổ chữ thập!', rounds: 1, cat: 'versus', min: 2, max: 6 },
+  'ma-soi': { name: 'Ma Sói', desc: 'Suy luận xã hội: sói trà trộn trong làng — bảo vệ dân, tìm và treo cổ sói trước khi quá muộn!', rounds: 1, cat: 'versus', min: 4, max: 12 },
+  'ca-ngua': { name: 'Cờ Cá Ngựa', desc: 'Thảy xúc xắc, xuất chuồng, đá ngựa đối thủ — đưa cả 4 ngựa về chuồng trước!', rounds: 1, cat: 'versus', min: 2, max: 4 },
   'tien-len': { name: 'Tiến Lên Miền Nam', desc: 'Đánh bài miền Nam: chặn bài, chặt heo bằng tứ quý & đôi thông — hết bài trước thắng!', rounds: 1, cat: 'versus', min: 2, max: 4 },
   'chung-mot-than': { name: 'Chung Một Thân', desc: 'Hợp tác: cả đội lái chung một quả bóng, mỗi người giữ một hướng!', rounds: 1, cat: 'coop', min: 2, max: 8 },
   'day-hop': { name: 'Đẩy Hộp Về Đích', desc: 'Hợp tác: cùng đẩy hộp qua mê cung về ô đích!', rounds: 1, cat: 'coop', min: 2, max: 6 },
@@ -166,13 +165,6 @@ const DODGE_MS = 75000, DODGE_LIVES = 3, BALL_SPEED = 0.14375, BALL_HIT_DIST = 1
 // grounded players — jump it (A). A HIGH beam hits airborne players —
 // stay on the ground. Jump: JUMP_TICKS airborne, JUMP_CD_TICKS cooldown.
 const LASER_WARN_TICKS = 12, LASER_FIRE_TICKS = 7, LASER_HIT = 1.0, JUMP_TICKS = 10, JUMP_CD_TICKS = 15;
-// Kéo Co: knot = TUG_STEP * (presses of even seats - presses of odd seats);
-// first side to |knot| >= TUG_WIN within TUG_MS wins, else the leader at
-// time out wins (exact tie = draw). Bots add BOT_TUG presses per tug tick.
-// Kéo Co keeps its own 500ms bot cadence (TUG_TICK_MS) so the TICK_MS
-// retune leaves its wall-clock behaviour bit-identical.
-const TUG_MS = 20000, TUG_WIN = 84, TUG_STEP = 3, TUG_TICK_MS = 500;
-const BOT_TUG = { de: 1, vua: 2, kho: 3 };
 // Chia Hay Cướp: negotiation then secret choice; pot per round, final ×2.
 const TALK_MS = 60000, CHOOSE_MS = 15000, POT = 400;
 // Cướp Sao: walled arena, bank stars by flying over them; a shove knocks
@@ -184,15 +176,6 @@ const STEAL_MS = 45000, STEAL_SHOVE_FORCE = 4.5, GOLD_EVERY_TICKS = 192, DROP_LO
 // at HOLDER_SPEED of normal speed; a shove drops the crown, which then
 // cannot be picked up for CROWN_LOCK_TICKS ticks (1s).
 const CROWN_MS = 45000, HOLDER_SPEED = 0.9, CROWN_LOCK_TICKS = 16;
-// Sơn Sàn: 18x10 grid of 1.6u cells over [-14.4,14.4]x[-8,8] (the old
-// 12x12 over [-9.6,9.6]^2, widened with the 16:9 field). Entering
-// a cell paints it; A triggers a 3x3 paint burst on PAINT_CD_TICKS (2s).
-const SPLAT_MS = 40000, SPLAT_COLS = 18, SPLAT_ROWS = 10, SPLAT_MIN_X = -14.4, SPLAT_MIN_Y = -8, SPLAT_CELL = 1.6, PAINT_CD_TICKS = 32;
-// Cao Bồi: after a random hidden delay the BẮN! window opens for
-// DUEL_WINDOW_MS; round points by server receipt order, foul = -100.
-// Tail extended past 4 shooters (25/10/0/…) so 5-8-player duels still
-// pay the midfield; the first four values are the historical table.
-const DUEL_WINDOW_MS = 1500, DUEL_POINTS = [200, 100, 50, 25, 10, 0, 0, 0], DUEL_FOUL = -100;
 // Hợp tác (co-op): no per-player placement. Each co-op game ends with a
 // TEAM result: a tier (Vàng/Bạc/Đồng/none) and every player banks the
 // same pointsEach (300/200/100/50). See finishCoop().
@@ -237,9 +220,80 @@ const TANK_BLOCKS = [
 // match with Math.random so tests can queue the exact layout.
 const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 15, BOM_ROWS = 9, BOM_FUSE_TICKS = 32, BOM_SOFT_P = 0.62;
 // Kẻ Giả Mạo: one secret impostor per round secretly gets the variant
+// Ma Sói: hidden-role deduction. One night = wolves hunt + guard /
+// seer / witch act in the same window (the witch sees the wolves'
+// victim only once every living wolf has locked a vote), then dawn
+// announces the dead (roles are public from death on), the village
+// discusses and votes an execution. Side points: winning wolves 300
+// each, winning villagers 200 each, losers 50 each (dead members of
+// the winning side score the same — the side wins or loses together).
+// NIGHT_CAP bounds a game whose guard keeps saving perfectly: at the
+// cap the larger living side wins (a tie goes to the wolves, matching
+// the parity rule).
+const WOLF_NIGHT_MS = 45000, WOLF_DAWN_MS = 10000, WOLF_DISCUSS_MS = 60000,
+  WOLF_VOTE_MS = 30000, WOLF_EXEC_MS = 10000, WOLF_END_MS = 12000, WOLF_NIGHT_CAP = 15;
+const WOLF_ROLES = {
+  soi: { name: 'Sói', icon: '🐺' },
+  'tien-tri': { name: 'Tiên Tri', icon: '🔮' },
+  'bao-ve': { name: 'Bảo Vệ', icon: '🛡️' },
+  'phu-thuy': { name: 'Phù Thủy', icon: '🧙' },
+  dan: { name: 'Dân Làng', icon: '🧑‍🌾' },
+};
+// Bot lines for the Ma Sói day discussion: deliberately generic — a
+// bot must never reference roles, night events or anything it could
+// only know secretly (same rule as IMP_CHAT_LINES).
+const WOLF_CHAT_LINES = [
+  'Đêm qua ghê quá… mọi người cẩn thận nhé.',
+  'Tôi là dân thường thôi, thề luôn!',
+  'Ai nãy giờ im lặng bất thường ấy nhỉ?',
+  'Bình tĩnh, đừng treo nhầm người tốt.',
+  'Tôi nghi người ít nói nhất hôm nay.',
+  'Cứ theo linh cảm của cả làng thôi.',
+  'Ai cũng có vẻ đáng nghi hết trơn…',
+  'Hôm nay phải tìm cho ra sói!',
+];
+// Cờ Cá Ngựa (Vietnamese Ludo): a horse's progress p means 0 = stable,
+// 1..51 on the shared 52-cell loop at (startOffset + p - 1) mod 52,
+// 52..57 in the seat's home stretch, 58 = finished (exact roll needed
+// to land on 58; overshoot is simply not a legal move for that horse).
+// Safe loop cells (no kicking): the 4 start cells + each seat's
+// home-entry cell (the last loop cell before its home stretch).
+// Own horses stack freely on a cell; an opponent landing on a
+// non-safe cell kicks the WHOLE opposing stack back to its stable.
+// No blockade rule: passing over any horse is always allowed.
+// Three sixes in a row forfeit the third roll's move (classic rule).
+const NGUA_TURN_MS = 30000, NGUA_BOT_MS = 900, NGUA_BEAT_MS = 1500, NGUA_WIN_MS = 4000;
 // Tiến Lên Miền Nam: 30s per turn (wall clock, like Cá Ngựa); bots act
 // ~1s into their turn; the winner banner holds 5s before results.
 const TL_TURN_MS = 30000, TL_BOT_MS = 900, TL_WIN_MS = 5000;
+const NGUA_OFFSETS = [0, 13, 26, 39];
+const NGUA_SAFE = new Set([0, 13, 26, 39, 50, 11, 24, 37]);
+// The 52-cell loop on a 15x15 board as [col, row] pairs, starting at
+// seat board 0's start cell (1,6) and running (1,6)->(5,6)->up the
+// top-left arm->across the top->down the right->across the bottom->
+// up the left back to (0,6). Start cells sit at indices 0/13/26/39,
+// home-entry cells at 50/11/24/37, exactly NGUA_OFFSETS/NGUA_SAFE.
+export const NGUA_LOOP = [
+  [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [6, 5], [6, 4], [6, 3], [6, 2], [6, 1], [6, 0], [7, 0],
+  [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [9, 6], [10, 6], [11, 6], [12, 6], [13, 6], [14, 6],
+  [14, 7], [14, 8], [13, 8], [12, 8], [11, 8], [10, 8], [9, 8], [8, 9], [8, 10], [8, 11], [8, 12],
+  [8, 13], [8, 14], [7, 14], [6, 14], [6, 13], [6, 12], [6, 11], [6, 10], [6, 9], [5, 8], [4, 8],
+  [3, 8], [2, 8], [1, 8], [0, 8], [0, 7], [0, 6],
+];
+// Home stretches (progress 52..57) per board index, running toward
+// the centre cell (7,7); stables (progress 0) per board index.
+export const NGUA_STRETCH = [
+  [[1, 7], [2, 7], [3, 7], [4, 7], [5, 7], [6, 7]],
+  [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5], [7, 6]],
+  [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7], [8, 7]],
+  [[7, 13], [7, 12], [7, 11], [7, 10], [7, 9], [7, 8]],
+];
+export const NGUA_STABLE = [
+  [[1, 1], [4, 1], [1, 4], [4, 4]],
+  [[10, 1], [13, 1], [10, 4], [13, 4]],
+  [[10, 10], [13, 10], [10, 13], [13, 13]],
+  [[1, 10], [4, 10], [1, 13], [4, 13]],
+];
 // Thủ Thành: the crystal's remaining HP decides the tier on survival.
 const DEF_MS = 60000, DEF_CRYSTAL_HP = 10;
 const DEF_TIERS = [[7, 'vang'], [4, 'bac'], [1, 'dong']];

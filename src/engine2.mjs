@@ -235,16 +235,6 @@ function beginRound(room) {
       };
       g.dashCd[p.seat] = 0; g.jumpCd[p.seat] = 0; g.invuln[p.seat] = 0;
     });
-  } else if (g.id === 'keo-co') {
-    g.phase = 'pull';
-    g.endsAt = t + TUG_MS; g.tickCount = 0; g.nextTickAt = t + TUG_TICK_MS;
-    g.presses = {}; g.knot = 0; g.winnerTeam = null; preservePads(room);
-    const teamA = [], teamB = [];
-    room.players.forEach((p) => {
-      g.presses[p.seat] = 0;
-      (p.seat % 2 === 1 ? teamA : teamB).push(p.seat);
-    });
-    g.teams = { A: teamA, B: teamB };
   } else if (g.id === 'cuop-sao') {
     g.phase = 'steal';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + STEAL_MS;
@@ -273,31 +263,6 @@ function beginRound(room) {
         lives: 0, alive: true,
       };
       g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0; g.hold[p.seat] = 0;
-    });
-  } else if (g.id === 'son-san') {
-    g.phase = 'splat';
-    g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + SPLAT_MS;
-    g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.paintCd = {}; preservePads(room);
-    g.grid = new Array(SPLAT_COLS * SPLAT_ROWS).fill(0);
-    room.players.forEach((p, i) => {
-      const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
-      g.blobs[p.seat] = {
-        x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * (4 / 3) * 100) / 100,
-        y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * (3 / 4) * 100) / 100,
-        lives: 0, alive: true,
-      };
-      g.dashCd[p.seat] = 0; g.paintCd[p.seat] = 0;
-    });
-  } else if (g.id === 'cao-boi') {
-    g.phase = 'wait';
-    g.greenAt = t + Math.round(rand(1200, 4000));
-    g.endsAt = g.greenAt + DUEL_WINDOW_MS;
-    bots.forEach((p) => {
-      const B = BOT[p.difficulty];
-      // Only Dễ bots ever jump the gun, and only rarely; Vừa/Khó wait
-      // for the BẮN! signal and fire on reaction time alone.
-      if (p.difficulty === 'de' && Math.random() < 0.12) g.botPlan[p.seat] = { earlyAt: g.greenAt - Math.round(rand(150, 700)) };
-      else g.botPlan[p.seat] = { tapAt: g.greenAt + botDelay(p.difficulty, B.reactMs) };
     });
   } else if (g.id === 'chung-mot-than') {
     g.phase = 'shared';
@@ -393,6 +358,41 @@ function beginRound(room) {
       g.chars[p.seat] = { x: st.x, y: st.y, vx: 0, vy: 0, ground: true, el, home: false };
       g.wpIdx[p.seat] = 0; g.wpAt[p.seat] = 0;
     });
+  } else if (g.id === 'ma-soi') {
+    // Roles are dealt secretly HERE and live only in g.wolf; views
+    // hand each phone its own role and nothing else (see gameView).
+    const seats = room.players.map((p) => p.seat);
+    const n = seats.length;
+    const nWolves = n <= 5 ? 1 : n <= 8 ? 2 : 3;
+    const deal = shuffle(seats.slice());
+    const roles = {}; const alive = {};
+    deal.forEach((seat, i) => {
+      roles[seat] = i < nWolves ? 'soi'
+        : i === nWolves ? 'tien-tri'
+        : i === nWolves + 1 ? 'bao-ve'
+        : (n >= 6 && i === nWolves + 2) ? 'phu-thuy' : 'dan';
+      alive[seat] = true;
+    });
+    g.wolf = {
+      roles, alive,
+      wolfVotes: {}, guardPick: null, guardLast: null, seerPick: null, seerNotes: {},
+      witch: { save: false, poison: null, done: false }, saveLeft: 1, poisonLeft: 1,
+      deaths: [], dawnDeaths: [], exec: null, voteTally: null, winner: null,
+    };
+    g.votes = {}; g.chatLog = [];
+    g.phase = 'night'; g.endsAt = t + WOLF_NIGHT_MS;
+    wolfPlanNight(room, t);
+  } else if (g.id === 'ca-ngua') {
+    const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
+    g.ng = {
+      boards: {}, horses: {}, turn: seats[0], dice: null, legal: [], chain: 0,
+      actAt: t + NGUA_BOT_MS, autoAt: 0, winner: null, last: null, log: [],
+    };
+    room.players.forEach((p) => {
+      g.ng.boards[p.seat] = seats.indexOf(p.seat);
+      g.ng.horses[p.seat] = [0, 0, 0, 0];
+    });
+    g.phase = 'roll'; g.endsAt = t + NGUA_TURN_MS;
   } else if (g.id === 'tien-len') {
     const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
     const deck = shuffle(Array.from({ length: 52 }, (_, i) => i));
@@ -516,11 +516,8 @@ function step(room) {
   if (g.id === 'do-vui') return stepQuiz(room, t);
   if (g.id === 'day-ra') return stepArena(room, t);
   if (g.id === 'ne-dan') return stepDodge(room, t);
-  if (g.id === 'keo-co') return stepTug(room, t);
   if (g.id === 'cuop-sao') return stepSteal(room, t);
   if (g.id === 'giu-vuong-mien') return stepCrown(room, t);
-  if (g.id === 'son-san') return stepSplat(room, t);
-  if (g.id === 'cao-boi') return stepDuel(room, t);
   if (g.id === 'chung-mot-than') return stepShared(room, t);
   if (g.id === 'day-hop') return stepBox(room, t);
   if (g.id === 'cheo-thuyen') return stepRow(room, t);
@@ -529,6 +526,8 @@ function step(room) {
   if (g.id === 'thu-thanh') return stepDefend(room, t);
   if (g.id === 'nguoi-que') return stepFight(room, t);
   if (g.id === 'den-lua-nuoc') return stepTemple(room, t);
+  if (g.id === 'ma-soi') return stepWolf(room, t);
+  if (g.id === 'ca-ngua') return stepNgua(room, t);
   if (g.id === 'tien-len') return stepTienLen(room, t);
   if (g.id === 'da-bong') return stepSoccer(room, t);
   if (g.id === 'ech-op') return stepFrog(room, t);
@@ -946,55 +945,6 @@ function finishDodge(room) {
 // tie at time out is a draw and everyone scores 200. Single match, so no
 // final-round ×2. Human presses are counted at action time on the rising
 // edge of the pad's B button; bots accumulate BOT_TUG presses per tick.
-function tugKnot(room) {
-  const g = room.game;
-  let a = 0, b = 0;
-  room.players.forEach((p) => {
-    const n = g.presses[p.seat] || 0;
-    if (p.seat % 2 === 1) a += n; else b += n;
-  });
-  return TUG_STEP * (b - a);
-}
-function stepTug(room, t) {
-  const g = room.game;
-  if (g.phase !== 'pull') return false;
-  const knot = tugKnot(room);
-  g.knot = knot;
-  if (Math.abs(knot) >= TUG_WIN) { finishTug(room, knot > 0 ? 'B' : 'A'); return true; }
-  if (t >= g.endsAt) { finishTug(room, knot > 0 ? 'B' : knot < 0 ? 'A' : null); return true; }
-  if (t >= g.nextTickAt) {
-    room.players.filter((p) => p.type === 'bot').forEach((p) => {
-      g.presses[p.seat] = (g.presses[p.seat] || 0) + BOT_TUG[p.difficulty];
-    });
-    g.tickCount += 1;
-    g.nextTickAt += TUG_TICK_MS;
-    if (g.nextTickAt <= t) g.nextTickAt = t + TUG_TICK_MS;
-    return true;
-  }
-  return false;
-}
-function finishTug(room, winnerTeam) {
-  const g = room.game;
-  g.winnerTeam = winnerTeam;
-  g.knot = tugKnot(room);
-  const entries = room.players.map((p) => {
-    const team = p.seat % 2 === 1 ? 'A' : 'B';
-    const points = winnerTeam === null ? 200 : (team === winnerTeam ? 300 : 200);
-    return { seat: p.seat, team, presses: g.presses[p.seat] || 0, points };
-  });
-  entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
-  g.lastRound = { round: 1, entries, knot: g.knot, winnerTeam };
-  endGame(room);
-}
-
-// --- Game 9: Chia Hay Cướp (negotiate, then a secret split-or-steal) --------
-// Per round: 'talk' (TALK_MS, the pair can post chat bubbles the host
-// shows) -> 'choose' (CHOOSE_MS, both lock a secret choice; bots lock
-// theirs the moment the phase opens) -> 'reveal' (choices exposed one at
-// a time via revealAt). Choices live only in g.inputs on the server and
-// are NEVER put into any view before the reveal phase. A player who does
-// not choose in time defaults to Chia. Pot is POT, doubled on the final
-// round: both Chia = half each, lone Cướp takes all, both Cướp = 0.
 function collectMoves(room, brain) {
   const g = room.game;
   const moves = {};
@@ -1365,146 +1315,6 @@ function simulateCrownTick(room) {
 // a 2s cooldown — the one flourish kept, because it makes comebacks
 // possible without complicating the base loop. Ranked by cells owned at
 // the end; ties -> earlier seat.
-function splatCell(x, y) {
-  const c = Math.max(0, Math.min(SPLAT_COLS - 1, Math.floor((x - SPLAT_MIN_X) / SPLAT_CELL)));
-  const r = Math.max(0, Math.min(SPLAT_ROWS - 1, Math.floor((y - SPLAT_MIN_Y) / SPLAT_CELL)));
-  return r * SPLAT_COLS + c;
-}
-function splatCounts(room) {
-  const g = room.game;
-  const counts = {};
-  room.players.forEach((p) => { counts[p.seat] = 0; });
-  (g.grid || []).forEach((s) => { if (s) counts[s] = (counts[s] || 0) + 1; });
-  return counts;
-}
-function botBrainSplat(room, p) {
-  const g = room.game;
-  const cached = cachedIntent(room, p);
-  if (cached) return cached;
-  const me = g.blobs[p.seat];
-  let bd = 1e9, bx = 0, by = 0;
-  for (let i = 0; i < (g.grid || []).length; i++) {
-    if (g.grid[i] === p.seat) continue;
-    const cx = SPLAT_MIN_X + (i % SPLAT_COLS + 0.5) * SPLAT_CELL;
-    const cy = SPLAT_MIN_Y + (Math.floor(i / SPLAT_COLS) + 0.5) * SPLAT_CELL;
-    const d = Math.hypot(cx - me.x, cy - me.y);
-    if (d < bd) { bd = d; bx = cx; by = cy; }
-  }
-  const intent = Object.assign(dirIntent(bx - me.x, by - me.y), { shove: false, dash: bd > 6 && p.difficulty !== 'de' });
-  g.botIntent[p.seat] = intent;
-  return intent;
-}
-function stepSplat(room, t) {
-  const g = room.game;
-  if (g.phase !== 'splat') return false;
-  if (t >= g.endsAt) { finishByValue(room, splatCounts(room), 'cells'); return true; }
-  if (t >= g.nextTickAt) {
-    // Catch-up (see stepArena): up to 8 missed ticks, then resync.
-    let nCU = 0;
-    while (nCU < 8 && t >= g.nextTickAt && g.phase === 'splat') {
-      simulateSplatTick(room);
-      if (room.game !== g) return true; // the tick ended the game
-      g.nextTickAt += TICK_MS;
-      nCU++;
-    }
-    if (g.nextTickAt <= t) g.nextTickAt = t + TICK_MS; // resync the remaining backlog
-    return true;
-  }
-  return false;
-}
-function simulateSplatTick(room) {
-  const g = room.game;
-  g.tickCount += 1;
-  const trk = trackStart(room);
-  const moves = collectMoves(room, botBrainSplat);
-  applyMoves(room, moves, { clampBox: 9.2, clampX: 14.4, clampY: 8 });
-  trackEnd(room, trk);
-  room.players.forEach((p) => {
-    const b = g.blobs[p.seat]; const mv = moves[p.seat];
-    if (!b || !b.alive) return;
-    g.grid[splatCell(b.x, b.y)] = p.seat;
-    if (g.paintCd[p.seat] > 0) g.paintCd[p.seat] -= 1;
-    if (mv && mv.burst && g.paintCd[p.seat] <= 0) {
-      const ci = splatCell(b.x, b.y);
-      const cc = ci % SPLAT_COLS, cr = Math.floor(ci / SPLAT_COLS);
-      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
-        const rr = cr + dr, cc2 = cc + dc;
-        if (rr >= 0 && rr < SPLAT_ROWS && cc2 >= 0 && cc2 < SPLAT_COLS) g.grid[rr * SPLAT_COLS + cc2] = p.seat;
-      }
-      g.paintCd[p.seat] = PAINT_CD_TICKS;
-    }
-  });
-  snapshotPad(room);
-}
-
-// --- Game 13: Cao Bồi (duel draw, rounds) ----------------------------------
-// Not tick-based: it reuses the countdown -> wait -> go
-// phase machinery and server receipt order (the tap's server timestamp
-// IS the draw time, so network racing cannot be faked by the client).
-// Round points go to the fastest draws in receipt order (200/100/50/0);
-// tapping before BẮN! is a foul: DUEL_FOUL and locked out of the round.
-function stepDuel(room, t) {
-  const g = room.game;
-  if (g.phase === 'wait') {
-    if (t >= g.greenAt) { g.phase = 'go'; return true; }
-    return false;
-  }
-  if (g.phase === 'go') {
-    const settled = humansAllIn(room, (s) => !!g.inputs[s]) && botsDue(room, (pl) => (pl.earlyAt || pl.tapAt || 0));
-    if (t >= g.endsAt || settled) { resolveDuel(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'roundEnd') {
-    if (t >= g.endsAt) { nextRoundOrEnd(room); return true; }
-  }
-  return false;
-}
-function resolveDuel(room, t) {
-  const g = room.game;
-  const entries = room.players.map((p) => {
-    const e = { seat: p.seat, status: 'none', reactionMs: null, points: 0 };
-    if (p.type === 'human') {
-      const inp = g.inputs[p.seat];
-      if (inp && inp.foul) e.status = 'foul';
-      else if (inp && inp.tapAt) { e.status = 'fired'; e.reactionMs = inp.tapAt - g.greenAt; }
-    } else {
-      const plan = g.botPlan[p.seat] || {};
-      if (plan.earlyAt) e.status = 'foul';
-      else if (plan.tapAt && plan.tapAt <= g.endsAt) { e.status = 'fired'; e.reactionMs = plan.tapAt - g.greenAt; }
-    }
-    return e;
-  });
-  const fired = entries.filter((e) => e.status === 'fired')
-    .sort((a, b) => (a.reactionMs - b.reactionMs) || (a.seat - b.seat));
-  fired.forEach((e, i) => { e.order = i + 1; e.points = roundPoints(g, DUEL_POINTS[Math.min(i, DUEL_POINTS.length - 1)]); });
-  entries.forEach((e) => { if (e.status === 'foul') e.points = roundPoints(g, DUEL_FOUL); });
-  entries.forEach((e) => { g.points[e.seat] = (g.points[e.seat] || 0) + e.points; });
-  const order = fired.concat(entries.filter((e) => e.status === 'foul'), entries.filter((e) => e.status === 'none'));
-  g.lastRound = { round: g.round, entries: order };
-  finishTimedRound(room, 'roundEnd', t + ROUND_PAUSE_MS);
-}
-
-// --- Game 14: Chung Một Thân (co-op: ONE shared blob, split steering) ------
-// The whole team steers a single blob. Directions [u, r, d, l] are dealt
-// round-robin across the seats in seat order (beginRound); the server
-// filters every pad/brain to its owner's directions only, so the blob
-// moves at normal speed per axis and ONLY when the owner of that
-// direction holds it. Touching the checkpoint star scores +1 for the
-// team; a star left untouched for STAR_STALE_TICKS ticks (15s) respawns.
-// Cannonballs reuse the Né Đạn spawn pattern but slower (SHARED_BALL_SPEED)
-// and sparser; a hit costs the TEAM one of SHARED_HEARTS shared hearts
-// (usual INVULN_TICKS window). Ends at SHARED_MS or at 0 hearts.
-function spawnSharedStar(room) {
-  const g = room.game;
-  let x = 0, y = 0;
-  for (let i = 0; i < 8; i++) {
-    const ang = rand(0, Math.PI * 2); const rr = rand(2.5, 8.5);
-    x = Math.cos(ang) * rr * (4 / 3); y = Math.sin(ang) * rr * (3 / 4);
-    if (!g.shared || Math.hypot(x - g.shared.x, y - g.shared.y) >= 3) break;
-  }
-  g.star = { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
-  g.starTick = g.tickCount;
-}
 function botBrainShared(room, p) {
   const g = room.game;
   const cached = cachedIntent(room, p);
@@ -1528,6 +1338,19 @@ function botBrainShared(room, p) {
     y: (want.y > 0 && g.owners.d === p.seat) || (want.y < 0 && g.owners.u === p.seat) ? want.y : 0,
   };
 }
+
+function spawnSharedStar(room) {
+  const g = room.game;
+  let x = 0, y = 0;
+  for (let i = 0; i < 8; i++) {
+    const ang = rand(0, Math.PI * 2); const rr = rand(2.5, 8.5);
+    x = Math.cos(ang) * rr * (4 / 3); y = Math.sin(ang) * rr * (3 / 4);
+    if (!g.shared || Math.hypot(x - g.shared.x, y - g.shared.y) >= 3) break;
+  }
+  g.star = { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
+  g.starTick = g.tickCount;
+}
+
 function stepShared(room, t) {
   const g = room.game;
   if (g.phase !== 'shared') return false;
@@ -2151,6 +1974,448 @@ function botBrainBomber(room, p) {
 // strict plurality accusation against the impostor catches them
 // (everyone else +150); any tie or a wrong plurality lets the impostor
 // escape (+300, doubled in the final round).
+function wolfWinner(room) {
+  const g = room.game; const w = g.wolf;
+  const alive = room.players.filter((p) => w.alive[p.seat]);
+  const wolves = alive.filter((p) => w.roles[p.seat] === 'soi').length;
+  if (wolves === 0) return 'dan';
+  if (wolves >= alive.length - wolves) return 'soi';
+  if (g.round >= WOLF_NIGHT_CAP) return wolves * 2 >= alive.length ? 'soi' : 'dan';
+  return null;
+}
+function wolfWolvesIn(room) {
+  const w = room.game.wolf;
+  return room.players.every((p) => !w.alive[p.seat] || w.roles[p.seat] !== 'soi' || w.wolfVotes[p.seat] != null);
+}
+function wolfVictim(room) {
+  const w = room.game.wolf;
+  const counts = {}; const firstVoter = {};
+  Object.keys(w.wolfVotes).forEach((s) => {
+    const tgt = w.wolfVotes[s];
+    counts[tgt] = (counts[tgt] || 0) + 1;
+    if (firstVoter[tgt] == null || +s < firstVoter[tgt]) firstVoter[tgt] = +s;
+  });
+  let best = null;
+  Object.keys(counts).forEach((tgt) => {
+    if (best == null || counts[tgt] > counts[best]
+      || (counts[tgt] === counts[best] && firstVoter[tgt] < firstVoter[best])) best = +tgt;
+  });
+  return best;
+}
+function wolfSeerApply(room, seat, target) {
+  const w = room.game.wolf;
+  w.seerPick = target;
+  if (!w.seerNotes[seat]) w.seerNotes[seat] = {};
+  w.seerNotes[seat][target] = w.roles[target] === 'soi';
+}
+function wolfAllIn(room) {
+  const g = room.game; const w = g.wolf;
+  return room.players.every((p) => {
+    if (!w.alive[p.seat]) return true;
+    const role = w.roles[p.seat];
+    if (role === 'soi') return w.wolfVotes[p.seat] != null;
+    if (role === 'bao-ve') return w.guardPick != null;
+    if (role === 'tien-tri') return w.seerPick != null;
+    if (role === 'phu-thuy') {
+      const needed = (w.saveLeft > 0 || w.poisonLeft > 0);
+      return !needed || w.witch.done;
+    }
+    return true;
+  });
+}
+function wolfPlanNight(room, t) {
+  const g = room.game; const w = g.wolf;
+  g.botPlan = {};
+  const nonWolves = room.players.filter((p) => w.alive[p.seat] && w.roles[p.seat] !== 'soi').map((p) => p.seat);
+  const packTarget = nonWolves.length ? pick(nonWolves) : null;
+  room.players.forEach((p) => {
+    if (p.type !== 'bot' || !w.alive[p.seat]) return;
+    const role = w.roles[p.seat];
+    const at = t + Math.round(rand(2500, 20000));
+    if (role === 'soi') {
+      // Pack play: Khó wolves always hunt the shared victim, Vừa
+      // wolves join it half the time, Dễ wolves wander off alone.
+      const share = p.difficulty === 'kho' || (p.difficulty === 'vua' && Math.random() < 0.5);
+      g.botPlan[p.seat] = { at, target: share && packTarget != null ? packTarget : (nonWolves.length ? pick(nonWolves) : null) };
+    } else if (role === 'bao-ve') {
+      let cands = room.players.filter((q) => w.alive[q.seat] && q.seat !== w.guardLast).map((q) => q.seat);
+      if (!cands.length && w.guardLast != null && w.alive[w.guardLast]) cands = [w.guardLast];
+      g.botPlan[p.seat] = { at, target: cands.length ? pick(cands) : null };
+    } else if (role === 'tien-tri') {
+      const notes = w.seerNotes[p.seat] || {};
+      const cands = room.players.filter((q) => w.alive[q.seat] && q.seat !== p.seat && !(q.seat in notes)).map((q) => q.seat);
+      g.botPlan[p.seat] = { at, target: cands.length ? pick(cands) : null };
+    } else if (role === 'phu-thuy') {
+      g.botPlan[p.seat] = { at }; // decided live in stepWolf — she needs the victim first
+    }
+  });
+}
+function wolfBotVote(room, p) {
+  const g = room.game; const w = g.wolf;
+  const role = w.roles[p.seat];
+  const others = room.players.filter((q) => w.alive[q.seat] && q.seat !== p.seat).map((q) => q.seat);
+  if (!others.length) return null;
+  if (role === 'tien-tri') {
+    // The seer pushes a wolf they have SEEN — but only through the
+    // ballot box, never by claiming in chat (lines stay generic).
+    const notes = w.seerNotes[p.seat] || {};
+    const known = others.find((s) => notes[s] === true);
+    if (known != null) return known;
+    const uncleared = others.filter((s) => notes[s] !== false);
+    return pick(uncleared.length ? uncleared : others);
+  }
+  if (role === 'soi') {
+    const nonWolves = others.filter((s) => w.roles[s] !== 'soi');
+    if (p.difficulty === 'kho' && nonWolves.length) return pick(nonWolves);
+    if (p.difficulty === 'vua' && nonWolves.length && Math.random() < 0.8) return pick(nonWolves);
+    return pick(others);
+  }
+  return pick(others);
+}
+function stepWolf(room, t) {
+  const g = room.game; const w = g.wolf;
+  if (g.phase === 'night') {
+    room.players.forEach((p) => {
+      if (p.type !== 'bot' || !w.alive[p.seat]) return;
+      const plan = g.botPlan[p.seat];
+      if (!plan || plan.at > t || plan.done) return;
+      const role = w.roles[p.seat];
+      if (role === 'soi' && w.wolfVotes[p.seat] == null && plan.target != null) {
+        w.wolfVotes[p.seat] = plan.target; plan.done = true;
+      } else if (role === 'bao-ve' && w.guardPick == null && plan.target != null) {
+        w.guardPick = plan.target; plan.done = true;
+      } else if (role === 'tien-tri' && w.seerPick == null && plan.target != null) {
+        wolfSeerApply(room, p.seat, plan.target); plan.done = true;
+      } else if (role === 'phu-thuy' && !w.witch.done) {
+        if (!wolfWolvesIn(room)) return; // the witch wakes after the pack
+        const victim = wolfVictim(room);
+        const saveP = p.difficulty === 'kho' ? 0.8 : p.difficulty === 'vua' ? 0.55 : 0.3;
+        if (victim != null && w.saveLeft > 0 && Math.random() < saveP) w.witch.save = true;
+        const poisonP = p.difficulty === 'kho' ? 0.25 : p.difficulty === 'vua' ? 0.12 : 0.05;
+        if (w.poisonLeft > 0 && Math.random() < poisonP) {
+          const cands = room.players.filter((q) => w.alive[q.seat] && q.seat !== p.seat && q.seat !== victim).map((q) => q.seat);
+          if (cands.length) w.witch.poison = pick(cands);
+        }
+        w.witch.done = true; plan.done = true;
+      }
+    });
+    if (t >= g.endsAt || wolfAllIn(room)) { resolveWolfNight(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'dawn') {
+    if (t >= g.endsAt) { wolfEnterDiscuss(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'discuss') {
+    room.players.forEach((p) => {
+      if (p.type !== 'bot' || !w.alive[p.seat]) return;
+      const plan = g.botPlan[p.seat];
+      if (plan && !plan.chatted && plan.chatAt && plan.chatAt <= t) {
+        plan.chatted = true;
+        g.chatLog.push({ seat: p.seat, text: plan.chatLine, at: t });
+        if (g.chatLog.length > 40) g.chatLog = g.chatLog.slice(-40);
+      }
+    });
+    if (t >= g.endsAt) { wolfEnterVote(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'vote') {
+    room.players.forEach((p) => {
+      if (p.type !== 'bot' || !w.alive[p.seat]) return;
+      const plan = g.botPlan[p.seat];
+      if (plan && plan.voteAt && plan.voteAt <= t && g.votes[p.seat] == null && plan.vote != null) {
+        g.votes[p.seat] = plan.vote;
+      }
+    });
+    const allIn = room.players.every((p) => !w.alive[p.seat] || g.votes[p.seat] != null);
+    if (t >= g.endsAt || allIn) { resolveWolfVote(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'execute') {
+    if (t >= g.endsAt) { wolfNextNight(room, t); return true; }
+    return false;
+  }
+  if (g.phase === 'wolfEnd') {
+    if (t >= g.endsAt) { endGame(room); return true; }
+  }
+  return false;
+}
+function resolveWolfNight(room, t) {
+  const g = room.game; const w = g.wolf;
+  const victim = wolfVictim(room);
+  // Resolution order: the guard's protection and the witch's save
+  // both cancel the wolf kill; the witch's poison always kills
+  // (it slips past the guard and past a save spent on the victim).
+  const saved = victim != null && (w.guardPick === victim || (w.witch.done && w.witch.save));
+  const deaths = [];
+  if (victim != null && !saved) deaths.push({ seat: victim, cause: 'soi' });
+  if (w.witch.done && w.witch.poison != null && w.alive[w.witch.poison]
+    && !deaths.some((d) => d.seat === w.witch.poison)) {
+    deaths.push({ seat: w.witch.poison, cause: 'doc' });
+  }
+  if (w.witch.done) {
+    if (w.witch.save && victim != null) w.saveLeft = 0;
+    if (w.witch.poison != null) w.poisonLeft = 0;
+  }
+  w.guardLast = w.guardPick;
+  w.dawnDeaths = [];
+  deaths.forEach((d) => {
+    w.alive[d.seat] = false;
+    const rec = { seat: d.seat, role: w.roles[d.seat], cause: d.cause, night: g.round };
+    w.deaths.push(rec); w.dawnDeaths.push(rec);
+  });
+  const winner = wolfWinner(room);
+  if (winner) { finishWolf(room, winner, t); return; }
+  g.phase = 'dawn'; g.endsAt = t + WOLF_DAWN_MS;
+}
+function wolfEnterDiscuss(room, t) {
+  const g = room.game;
+  g.chatLog = [];
+  g.phase = 'discuss'; g.endsAt = t + WOLF_DISCUSS_MS;
+  g.botPlan = {};
+  room.players.forEach((p) => {
+    if (p.type !== 'bot' || !room.game.wolf.alive[p.seat]) return;
+    if (Math.random() < 0.75) {
+      g.botPlan[p.seat] = { chatAt: t + Math.round(rand(4000, 40000)), chatLine: pick(WOLF_CHAT_LINES), chatted: false };
+    }
+  });
+}
+function wolfEnterVote(room, t) {
+  const g = room.game;
+  g.votes = {};
+  g.phase = 'vote'; g.endsAt = t + WOLF_VOTE_MS;
+  g.botPlan = {};
+  room.players.forEach((p) => {
+    if (p.type !== 'bot' || !room.game.wolf.alive[p.seat]) return;
+    g.botPlan[p.seat] = { voteAt: t + Math.round(rand(3000, 20000)), vote: wolfBotVote(room, p) };
+  });
+}
+function resolveWolfVote(room, t) {
+  const g = room.game; const w = g.wolf;
+  const counts = {};
+  Object.keys(g.votes).forEach((s) => {
+    if (w.alive[+s] && w.alive[g.votes[s]]) counts[g.votes[s]] = (counts[g.votes[s]] || 0) + 1;
+  });
+  let top = null, topN = 0, tie = false;
+  Object.keys(counts).forEach((s) => {
+    const c = counts[s];
+    if (c > topN) { topN = c; top = +s; tie = false; }
+    else if (c === topN) tie = true;
+  });
+  w.voteTally = counts;
+  if (top != null && !tie && topN > 0) {
+    w.alive[top] = false;
+    w.deaths.push({ seat: top, role: w.roles[top], cause: 'treo', night: g.round });
+    w.exec = { seat: top, role: w.roles[top] };
+  } else {
+    w.exec = { seat: null, role: null };
+  }
+  const winner = wolfWinner(room);
+  if (winner) { finishWolf(room, winner, t); return; }
+  g.phase = 'execute'; g.endsAt = t + WOLF_EXEC_MS;
+}
+function wolfNextNight(room, t) {
+  const g = room.game; const w = g.wolf;
+  g.round += 1;
+  w.wolfVotes = {}; w.guardPick = null; w.seerPick = null;
+  w.witch = { save: false, poison: null, done: false };
+  w.dawnDeaths = []; w.exec = null; w.voteTally = null;
+  g.votes = {}; g.inputs = {};
+  g.phase = 'night'; g.endsAt = t + WOLF_NIGHT_MS;
+  wolfPlanNight(room, t);
+}
+function finishWolf(room, winner, t) {
+  const g = room.game; const w = g.wolf;
+  w.winner = winner;
+  const entries = room.players.map((p) => {
+    const isWolf = w.roles[p.seat] === 'soi';
+    const won = (winner === 'soi') === isWolf;
+    const pts = won ? (isWolf ? 300 : 200) : 50;
+    g.points[p.seat] = pts;
+    return { seat: p.seat, points: pts, role: w.roles[p.seat] };
+  });
+  g.lastRound = { round: g.round, entries };
+  finishTimedRound(room, 'wolfEnd', t + WOLF_END_MS);
+}
+
+// --- Game: Cờ Cá Ngựa (Vietnamese Ludo) -------------------------------------
+function nguaLegal(room, seat, dice) {
+  const horses = room.game.ng.horses[seat];
+  const out = [];
+  horses.forEach((p, h) => {
+    if (p === 0) { if (dice === 6) out.push(h); }
+    else if (p + dice <= 58) out.push(h);
+  });
+  return out;
+}
+function nguaProgress(room, seat) {
+  const horses = room.game.ng.horses[seat];
+  return horses.filter((p) => p === 58).length * 100 + horses.reduce((a, b) => a + b, 0);
+}
+function nguaCellOf(room, seat, p) {
+  if (p < 1 || p > 51) return null;
+  return (NGUA_OFFSETS[room.game.ng.boards[seat]] + p - 1) % 52;
+}
+function nguaLog(room, text) {
+  const ng = room.game.ng;
+  ng.log.push(text);
+  if (ng.log.length > 6) ng.log = ng.log.slice(-6);
+}
+function nguaRoll(room, t) {
+  const g = room.game; const ng = g.ng;
+  const seat = ng.turn;
+  const dice = randInt(1, 6);
+  ng.dice = dice;
+  if (dice === 6) ng.chain += 1; else ng.chain = 0;
+  // Three consecutive sixes: the third roll is forfeited outright.
+  ng.legal = ng.chain >= 3 ? [] : nguaLegal(room, seat, dice);
+  if (ng.chain >= 3) nguaLog(room, playerAt(room, seat).name + ' thảy 6 ba lần liên tiếp — mất lượt!');
+  g.phase = 'pick';
+  ng.autoAt = t + (playerAt(room, seat).type === 'bot' ? NGUA_BOT_MS : NGUA_BEAT_MS);
+  g.endsAt = t + NGUA_TURN_MS;
+  return dice;
+}
+function nguaMove(room, seat, h, t) {
+  const g = room.game; const ng = g.ng;
+  const me = playerAt(room, seat);
+  const dice = ng.dice;
+  const from = ng.horses[seat][h];
+  const to = from === 0 ? 1 : from + dice;
+  ng.horses[seat][h] = to;
+  const kicked = [];
+  const cell = nguaCellOf(room, seat, to);
+  if (cell != null && !NGUA_SAFE.has(cell)) {
+    room.players.forEach((q) => {
+      if (q.seat === seat) return;
+      ng.horses[q.seat].forEach((qp, qh) => {
+        if (nguaCellOf(room, q.seat, qp) === cell) {
+          ng.horses[q.seat][qh] = 0;
+          if (kicked.indexOf(q.seat) < 0) kicked.push(q.seat);
+        }
+      });
+    });
+  }
+  ng.last = { seat, dice, horse: h, from, to, kicked, at: t };
+  let text = me.name + ' thảy ' + dice + ': ngựa ' + (h + 1);
+  if (from === 0) text += ' xuất chuồng';
+  else if (to === 58) text += ' VỀ CHUỒNG ĐÍCH!';
+  else text += ' đi tới ô ' + to;
+  kicked.forEach((ks) => { text += ' · ĐÁ NGỰA của ' + playerAt(room, ks).name + '!'; });
+  nguaLog(room, text);
+  if (ng.horses[seat].every((p) => p === 58)) { finishNgua(room, seat, t); return; }
+  if (dice === 6) {
+    // A six earns another roll (chain < 3 is guaranteed: a third
+    // consecutive six never reaches the move step at all).
+    g.phase = 'roll'; ng.dice = null; ng.legal = [];
+    ng.actAt = t + NGUA_BOT_MS; g.endsAt = t + NGUA_TURN_MS;
+  } else {
+    nguaEndTurn(room, t);
+  }
+}
+function nguaEndTurn(room, t) {
+  const g = room.game; const ng = g.ng;
+  const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
+  ng.turn = seats[(seats.indexOf(ng.turn) + 1) % seats.length];
+  ng.chain = 0; ng.dice = null; ng.legal = [];
+  g.phase = 'roll'; ng.actAt = t + NGUA_BOT_MS; g.endsAt = t + NGUA_TURN_MS;
+}
+function nguaBotPick(room, seat) {
+  const g = room.game; const ng = g.ng;
+  const p = playerAt(room, seat);
+  const legal = ng.legal.slice();
+  if (!legal.length) return null;
+  const blunder = p.difficulty === 'de' ? 0.35 : p.difficulty === 'vua' ? 0.15 : 0.05;
+  if (Math.random() < blunder) return pick(legal);
+  const dice = ng.dice;
+  let best = legal[0], bestScore = -1;
+  legal.forEach((h) => {
+    const from = ng.horses[seat][h];
+    const to = from === 0 ? 1 : from + dice;
+    let score;
+    if (to === 58) score = 100;                       // bring a horse home
+    else if (from === 0) score = 80;                  // leave the stable
+    else {
+      const cell = nguaCellOf(room, seat, to);
+      let kicks = false;
+      if (cell != null && !NGUA_SAFE.has(cell)) {
+        room.players.forEach((q) => {
+          if (q.seat === seat) return;
+          if (ng.horses[q.seat].some((qp) => nguaCellOf(room, q.seat, qp) === cell)) kicks = true;
+        });
+      }
+      score = kicks ? 90 : 10 + to;                   // kick, else advance the leader
+    }
+    if (score > bestScore) { bestScore = score; best = h; }
+  });
+  return best;
+}
+function nguaHint(room, seat, h) {
+  const g = room.game; const ng = g.ng;
+  const from = ng.horses[seat][h];
+  const dice = ng.dice;
+  const to = from === 0 ? 1 : from + dice;
+  if (from === 0) return 'Xuất chuồng';
+  if (to === 58) return 'Về chuồng đích!';
+  if (to >= 52) return 'Vào đường về chuồng (' + (to - 51) + '/6)';
+  const cell = nguaCellOf(room, seat, to);
+  if (cell != null && !NGUA_SAFE.has(cell)) {
+    let kickName = null;
+    room.players.forEach((q) => {
+      if (q.seat === seat) return;
+      if (ng.horses[q.seat].some((qp) => nguaCellOf(room, q.seat, qp) === cell)) kickName = q.name;
+    });
+    if (kickName) return 'ĐÁ NGỰA của ' + kickName + '!';
+    return 'Đi ' + dice + ' ô';
+  }
+  return 'Về ô an toàn';
+}
+function stepNgua(room, t) {
+  const g = room.game; const ng = g.ng;
+  if (g.phase === 'ngWin') {
+    if (t >= g.endsAt) { endGame(room); return true; }
+    return false;
+  }
+  if (g.phase === 'roll') {
+    const cur = playerAt(room, ng.turn);
+    if (cur && cur.type === 'bot' && t >= ng.actAt) { nguaRoll(room, t); return true; }
+    if (t >= g.endsAt) { nguaRoll(room, t); return true; } // idle human: the server rolls for them
+    return false;
+  }
+  if (g.phase === 'pick') {
+    if (!ng.legal.length) {
+      if (t >= ng.autoAt) { nguaEndTurn(room, t); return true; }
+      return false;
+    }
+    const cur = playerAt(room, ng.turn);
+    if (cur && cur.type === 'bot' && t >= ng.autoAt) {
+      const h = nguaBotPick(room, ng.turn);
+      if (h != null) nguaMove(room, ng.turn, h, t);
+      return true;
+    }
+    if (t >= g.endsAt) { nguaMove(room, ng.turn, pick(ng.legal), t); return true; } // timeout: a random legal move
+    return false;
+  }
+  return false;
+}
+function finishNgua(room, winnerSeat, t) {
+  const g = room.game; const ng = g.ng;
+  ng.winner = winnerSeat;
+  const ranking = room.players.slice().sort((a, b) => {
+    if (a.seat === winnerSeat) return -1;
+    if (b.seat === winnerSeat) return 1;
+    return (nguaProgress(room, b.seat) - nguaProgress(room, a.seat)) || (a.seat - b.seat);
+  });
+  const entries = ranking.map((p, i) => ({ seat: p.seat, points: placementAt(i), progress: nguaProgress(room, p.seat) }));
+  entries.forEach((e) => { g.points[e.seat] = e.points; });
+  g.lastRound = { round: 1, entries };
+  finishTimedRound(room, 'ngWin', t + NGUA_WIN_MS);
+}
+
+// --- Game: Tiến Lên Miền Nam (Vietnamese Thirteen) --------------------------
+// Cards are ids 0..51: rankValue r = id % 13 maps to the ranks
+// 3,4,5,6,7,8,9,10,J,Q,K,A,2 (2 is highest, r = 12); suit
+// s = floor(id / 13) runs ♠ ♣ ♦ ♥ (♥ highest). Strength compares rank
+// first, then suit, so r * 4 + s orders any two cards with one number.
 const TL_RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
 const TL_SUITS = ['♠', '♣', '♦', '♥'];
 function tlRank(id) { return id % 13; }
@@ -3780,11 +4045,6 @@ function gameView(room, role, seat, t) {
       if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, air: (b.air || 0) > 0, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
     v.lasers = (g.lasers || []).map((L) => ({ id: L.id, axis: L.axis, pos: L.pos, kind: L.kind, state: L.state }));
-  } else if (g.id === 'keo-co') {
-    v.teams = g.teams;
-    v.presses = g.presses;
-    v.knot = tugKnot(room);
-    v.phaseDur = TUG_MS;
   } else if (g.id === 'cuop-sao') {
     v.arenaR = ARENA_R0;
     v.blobs = {};
@@ -3805,29 +4065,6 @@ function gameView(room, role, seat, t) {
     v.hold = g.hold;
     v.crown = g.crown ? { holder: g.crown.holder, x: Math.round(g.crown.x * 100) / 100, y: Math.round(g.crown.y * 100) / 100 } : null;
     if (seat) { v.mine = g.hold[seat] || 0; v.myCrown = !!g.crown && g.crown.holder === seat; }
-  } else if (g.id === 'son-san') {
-    v.arenaR = ARENA_R0;
-    v.blobs = {};
-    room.players.forEach((p) => {
-      const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
-    });
-    v.grid = g.grid;
-    v.counts = splatCounts(room);
-    if (seat) v.mine = v.counts[seat] || 0;
-  } else if (g.id === 'cao-boi') {
-    const status = {};
-    room.players.forEach((p) => {
-      if (p.type === 'human') { const inp = g.inputs[p.seat]; status[p.seat] = inp ? (inp.foul ? 'foul' : 'fired') : 'waiting'; }
-      else {
-        const plan = g.botPlan[p.seat] || {};
-        if (plan.earlyAt && plan.earlyAt <= t) status[p.seat] = 'foul';
-        else if (plan.tapAt && plan.tapAt <= t && g.phase !== 'wait') status[p.seat] = 'fired';
-        else status[p.seat] = 'waiting';
-      }
-    });
-    v.status = status;
-    if (seat) { const inp = g.inputs[seat]; v.mine = inp ? (inp.foul ? 'foul' : 'fired') : 'waiting'; }
   } else if (g.id === 'chung-mot-than') {
     v.arenaR = ARENA_R0;
     v.owners = g.owners;
@@ -3875,6 +4112,79 @@ function gameView(room, role, seat, t) {
     v.soft = g.softCells;
     v.bombs = (g.bombs || []).map((b) => ({ id: b.id, x: b.x, y: b.y, left: Math.max(0, (b.boomTick - g.tickCount) * TICK_MS) }));
     v.blasts = (g.blasts || []).filter((bl) => bl.until > t).map((bl) => ({ cells: bl.cells }));
+  } else if (g.id === 'ma-soi') {
+    // SECRECY (hard rule, asserted in tests by string search): before
+    // the wolfEnd phase NO view — host or player — may carry another
+    // player's role or any night choice. Public facts only: who is
+    // alive, the death record (roles are public FROM DEATH ON), the
+    // day's chat, vote-cast flags, and after the vote the tally + the
+    // execution. A phone additionally sees ONLY its own private kit:
+    // its role; a wolf sees the pack list + pack votes-in count; the
+    // guard its own pick; the seer its own notes; the witch (once the
+    // pack has locked) the victim + her own potion state. Death cuts
+    // a phone back to its role card + public facts.
+    const w = g.wolf;
+    v.phaseDur = g.phase === 'night' ? WOLF_NIGHT_MS : g.phase === 'dawn' ? WOLF_DAWN_MS
+      : g.phase === 'discuss' ? WOLF_DISCUSS_MS : g.phase === 'vote' ? WOLF_VOTE_MS
+      : g.phase === 'execute' ? WOLF_EXEC_MS : WOLF_END_MS;
+    v.night = g.round;
+    v.aliveMap = {};
+    room.players.forEach((p) => { v.aliveMap[p.seat] = w ? !!w.alive[p.seat] : true; });
+    v.deadList = w ? w.deaths.map((d) => ({ seat: d.seat, role: d.role, cause: d.cause, night: d.night })) : [];
+    v.dawnDeaths = w ? w.dawnDeaths.map((d) => ({ seat: d.seat, role: d.role })) : [];
+    v.wolfCount = w ? room.players.filter((p) => w.roles[p.seat] === 'soi').length : 0;
+    if (g.phase === 'discuss' || g.phase === 'vote' || g.phase === 'execute' || g.phase === 'wolfEnd') v.chatLog = g.chatLog || [];
+    if (g.phase === 'vote') {
+      v.voted = {};
+      room.players.forEach((p) => { v.voted[p.seat] = g.votes[p.seat] != null; });
+    }
+    if (g.phase === 'execute' || g.phase === 'wolfEnd') { v.exec = w.exec; v.voteTally = w.voteTally || {}; }
+    if (g.phase === 'wolfEnd') { v.winner = w.winner; v.roles = Object.assign({}, w.roles); }
+    if (seat && w) {
+      v.myRole = w.roles[seat];
+      v.myAlive = !!w.alive[seat];
+      if (w.alive[seat]) {
+        if (w.roles[seat] === 'soi') {
+          v.wolfTeam = room.players.filter((p) => w.roles[p.seat] === 'soi').map((p) => p.seat);
+          v.myWolfVote = w.wolfVotes[seat] != null ? w.wolfVotes[seat] : null;
+          v.wolfVotesIn = Object.keys(w.wolfVotes).length;
+        } else if (w.roles[seat] === 'bao-ve') {
+          v.myGuardPick = w.guardPick;
+          v.myGuardLast = w.guardLast;
+        } else if (w.roles[seat] === 'tien-tri') {
+          v.mySeerPick = w.seerPick;
+          const notes = w.seerNotes[seat] || {};
+          v.mySeerNotes = Object.keys(notes).map((s) => ({ seat: +s, wolf: !!notes[s] }));
+        } else if (w.roles[seat] === 'phu-thuy') {
+          v.mySaveLeft = w.saveLeft;
+          v.myPoisonLeft = w.poisonLeft;
+          v.myWitchSave = w.witch.save;
+          v.myWitchPoison = w.witch.poison;
+          v.myWitchDone = w.witch.done;
+          v.wolvesIn = wolfWolvesIn(room);
+          v.myVictim = v.wolvesIn ? wolfVictim(room) : null;
+        }
+      }
+    }
+  } else if (g.id === 'ca-ngua') {
+    const ng = g.ng;
+    v.phaseDur = NGUA_TURN_MS;
+    v.board = { loop: NGUA_LOOP, stretch: NGUA_STRETCH, stable: NGUA_STABLE, safe: Array.from(NGUA_SAFE) };
+    v.horses = ng ? ng.horses : {};
+    v.boards = ng ? ng.boards : {};
+    v.turn = ng ? ng.turn : null;
+    v.dice = ng ? ng.dice : null;
+    v.winner = ng ? ng.winner : null;
+    v.last = ng ? ng.last : null;
+    v.log = ng ? ng.log : [];
+    v.progress = {};
+    if (ng) room.players.forEach((p) => { v.progress[p.seat] = nguaProgress(room, p.seat); });
+    if (seat) {
+      v.myTurn = !!ng && ng.turn === seat;
+      v.myLegal = (ng && g.phase === 'pick' && ng.turn === seat)
+        ? ng.legal.map((h) => ({ horse: h, hint: nguaHint(room, seat, h), from: ng.horses[seat][h] }))
+        : [];
+    }
   } else if (g.id === 'tien-len') {
     // SECRECY: hand contents exist ONLY in the seat's own branch
     // below. Every other field is public table talk: how many cards
@@ -4392,7 +4702,7 @@ function hostAction(room, body) {
 // rule. Base step only: dash multipliers/cooldowns are tick business.
 const NUDGE_PHASES = {
   'day-ra': 'arena', 'ne-dan': 'dodge', 'cuop-sao': 'steal',
-  'giu-vuong-mien': 'crown', 'son-san': 'splat', 'xe-tank': 'tank',
+  'giu-vuong-mien': 'crown', 'xe-tank': 'tank',
   'thu-thanh': 'defend', 'chung-mot-than': 'shared',
 };
 function padNudge(room, seat, prev, np, t) {
@@ -4433,11 +4743,6 @@ function padNudge(room, seat, prev, np, t) {
     return;
   }
   b.x += dx * STEP_X * frac; b.y += dy * STEP_Y * frac;
-  if (g.id === 'son-san') {
-    b.x = Math.max(-14.4, Math.min(14.4, b.x)); b.y = Math.max(-8, Math.min(8, b.y));
-  } else if (g.id !== 'day-ra') {
-    clampRect(b);
-  }
   // day-ra mirrors its stepper exactly: no positional clamp — the
   // ring-out verdict belongs to the next regular tick.
 }
@@ -4446,8 +4751,8 @@ function playerAction(room, player, body) {
   if (room.phase !== 'playing' || !g) return 'Chưa vào game.';
   const seat = player.seat; const t = now(); const a = body.action;
   if (a === 'pad') {
-    if (g.id !== 'day-ra' && g.id !== 'ne-dan' && g.id !== 'keo-co'
-      && g.id !== 'cuop-sao' && g.id !== 'giu-vuong-mien' && g.id !== 'son-san'
+    if (g.id !== 'day-ra' && g.id !== 'ne-dan'
+      && g.id !== 'cuop-sao' && g.id !== 'giu-vuong-mien'
       && g.id !== 'chung-mot-than' && g.id !== 'day-hop'
       && g.id !== 'xe-tank' && g.id !== 'dat-bom' && g.id !== 'thu-thanh'
       && g.id !== 'nguoi-que' && g.id !== 'den-lua-nuoc'
@@ -4456,9 +4761,6 @@ function playerAction(room, player, body) {
     const np = { u: !!pd.u, d: !!pd.d, l: !!pd.l, r: !!pd.r, a: !!pd.a, b: !!pd.b, x: !!pd.x, y: !!pd.y };
     const prev = g.pad[seat] || {};
     // Kéo Co: a press is the rising edge of B, counted the moment it lands.
-    if (g.id === 'keo-co' && g.phase === 'pull' && np.b && !prev.b) {
-      g.presses[seat] = (g.presses[seat] || 0) + 1;
-    }
     // Chia Hay Cướp on the gamepad: A (the X position) = Chia, B = Cướp,
     // rising edge only, and only for the pair during the choose phase.
     g.pad[seat] = np;
@@ -4477,13 +4779,21 @@ function playerAction(room, player, body) {
     if (body.face === 1 || body.face === -1) c.face = body.face;
     return null;
   }
-  if (a === 'tap') {
-    if (g.id === 'cao-boi') {
-      if (g.inputs[seat]) return null;
-      if (g.phase === 'wait') g.inputs[seat] = { foul: true, at: t };
-      else if (g.phase === 'go') g.inputs[seat] = { tapAt: t };
+  if (a === 'chat') {
+    if (g.id === 'ma-soi') {
+      // Day discussion is public — but the dead only watch: a ghost
+      // who could still talk could leak night knowledge.
+      if (g.phase !== 'discuss') return 'Chỉ trò chuyện được trong lúc bàn luận ban ngày.';
+      if (!g.wolf.alive[seat]) return 'Bạn đã chết — chỉ theo dõi thôi nhé.';
+      const text = String(body.text || '').trim().slice(0, 60);
+      if (!text) return 'Hãy nhập lời nhắn.';
+      g.chatLog.push({ seat, text, at: t });
+      if (g.chatLog.length > 40) g.chatLog = g.chatLog.slice(-40);
       return null;
     }
+    return 'Game này không có trò chuyện.';
+  }
+  if (a === 'tap') {
     if (g.id === 'cheo-thuyen') {
       if (g.phase !== 'row') return null;
       // A press is an in-window stroke when its server receipt time is
@@ -4507,6 +4817,86 @@ function playerAction(room, player, body) {
     const c = body.choice;
     if (!Number.isInteger(c) || c < 0 || c > 3) return 'Đáp án không hợp lệ.';
     g.inputs[seat] = { choice: c, at: t };
+    return null;
+  }
+  if (a === 'vote') {
+    if (g.id === 'ma-soi') {
+      if (g.phase !== 'vote') return 'Chưa đến lúc bỏ phiếu.';
+      if (!g.wolf.alive[seat]) return 'Bạn đã chết — chỉ theo dõi thôi nhé.';
+      if (g.votes[seat] != null) return null;
+      const target = body.seat;
+      if (!Number.isInteger(target) || target === seat || !playerAt(room, target) || !g.wolf.alive[target]) return 'Không bỏ phiếu cho người này được.';
+      g.votes[seat] = target;
+      return null;
+    }
+    return 'Chưa đến lúc bỏ phiếu.';
+  }
+  if (a === 'wolfVote' || a === 'wolfGuard' || a === 'wolfSeer' || a === 'wolfWitch') {
+    if (g.id !== 'ma-soi' || g.phase !== 'night') return 'Chưa đến lúc hành động ban đêm.';
+    const w = g.wolf;
+    if (!w.alive[seat]) return 'Bạn đã chết — chỉ theo dõi thôi nhé.';
+    const role = w.roles[seat];
+    const target = body.seat;
+    const targetOk = Number.isInteger(target) && !!playerAt(room, target) && !!w.alive[target];
+    if (a === 'wolfVote') {
+      if (role !== 'soi') return 'Chỉ có sói mới chọn con mồi.';
+      if (w.wolfVotes[seat] != null) return null;
+      if (!targetOk || target === seat) return 'Không chọn được người này.';
+      w.wolfVotes[seat] = target;
+      return null;
+    }
+    if (a === 'wolfGuard') {
+      if (role !== 'bao-ve') return 'Chỉ có Bảo Vệ mới chọn người để bảo vệ.';
+      if (w.guardPick != null) return null;
+      if (!targetOk) return 'Không chọn được người này.';
+      if (target === w.guardLast) return 'Đêm qua bạn đã bảo vệ người này rồi — luật không cho bảo vệ cùng một người hai đêm liền.';
+      w.guardPick = target;
+      return null;
+    }
+    if (a === 'wolfSeer') {
+      if (role !== 'tien-tri') return 'Chỉ có Tiên Tri mới soi được người khác.';
+      if (w.seerPick != null) return null;
+      if (!targetOk || target === seat) return 'Không soi được người này.';
+      wolfSeerApply(room, seat, target);
+      return null;
+    }
+    // wolfWitch: incremental — set the save flag and/or a poison
+    // target first, then confirm with done:true (the phone renders
+    // her current choices back from the view between steps).
+    if (role !== 'phu-thuy') return 'Chỉ có Phù Thủy mới dùng thuốc được.';
+    if (w.witch.done) return null;
+    if (body.done === true) { w.witch.done = true; return null; }
+    if (typeof body.save === 'boolean') {
+      if (body.save) {
+        if (w.saveLeft <= 0) return 'Thuốc cứu đã dùng hết rồi.';
+        if (!wolfWolvesIn(room)) return 'Sói chưa chọn xong con mồi — đợi một chút.';
+        if (wolfVictim(room) == null) return 'Đêm nay sói chưa chọn được ai.';
+      }
+      w.witch.save = body.save;
+      return null;
+    }
+    if (body.poison === null) { w.witch.poison = null; return null; }
+    if (body.poison !== undefined) {
+      if (w.poisonLeft <= 0) return 'Thuốc độc đã dùng hết rồi.';
+      const pt = body.poison;
+      if (!Number.isInteger(pt) || !playerAt(room, pt) || !w.alive[pt] || pt === seat) return 'Không đầu độc được người này.';
+      w.witch.poison = pt;
+      return null;
+    }
+    return null;
+  }
+  if (a === 'roll') {
+    if (g.id !== 'ca-ngua' || g.phase !== 'roll') return 'Chưa đến lúc thảy xúc xắc.';
+    if (g.ng.turn !== seat) return 'Chưa tới lượt của bạn.';
+    nguaRoll(room, t);
+    return null;
+  }
+  if (a === 'move') {
+    if (g.id !== 'ca-ngua' || g.phase !== 'pick') return 'Chưa đến lúc đi ngựa.';
+    if (g.ng.turn !== seat) return 'Chưa tới lượt của bạn.';
+    const h = body.horse;
+    if (!Number.isInteger(h) || g.ng.legal.indexOf(h) < 0) return 'Ngựa này đi không được.';
+    nguaMove(room, seat, h, t);
     return null;
   }
   if (a === 'play') {
