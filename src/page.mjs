@@ -32,8 +32,8 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
   padding: 2px 10px; border-radius: 12px; margin: 0 2px; transform: rotate(-3deg); }
 .tagline { font-size: 19px; font-weight: 700; color: #7C4F27; margin-top: 6px; }
 .codeboxes { display: flex; gap: 10px; justify-content: center; margin: 10px 0; }
-.codebox { width: 62px; height: 76px; background: #fff; border-radius: 16px; font-family: 'Baloo 2', cursive; font-weight: 800;
-  font-size: 42px; color: #4A3226; display: flex; align-items: center; justify-content: center;
+.codebox { width: 74px; height: 92px; background: #fff; border-radius: 16px; font-family: 'Baloo 2', cursive; font-weight: 800;
+  font-size: 54px; color: #4A3226; display: flex; align-items: center; justify-content: center;
   border: 3px solid #FFE3B3; }
 .seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-top: 14px; }
 .seat { background: #FFFDF8; border-radius: 24px; padding: 14px 10px; text-align: center; border: 3px dashed #EBD9BE; position: relative; }
@@ -47,9 +47,11 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .chip { display: inline-block; background: #FFF1DE; color: #8A5A33; font-weight: 700; font-size: 14px; padding: 4px 12px; border-radius: 999px; margin: 2px; }
 .chip.hot { background: #FFE1EC; color: #C2437E; }
 .chip.cool { background: #E1F0FF; color: #2F6FBF; }
-.games { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 14px; }
+.games { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px; }
 .gamecard { border-radius: 24px; padding: 18px; color: #fff; cursor: pointer; text-align: left; border: none; font-family: inherit;
-  box-shadow: 0 6px 0 rgba(0,0,0,.15); transition: transform .08s; }
+  box-shadow: 0 6px 0 rgba(0,0,0,.15); transition: transform .08s; display: flex; flex-direction: column; height: 100%; }
+.gamecard .meta { font-weight: 800; font-size: 15px; opacity: .95; margin: 0 0 4px; }
+.gamecard .foot { margin-top: auto; padding-top: 8px; }
 .gamecard:active { transform: translateY(4px); }
 .gamecard h3 { margin: 0 0 4px; font-size: 24px; }
 .gamecard p { margin: 0; font-weight: 700; opacity: .92; }
@@ -501,7 +503,7 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
   .stage:not(:has(.afield)):not(:has(.ngboard)) { max-width: 1760px; }
   .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; align-content: start; }
   .wolfgrid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-  .games { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .games { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
   .seats { grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); }
   .pod { width: 185px; }
 }
@@ -1761,21 +1763,28 @@ function hostHTML(v) {
       var lockWhy = '';
       if (gm.min && nP < gm.min) lockWhy = '🔒 Cần ít nhất ' + gm.min + ' người chơi (đang có ' + nP + ')';
       else if (gm.max && nP > gm.max) lockWhy = '🔒 Tối đa ' + gm.max + ' người chơi (đang có ' + nP + ')';
+      // Standard card anatomy (layout reference pass, Bloop-style):
+      // name -> player-count meta right under the name -> one-line
+      // rule -> controls -> status/scoring footer PINNED to the
+      // bottom edge, so every card in a row is the same height and
+      // the feet line up.
+      var head = '<h3>' + esc(gm.name) + '</h3><p class="meta">' + rangeTxt + '</p><p>' + esc(gm.desc) + '</p>'
+        + (GAME_CTL[gm.id] ? '<p class="small">' + GAME_CTL[gm.id] + '</p>' : '');
       if (S.plMode) {
         var qi = S.plQueue.indexOf(gm.id);
         return '<button class="gamecard' + (qi >= 0 ? ' plon' : '') + (lockWhy ? ' pllock' : '') + '" style="background:' + GCOLORS[gm.id] + '" data-cmd="plToggle" data-game="' + gm.id + '">'
           + (qi >= 0 ? '<span class="plbadge">' + (qi + 1) + '</span>' : '')
-          + '<h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p>'
-          + (lockWhy ? '<p class="small">' + lockWhy + '</p>' : '<p class="small">' + rangeTxt + ' · ' + (qi >= 0 ? 'Đã chọn · chạm để bỏ khỏi hàng chờ' : 'Chạm để thêm vào hàng chờ') + '</p></button>');
+          + head
+          + (lockWhy ? '<p class="small foot">' + lockWhy + '</p>' : '<p class="small foot">' + (qi >= 0 ? 'Đã chọn · chạm để bỏ khỏi hàng chờ' : 'Chạm để thêm vào hàng chờ') + '</p></button>');
       }
       var small = gm.cat === 'coop' ? '1 trận hợp tác · Cả đội cùng nhận điểm theo hạng' : (gm.rounds > 1 ? gm.rounds + ' vòng · Vòng cuối ×2 điểm' : '1 trận sống còn · 300/200/100/50');
       if (lockWhy) {
         if (gm.min && nP < gm.min) {
-          return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="quickStart" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p>' + (GAME_CTL[gm.id] ? '<p class="small">' + GAME_CTL[gm.id] + '</p>' : '') + '<p class="small">▶ Thiếu ' + (gm.min - nP) + ' người — chạm để thêm Máy và chơi ngay</p></button>';
+          return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="quickStart" data-game="' + gm.id + '">' + head + '<p class="small foot">▶ Thiếu ' + (gm.min - nP) + ' người — chạm để thêm Máy và chơi ngay</p></button>';
         }
-        return '<button class="gamecard pllock" style="background:' + GCOLORS[gm.id] + '" data-cmd="startLocked" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">' + lockWhy + '</p></button>';
+        return '<button class="gamecard pllock" style="background:' + GCOLORS[gm.id] + '" data-cmd="startLocked" data-game="' + gm.id + '">' + head + '<p class="small foot">' + lockWhy + '</p></button>';
       }
-      return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p>' + (GAME_CTL[gm.id] ? '<p class="small">' + GAME_CTL[gm.id] + '</p>' : '') + '<p class="small">' + rangeTxt + ' · ' + small + '</p></button>';
+      return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '">' + head + '<p class="small foot">' + small + '</p></button>';
     }
     // Playlist builder: arm the mode, tap cards to queue them, then
     // start the chain — or take a preset (random 5 / everything).
@@ -1796,6 +1805,14 @@ function hostHTML(v) {
       h += '<button class="btn orange" data-cmd="plAll">🏆 Tất cả game</button> ';
       h += '<button class="btn ghost" data-cmd="plMode">Tắt liên hoàn</button></p>';
     }
+    h += '</div>';
+    // Featured row first (portal standard: the best games sit in
+    // the first screenful, nobody scrolls to find them). The same
+    // games also appear in their category below — portals repeat
+    // their hits across rows the same way.
+    h += '<div class="cathead">⭐ Hay nhất</div><div class="games">';
+    var FEAT = ['ne-dan', 'xe-tank', 'dat-bom', 'cuop-sao', 'da-bong', 'do-vui'];
+    for (var kf = 0; kf < FEAT.length; kf++) { var gmf = gameMeta(v, FEAT[kf]); if (gmf) h += gameCard(gmf); }
     h += '</div>';
     h += '<div class="cathead">🏆 Đấu với nhau</div><div class="games">';
     for (var k = 0; k < v.games.length; k++) if (v.games[k].cat !== 'coop') h += gameCard(v.games[k]);
@@ -2366,9 +2383,28 @@ function resultsHTML(v, isHost) {
   }
   h += scoreStrip(v);
   var seats = Object.keys(lg.points).map(function (k) { return +k; }).sort(function (a, b) { return (lg.points[b] - lg.points[a]) || (a - b); });
-  h += '<div class="card rows" style="margin-top:10px">';
-  for (var i = 0; i < seats.length; i++) { var p = playerOf(v, seats[i]); h += '<div class="rrow">' + blobSVG(p.color, p.mood, 38) + ' ' + esc(p.name) + '<span class="pts">' + fmt(lg.points[seats[i]]) + ' điểm game này</span></div>'; }
-  h += '</div>';
+  // Per-game results lead with a top-3 podium (Kahoot standard:
+  // the celebration gets the big visual, the rest is a compact
+  // list) instead of one flat table for everyone.
+  if (seats.length >= 3) {
+    var t3 = seats.slice(0, 3); var rest = seats.slice(3);
+    var ord = [t3[1], t3[0], t3[2]]; var hh = {}; hh[t3[0]] = 118; hh[t3[1]] = 86; hh[t3[2]] = 62;
+    h += '<div class="podium" style="margin-top:14px">';
+    for (var pi = 0; pi < ord.length; pi++) {
+      var pp2 = playerOf(v, ord[pi]); var rk = seats.indexOf(ord[pi]) + 1;
+      h += '<div class="pod">' + (rk === 1 ? '<span class="crownglow">' + crownSVG(52) + '</span><br>' : '') + '<span class="blobbob">' + blobSVG(pp2.color, 'reo', 68) + '</span><div class="baloo" style="font-size:18px">' + esc(pp2.name) + '</div><div class="col" style="height:' + hh[ord[pi]] + 'px;background:' + COLORS[pp2.color] + '">' + rk + '</div><div class="muted">' + fmt(lg.points[ord[pi]]) + ' điểm game này</div></div>';
+    }
+    h += '</div>';
+    if (rest.length) {
+      h += '<div class="card rows" style="margin-top:10px">';
+      for (var ri = 0; ri < rest.length; ri++) { var rp = playerOf(v, rest[ri]); h += '<div class="rrow"><b>' + (ri + 4) + '</b>' + blobSVG(rp.color, rp.mood, 32) + ' ' + esc(rp.name) + '<span class="pts">' + fmt(lg.points[rest[ri]]) + ' điểm game này</span></div>'; }
+      h += '</div>';
+    }
+  } else {
+    h += '<div class="card rows" style="margin-top:10px">';
+    for (var i = 0; i < seats.length; i++) { var p = playerOf(v, seats[i]); h += '<div class="rrow">' + blobSVG(p.color, p.mood, 38) + ' ' + esc(p.name) + '<span class="pts">' + fmt(lg.points[seats[i]]) + ' điểm game này</span></div>'; }
+    h += '</div>';
+  }
   var plv = v.playlist;
   if (plv && plv.active && plv.nextName && plv.nextInSec != null) {
     h += '<div class="card center" style="margin-top:10px"><div class="baloo" style="font-size:22px">🔁 Game tiếp theo: ' + esc(plv.nextName) + '</div>';
@@ -3374,20 +3410,20 @@ function patchPositions(v) {
       var qn = el('ablob-' + qSeat);
       if (qn) {
         moveEl(qn, qb2.x, qb2.y, 'std', qb2.vx, qb2.vy);
-        qn.style.opacity = qb2.alive ? (qb2.invuln ? '0.55' : '1') : '0.2';
+        setOp(qn, qb2.alive ? (qb2.invuln ? '0.55' : '1') : '0.2');
       }
       var dm = el('dmg-' + qSeat);
-      if (dm) { dm.textContent = (qb2.dmg || 0) + '%'; dm.style.color = dmgColor(qb2.dmg || 0); }
+      if (dm) { setT(dm, (qb2.dmg || 0) + '%'); var dcq = dmgColor(qb2.dmg || 0); if (dm._dc !== dcq) { dm._dc = dcq; dm.style.color = dcq; } }
       var lvq = el('alives-' + qSeat);
-      if (lvq) lvq.textContent = '\u2665'.repeat(Math.max(0, qb2.lives));
+      setT(lvq, '\u2665'.repeat(Math.max(0, qb2.lives)));
       var fg = el('fig-' + qSeat);
       if (fg) {
         var poseKey = fightPose(qb2) + '|' + (qb2.face || 1);
         if (fg.dataset.pose !== poseKey) { fg.dataset.pose = poseKey; var plq = playerOf(v, +qSeat); fg.innerHTML = stickSVG(plq ? plq.color : 'blue', fightPose(qb2), qb2.face); }
       }
     }
-    var mlq = el('mylives'); if (mlq && g.blobs[S.seat]) mlq.textContent = '\u2665'.repeat(Math.max(0, g.blobs[S.seat].lives));
-    var mdq = el('mydmg'); if (mdq) mdq.textContent = (g.myDmg || 0) + '%';
+    var mlq = el('mylives'); if (mlq && g.blobs[S.seat]) setT(mlq, '\u2665'.repeat(Math.max(0, g.blobs[S.seat].lives)));
+    var mdq = el('mydmg'); setT(mdq, (g.myDmg || 0) + '%');
     arenaFX(v, g);
   }
   if (g.id === 'den-lua-nuoc' && g.chars) {
@@ -3396,17 +3432,18 @@ function patchPositions(v) {
       var cn = el('achar-' + cSeat);
       if (cn) {
         moveEl(cn, cc2.x, cc2.y, 'std', cc2.vx, cc2.vy);
-        cn.className = 'achar' + (cc2.home ? ' home' : '');
+        var clc = 'achar' + (cc2.home ? ' home' : '');
+        if (cn._cl !== clc) { cn._cl = clc; cn.className = clc; }
       }
     }
     if (g.gems) syncDyn(g.gems, 'tgem-', 'tgem', function (n, it) { n.className = 'tgem ' + it.el + (it.taken ? ' taken' : ''); if (!n.firstChild) n.innerHTML = '<i></i>'; });
     (g.gates || []).forEach(function (gt2, gi2) { var gn = el('gate-' + gi2); if (gn) gn.className = 'tgate' + (g.gateOpen ? ' open' : ''); });
-    var gl2 = el('gemlua'); if (gl2 && g.gemCount) gl2.textContent = g.gemCount.lua;
-    var gw2 = el('gemnuoc'); if (gw2 && g.gemCount) gw2.textContent = g.gemCount.nuoc;
-    var th2 = el('temphearts'); if (th2) th2.textContent = '\u2764'.repeat(Math.max(0, g.hearts || 0));
-    var glp = el('gemluap'); if (glp && g.gemCount) glp.textContent = g.gemCount.lua;
-    var gwp = el('gemnuocp'); if (gwp && g.gemCount) gwp.textContent = g.gemCount.nuoc;
-    var thp = el('tempheartsp'); if (thp) thp.textContent = '\u2764'.repeat(Math.max(0, g.hearts || 0));
+    var gl2 = el('gemlua'); if (gl2 && g.gemCount) setT(gl2, g.gemCount.lua);
+    var gw2 = el('gemnuoc'); if (gw2 && g.gemCount) setT(gw2, g.gemCount.nuoc);
+    var th2 = el('temphearts'); setT(th2, '\u2764'.repeat(Math.max(0, g.hearts || 0)));
+    var glp = el('gemluap'); if (glp && g.gemCount) setT(glp, g.gemCount.lua);
+    var gwp = el('gemnuocp'); if (gwp && g.gemCount) setT(gwp, g.gemCount.nuoc);
+    var thp = el('tempheartsp'); setT(thp, '\u2764'.repeat(Math.max(0, g.hearts || 0)));
     arenaFX(v, g);
   }
   if (g.id === 'da-bong') {
