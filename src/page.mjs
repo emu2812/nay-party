@@ -55,7 +55,11 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .gamecard p { margin: 0; font-weight: 700; opacity: .92; }
 .stage { border-radius: 32px; padding: 12px 10px; color: #fff; min-height: 400px; border: 3px solid rgba(255,255,255,.35); position: relative; overflow: hidden; }
 .pstage { touch-action: none; overscroll-behavior: none; }
-.stage h2 { margin: 0 0 4px; font-size: 24px; }
+.stage h2 { margin: 0 0 4px; font-size: 27px; }
+/* Big-screen readability (UI reference pass): the in-stage instruction
+   banner is the most-read line of every game — one size everywhere,
+   big enough to read from the sofa. */
+.stage .baloo { font-size: 28px !important; line-height: 1.25; }
 .g-do-vui { background: #4F7BE8; }
 .g-ma-soi { background: #4A2A85; }
 .g-ca-ngua { background: #B45309; }
@@ -102,7 +106,7 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
 .bigcircle.go { background: #3ED97E; color: #fff; animation: pop .3s ease; }
 @keyframes pop { 0% { transform: scale(.6); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
 .optgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
-.opt { border: none; border-radius: 20px; padding: 18px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 21px; cursor: pointer;
+.opt { border: none; border-radius: 20px; padding: 18px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 24px; cursor: pointer;
   background: rgba(255,255,255,.92); color: #4A3226; box-shadow: 0 4px 0 rgba(0,0,0,.18); text-align: left; }
 .opt:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.18); }
 .opt.right { background: #3ED97E; color: #fff; }
@@ -249,8 +253,21 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
    shadow so airborne reads at a glance. */
 .alaser { position: absolute; pointer-events: none; z-index: 1; }
 .alaser.low { background: #FF4757; }
-.alaser.high { background: #B565FF; }
+/* HIGH beams read differently by SHAPE, not just colour (UI
+   reference pass — colour is never the only channel): a high beam
+   is TWO bars with a gap you stay under, drawn by two child bars;
+   a low beam is one solid bar you jump over. High also blinks
+   slower while warning. */
+.alaser.high { background: transparent; }
+.alaser.high i { position: absolute; display: block; background: #B565FF; }
+.alaser.h.high i { left: 0; right: 0; height: 38%; }
+.alaser.h.high i:first-child { top: 0; }
+.alaser.h.high i:last-child { bottom: 0; }
+.alaser.v.high i { top: 0; bottom: 0; width: 38%; }
+.alaser.v.high i:first-child { left: 0; }
+.alaser.v.high i:last-child { right: 0; }
 .alaser.warn { opacity: .45; animation: laserBlink .28s steps(2) infinite; }
+.alaser.high.warn { animation-duration: .55s; }
 .alaser.fire { opacity: 1; }
 @keyframes laserBlink { 50% { opacity: .12; } }
 .ablob.air svg { transform: scale(1.3) translateY(-7px); }
@@ -381,8 +398,8 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
   background: rgba(5,8,18,.6); padding: 3px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); }
 .ko-big { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 66px; line-height: 1.05; color: #FF4757; letter-spacing: 2px;
   text-shadow: 0 5px 0 #5C0A12; animation: cdPunch .5s ease; }
-.aname { display: inline-block; font-weight: 700; font-size: 15px; color: #fff; background: rgba(5,8,18,.55); padding: 1px 10px;
-  border-radius: 999px; border: 1px solid rgba(255,255,255,.28); margin-top: 1px; }
+.aname { display: inline-block; font-weight: 800; font-size: 17px; color: #fff; background: #0B0E1A; padding: 2px 12px;
+  border-radius: 999px; border: 2px solid rgba(255,255,255,.45); margin-top: 1px; }
 .alives { font-size: 11px; color: #FFD7DE; letter-spacing: 1px; text-shadow: 0 1px 0 rgba(0,0,0,.35); min-height: 14px; }
 .padwrap { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
 .dpad { display: grid; grid-template-columns: repeat(3, 62px); grid-template-rows: repeat(3, 62px); gap: 4px; }
@@ -451,7 +468,7 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 #app:has(> .stage) .topbar { margin-bottom: 4px; }
 #app:has(> .stage) .topbar .btn.small { padding: 5px 12px; font-size: 13px; }
 #app:has(> .stage) .scorebar { margin: 4px 0; gap: 6px; }
-#app:has(> .stage) .scorechip { font-size: 13px; padding: 2px 10px 2px 4px; }
+#app:has(> .stage) .scorechip { font-size: 15px; padding: 2px 10px 2px 4px; }
 #app:has(> .stage) .scorechip svg { width: 20px; height: 20px; }
 #app:has(> .stage) > .gapline { display: none; }
 .stage p.center { font-size: 13.5px; margin: 6px 0 0; line-height: 1.35; }
@@ -636,7 +653,7 @@ function blobSVG(color, mood, size) {
     mouth = '<path d="M34 61 Q50 75 66 61" stroke="#4A3226" stroke-width="4.5" fill="none" stroke-linecap="round"/>';
   }
   return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 100 100">'
-    + '<path d="M50 4 C74 4 96 26 96 52 C96 79 75 96 50 96 C25 96 4 79 4 52 C4 26 26 4 50 4 Z" fill="' + c + '"/>'
+    + '<path d="M50 4 C74 4 96 26 96 52 C96 79 75 96 50 96 C25 96 4 79 4 52 C4 26 26 4 50 4 Z" fill="' + c + '" stroke="rgba(11,16,32,.45)" stroke-width="3"/>'
     + eyes + mouth + '</svg>';
 }
 function crownSVG(size) {
@@ -658,7 +675,7 @@ function orbSVG(color, size, ko) {
       + '<circle cx="50" cy="44" r="2.4" fill="' + l + '"/>';
   }
   return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 100 100">'
-    + '<circle cx="50" cy="50" r="46" fill="' + c + '"/>'
+    + '<circle cx="50" cy="50" r="46" fill="' + c + '" stroke="rgba(255,255,255,.9)" stroke-width="3.5"/>'
     + '<path d="M19 65 Q50 87 81 65" stroke="' + l + '" stroke-width="3" fill="none" opacity="0.45" stroke-linecap="round"/>'
     + visor
     + '</svg>';
@@ -1302,6 +1319,35 @@ function noteServerTime(sn) {
 }
 
 var DUR = { 'do-vui': 15000, 'keo-co': 20000 };
+// One-line controls hint printed on every chooser card (Bloop-style:
+// the card itself teaches the game before anyone taps it).
+var GAME_CTL = {
+  'do-vui': '📱 Điện thoại: chạm đáp án đúng thật nhanh',
+  'day-ra': '🎮 D-Pad: chạy · A: đẩy · B: lướt',
+  'ne-dan': '🎮 D-Pad: chạy · A: NHẢY · B: lướt',
+  'keo-co': '🎮 B: kéo dây thật nhanh',
+  'chia-cuop': '📱 Điện thoại: chọn Chia hay Cướp',
+  'cuop-sao': '🎮 D-Pad: bay · A: xô rơi sao · B: lướt',
+  'giu-vuong-mien': '🎮 D-Pad: chạy · A: xô người giữ · B: lướt',
+  'son-san': '🎮 D-Pad: chạy · A: sơn bùng · B: lướt',
+  'cao-boi': '🎮 A: rút súng ngay khi có hiệu BẮN',
+  'xe-tank': '🎮 D-Pad: lái xe · A: bắn · B: lướt',
+  'dat-bom': '🎮 D-Pad: chạy · A: đặt bom · B: lướt',
+  'ke-gia-mao': '📱 Điện thoại: trả lời & tố kẻ giả mạo',
+  'ma-soi': '📱 Điện thoại: chọn hành động mỗi đêm',
+  'ca-ngua': '📱 Điện thoại: tung xúc xắc & chọn ngựa',
+  'tien-len': '📱 Điện thoại: chọn bài & đánh',
+  'chung-mot-than': '🎮 D-Pad: lái hướng của bạn · A: đẩy',
+  'day-hop': '🎮 D-Pad: đẩy hộp · A: đẩy mạnh · B: lướt',
+  'cheo-thuyen': '🎮 A: chèo theo nhịp trống',
+  'thu-thanh': '🎮 D-Pad: ngắm · A: bắn slime',
+  'giai-ma-chung': '📱 Điện thoại: bấm ký hiệu của bạn đúng thứ tự',
+  'nguoi-que': '🎮 D-Pad: di chuyển · A: đánh · B: lướt',
+  'den-lua-nuoc': '🎮 D-Pad: chạy · A: nhảy',
+  'da-bong': '🎮 D-Pad: chạy · A: sút · B: lướt',
+  'ech-op': '🎮 D-Pad: chọn hướng · A: nhảy · B: nuốt / nhả',
+  'can-goc': '🎮 D-Pad: chỉnh góc & lực · A: bắn'
+};
 var GCOLORS = {
   'do-vui': '#6BCBFF',
   'ma-soi': '#1E1B4B', 'ca-ngua': '#78350F',
@@ -1722,11 +1768,11 @@ function hostHTML(v) {
       var small = gm.cat === 'coop' ? '1 trận hợp tác · Cả đội cùng nhận điểm theo hạng' : (gm.rounds > 1 ? gm.rounds + ' vòng · Vòng cuối ×2 điểm' : '1 trận sống còn · 300/200/100/50');
       if (lockWhy) {
         if (gm.min && nP < gm.min) {
-          return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="quickStart" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">▶ Thiếu ' + (gm.min - nP) + ' người — chạm để thêm Máy và chơi ngay</p></button>';
+          return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="quickStart" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p>' + (GAME_CTL[gm.id] ? '<p class="small">' + GAME_CTL[gm.id] + '</p>' : '') + '<p class="small">▶ Thiếu ' + (gm.min - nP) + ' người — chạm để thêm Máy và chơi ngay</p></button>';
         }
         return '<button class="gamecard pllock" style="background:' + GCOLORS[gm.id] + '" data-cmd="startLocked" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">' + lockWhy + '</p></button>';
       }
-      return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p><p class="small">' + rangeTxt + ' · ' + small + '</p></button>';
+      return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '"><h3>' + esc(gm.name) + '</h3><p>' + esc(gm.desc) + '</p>' + (GAME_CTL[gm.id] ? '<p class="small">' + GAME_CTL[gm.id] + '</p>' : '') + '<p class="small">' + rangeTxt + ' · ' + small + '</p></button>';
     }
     // Playlist builder: arm the mode, tap cards to queue them, then
     // start the chain — or take a preset (random 5 / everything).
@@ -2858,12 +2904,18 @@ function syncLasers(lasers) {
       n = document.createElement('div');
       n.id = id;
       field.appendChild(n);
+      // A new beam just telegraphed: one soft audio cue on the big
+      // screen (the second warning channel), throttled so double
+      // spawns do not stack.
+      if (S.role === 'host' && performance.now() - (window.__lzCue || 0) > 350) { window.__lzCue = performance.now(); sfxWhoosh(); }
     }
     var key = L.axis + '|' + L.kind + '|' + L.state;
     if (n._lk !== key) {
       n._lk = key;
       n.className = 'alaser ' + L.axis + ' ' + L.kind + ' ' + L.state;
-      var thick = L.state === 'warn' ? 0.35 : 1.5;
+      if (L.kind === 'high' && !n._kids) { n.innerHTML = '<i></i><i></i>'; n._kids = 1; }
+      if (L.kind === 'low' && n._kids) { n.innerHTML = ''; n._kids = 0; }
+      var thick = L.state === 'warn' ? 0.35 : 2.0; // fire thickness == the exact hit band (2 x LASER_HIT)
       if (L.axis === 'h') {
         var hh = thick / 18 * 100;
         n.style.left = '0px'; n.style.width = '100%';
