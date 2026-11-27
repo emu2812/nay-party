@@ -58,26 +58,6 @@ export const QUIZ_BANK = [
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-export const IMPOSTOR_BANK = [
-  { cat: 'Địa lý', real: 'Thủ đô của nước Pháp là thành phố nào?', fake: 'Thủ đô của nước Ý là thành phố nào?', options: ['Paris', 'Rome', 'Berlin', 'Madrid'] },
-  { cat: 'Thiên văn', real: 'Hành tinh nào gần Mặt Trời nhất?', fake: 'Hành tinh nào xa Mặt Trời nhất trong bốn hành tinh này?', options: ['Sao Thủy', 'Sao Kim', 'Sao Hỏa', 'Sao Mộc'] },
-  { cat: 'Động vật', real: 'Loài nào trong bốn loài này đẻ trứng?', fake: 'Loài nào trong bốn loài này đẻ con?', options: ['Gà', 'Chó', 'Mèo', 'Lợn'] },
-  { cat: 'Đời sống', real: 'Một tuần có bao nhiêu ngày?', fake: 'Một tháng có khoảng bao nhiêu tuần?', options: ['4', '7', '12', '30'] },
-  { cat: 'Thể thao', real: 'Một đội bóng đá có bao nhiêu cầu thủ trên sân?', fake: 'Một đội bóng rổ có bao nhiêu cầu thủ trên sân?', options: ['5', '7', '9', '11'] },
-  { cat: 'Cơ thể', real: 'Người trưởng thành có tối đa bao nhiêu chiếc răng vĩnh viễn?', fake: 'Một bàn tay người có bao nhiêu ngón?', options: ['5', '10', '28', '32'] },
-  { cat: 'Việt Nam', real: 'Vịnh Hạ Long thuộc tỉnh nào?', fake: 'Đảo Phú Quốc thuộc tỉnh nào?', options: ['Quảng Ninh', 'Kiên Giang', 'Khánh Hòa', 'Bình Thuận'] },
-  { cat: 'Văn học', real: 'Truyện Kiều là tác phẩm của ai?', fake: 'Truyện Lục Vân Tiên là tác phẩm của ai?', options: ['Nguyễn Du', 'Nguyễn Đình Chiểu', 'Hồ Xuân Hương', 'Nguyễn Trãi'] },
-  { cat: 'Khoa học', real: 'Ở áp suất thường, nước sôi ở bao nhiêu độ C?', fake: 'Ở áp suất thường, nước đóng băng ở bao nhiêu độ C?', options: ['0', '50', '90', '100'] },
-  { cat: 'Động vật', real: 'Loài nào có sọc đen trắng và thích ăn tre trúc?', fake: 'Loài nào có sọc đen trắng và sống ở đồng cỏ châu Phi?', options: ['Gấu trúc', 'Ngựa vằn', 'Hổ', 'Gấu mèo'] },
-  { cat: 'Địa lý', real: 'Ngọn núi nào cao nhất Việt Nam?', fake: 'Ngọn núi nào cao nhất thế giới?', options: ['Fansipan', 'Everest', 'Phú Sĩ', 'Bà Đen'] },
-  { cat: 'Ẩm thực', real: 'Bánh chưng truyền thống có hình gì?', fake: 'Bánh tét truyền thống có hình gì?', options: ['Hình vuông', 'Hình tròn dài', 'Hình tam giác', 'Hình trăng khuyết'] },
-  { cat: 'Âm nhạc', real: 'Đàn guitar thông thường có bao nhiêu dây?', fake: 'Đàn violin thông thường có bao nhiêu dây?', options: ['4', '5', '6', '7'] },
-  { cat: 'Toán học', real: 'Hình tam giác có bao nhiêu cạnh?', fake: 'Hình ngũ giác có bao nhiêu cạnh?', options: ['3', '4', '5', '6'] },
-  { cat: 'Sinh học', real: 'Con nhện có bao nhiêu chân?', fake: 'Côn trùng trưởng thành có bao nhiêu chân?', options: ['4', '6', '8', '10'] },
-  { cat: 'Địa lý', real: 'Sa mạc nào lớn nhất thế giới?', fake: 'Đại dương nào lớn nhất thế giới?', options: ['Sahara', 'Thái Bình Dương', 'Đại Tây Dương', 'Gobi'] },
-  { cat: 'Thể thao', real: 'Một hiệp bóng đá kéo dài bao nhiêu phút?', fake: 'Một hiệp bóng rổ FIBA kéo dài bao nhiêu phút?', options: ['10', '12', '40', '45'] },
-  { cat: 'Văn hóa', real: 'Tết Nguyên Đán là ngày đầu của tháng mấy âm lịch?', fake: 'Tết Trung Thu là rằm tháng mấy âm lịch?', options: ['Tháng 1', 'Tháng 5', 'Tháng 8', 'Tháng 12'] },
-];
 
 // Platform seat cap: rooms hold up to MAX_SEATS players (humans +
 // bots). Each game declares its own [min, max] inside GAMES; the
@@ -106,22 +86,17 @@ export const GAMES = {
   'keo-co': { name: 'Kéo Co', desc: 'Hai đội bấm nút B, kéo nút thắt về phía mình!', rounds: 1, cat: 'versus', min: 2, max: 12 },
   // Rounds for Chia Hay Cướp are dynamic: one round per seated player
   // (pairs rotate, see beginRound), so `rounds` here is only nominal.
-  'chia-cuop': { name: 'Chia Hay Cướp', desc: 'Thương lượng 60 giây rồi chọn bí mật: Chia hay Cướp?', rounds: 4, cat: 'versus', min: 2, max: 12 },
   'cuop-sao': { name: 'Cướp Sao', desc: 'Gamepad: nhặt sao, xô đối thủ cho rơi sao!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'giu-vuong-mien': { name: 'Giữ Vương Miện', desc: 'Gamepad: giành vương miện và giữ càng lâu càng tốt!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'son-san': { name: 'Sơn Sàn', desc: 'Gamepad: chạy sơn sàn, chiếm thật nhiều ô!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'cao-boi': { name: 'Cao Bồi', desc: 'Đợi hiệu lệnh BẮN — rút súng nhanh nhất!', rounds: 5, cat: 'versus', min: 2, max: 8 },
   'xe-tank': { name: 'Xe Tăng Đấu Trường', desc: 'Gamepad: lái xe tăng, bắn hạ đối thủ, núp sau vật chắn!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'dat-bom': { name: 'Đặt Bom', desc: 'Gamepad: đặt bom phá tường gỗ, né vụ nổ chữ thập!', rounds: 1, cat: 'versus', min: 2, max: 6 },
-  'ke-gia-mao': { name: 'Kẻ Giả Mạo', desc: 'Một người nhận câu hỏi giả — bàn luận và tố cáo cho đúng!', rounds: 3, cat: 'versus', min: 3, max: 12 },
-  'ma-soi': { name: 'Ma Sói', desc: 'Suy luận xã hội: sói trà trộn trong làng — bảo vệ dân, tìm và treo cổ sói trước khi quá muộn!', rounds: 1, cat: 'versus', min: 4, max: 12 },
-  'ca-ngua': { name: 'Cờ Cá Ngựa', desc: 'Thảy xúc xắc, xuất chuồng, đá ngựa đối thủ — đưa cả 4 ngựa về chuồng trước!', rounds: 1, cat: 'versus', min: 2, max: 4 },
   'tien-len': { name: 'Tiến Lên Miền Nam', desc: 'Đánh bài miền Nam: chặn bài, chặt heo bằng tứ quý & đôi thông — hết bài trước thắng!', rounds: 1, cat: 'versus', min: 2, max: 4 },
   'chung-mot-than': { name: 'Chung Một Thân', desc: 'Hợp tác: cả đội lái chung một quả bóng, mỗi người giữ một hướng!', rounds: 1, cat: 'coop', min: 2, max: 8 },
   'day-hop': { name: 'Đẩy Hộp Về Đích', desc: 'Hợp tác: cùng đẩy hộp qua mê cung về ô đích!', rounds: 1, cat: 'coop', min: 2, max: 6 },
   'cheo-thuyen': { name: 'Chèo Thuyền', desc: 'Hợp tác: chèo thuyền theo nhịp, cả đội cùng trúng nhịp mới đi xa!', rounds: 1, cat: 'coop', min: 2, max: 12 },
   'thu-thanh': { name: 'Thủ Thành', desc: 'Hợp tác: bắn hạ đàn slime, giữ pha lê nguyên vẹn đến cuối!', rounds: 1, cat: 'coop', min: 2, max: 8 },
-  'giai-ma-chung': { name: 'Giải Mã Chung', desc: 'Hợp tác: mỗi người giữ một phần mật mã — phối hợp bấm đúng thứ tự!', rounds: 1, cat: 'coop', min: 2, max: 12 },
   'nguoi-que': { name: 'Người Que Đại Chiến', desc: 'Gamepad: người que đấu võ — đánh đối thủ văng khỏi sàn!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'den-lua-nuoc': { name: 'Đền Lửa & Nước', desc: 'Hợp tác: Lửa và Nước cùng vượt đền — nhặt ngọc, giữ cổng cho nhau, về đúng cửa!', rounds: 1, cat: 'coop', min: 2, max: 6 },
   'da-bong': { name: 'Đá Bóng Đầu To', desc: 'Gamepad: hai đội đầu to tranh bóng — sút vào gôn đối thủ!', rounds: 1, cat: 'versus', min: 2, max: 8 },
@@ -262,94 +237,12 @@ const TANK_BLOCKS = [
 // match with Math.random so tests can queue the exact layout.
 const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 15, BOM_ROWS = 9, BOM_FUSE_TICKS = 32, BOM_SOFT_P = 0.62;
 // Kẻ Giả Mạo: one secret impostor per round secretly gets the variant
-// question; catching pays every other player, escaping pays the
-// impostor (doubled in the final round).
-const IMP_ANSWER_MS = 30000, IMP_DISCUSS_MS = 45000, IMP_VOTE_MS = 20000, IMP_REVEAL_MS = 9000;
-// Ma Sói: hidden-role deduction. One night = wolves hunt + guard /
-// seer / witch act in the same window (the witch sees the wolves'
-// victim only once every living wolf has locked a vote), then dawn
-// announces the dead (roles are public from death on), the village
-// discusses and votes an execution. Side points: winning wolves 300
-// each, winning villagers 200 each, losers 50 each (dead members of
-// the winning side score the same — the side wins or loses together).
-// NIGHT_CAP bounds a game whose guard keeps saving perfectly: at the
-// cap the larger living side wins (a tie goes to the wolves, matching
-// the parity rule).
-const WOLF_NIGHT_MS = 45000, WOLF_DAWN_MS = 10000, WOLF_DISCUSS_MS = 60000,
-  WOLF_VOTE_MS = 30000, WOLF_EXEC_MS = 10000, WOLF_END_MS = 12000, WOLF_NIGHT_CAP = 15;
-const WOLF_ROLES = {
-  soi: { name: 'Sói', icon: '🐺' },
-  'tien-tri': { name: 'Tiên Tri', icon: '🔮' },
-  'bao-ve': { name: 'Bảo Vệ', icon: '🛡️' },
-  'phu-thuy': { name: 'Phù Thủy', icon: '🧙' },
-  dan: { name: 'Dân Làng', icon: '🧑‍🌾' },
-};
-// Bot lines for the Ma Sói day discussion: deliberately generic — a
-// bot must never reference roles, night events or anything it could
-// only know secretly (same rule as IMP_CHAT_LINES).
-const WOLF_CHAT_LINES = [
-  'Đêm qua ghê quá… mọi người cẩn thận nhé.',
-  'Tôi là dân thường thôi, thề luôn!',
-  'Ai nãy giờ im lặng bất thường ấy nhỉ?',
-  'Bình tĩnh, đừng treo nhầm người tốt.',
-  'Tôi nghi người ít nói nhất hôm nay.',
-  'Cứ theo linh cảm của cả làng thôi.',
-  'Ai cũng có vẻ đáng nghi hết trơn…',
-  'Hôm nay phải tìm cho ra sói!',
-];
-// Cờ Cá Ngựa (Vietnamese Ludo): a horse's progress p means 0 = stable,
-// 1..51 on the shared 52-cell loop at (startOffset + p - 1) mod 52,
-// 52..57 in the seat's home stretch, 58 = finished (exact roll needed
-// to land on 58; overshoot is simply not a legal move for that horse).
-// Safe loop cells (no kicking): the 4 start cells + each seat's
-// home-entry cell (the last loop cell before its home stretch).
-// Own horses stack freely on a cell; an opponent landing on a
-// non-safe cell kicks the WHOLE opposing stack back to its stable.
-// No blockade rule: passing over any horse is always allowed.
-// Three sixes in a row forfeit the third roll's move (classic rule).
-const NGUA_TURN_MS = 30000, NGUA_BOT_MS = 900, NGUA_BEAT_MS = 1500, NGUA_WIN_MS = 4000;
 // Tiến Lên Miền Nam: 30s per turn (wall clock, like Cá Ngựa); bots act
 // ~1s into their turn; the winner banner holds 5s before results.
 const TL_TURN_MS = 30000, TL_BOT_MS = 900, TL_WIN_MS = 5000;
-const NGUA_OFFSETS = [0, 13, 26, 39];
-const NGUA_SAFE = new Set([0, 13, 26, 39, 50, 11, 24, 37]);
-// The 52-cell loop on a 15x15 board as [col, row] pairs, starting at
-// seat board 0's start cell (1,6) and running (1,6)->(5,6)->up the
-// top-left arm->across the top->down the right->across the bottom->
-// up the left back to (0,6). Start cells sit at indices 0/13/26/39,
-// home-entry cells at 50/11/24/37, exactly NGUA_OFFSETS/NGUA_SAFE.
-export const NGUA_LOOP = [
-  [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [6, 5], [6, 4], [6, 3], [6, 2], [6, 1], [6, 0], [7, 0],
-  [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [9, 6], [10, 6], [11, 6], [12, 6], [13, 6], [14, 6],
-  [14, 7], [14, 8], [13, 8], [12, 8], [11, 8], [10, 8], [9, 8], [8, 9], [8, 10], [8, 11], [8, 12],
-  [8, 13], [8, 14], [7, 14], [6, 14], [6, 13], [6, 12], [6, 11], [6, 10], [6, 9], [5, 8], [4, 8],
-  [3, 8], [2, 8], [1, 8], [0, 8], [0, 7], [0, 6],
-];
-// Home stretches (progress 52..57) per board index, running toward
-// the centre cell (7,7); stables (progress 0) per board index.
-export const NGUA_STRETCH = [
-  [[1, 7], [2, 7], [3, 7], [4, 7], [5, 7], [6, 7]],
-  [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5], [7, 6]],
-  [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7], [8, 7]],
-  [[7, 13], [7, 12], [7, 11], [7, 10], [7, 9], [7, 8]],
-];
-export const NGUA_STABLE = [
-  [[1, 1], [4, 1], [1, 4], [4, 4]],
-  [[10, 1], [13, 1], [10, 4], [13, 4]],
-  [[10, 10], [13, 10], [10, 13], [13, 13]],
-  [[1, 10], [4, 10], [1, 13], [4, 13]],
-];
 // Thủ Thành: the crystal's remaining HP decides the tier on survival.
 const DEF_MS = 60000, DEF_CRYSTAL_HP = 10;
 const DEF_TIERS = [[7, 'vang'], [4, 'bac'], [1, 'dong']];
-// Giải Mã Chung: levels escalate (longer sequences); the team shares
-// DECODE_HEARTS hearts for the whole game. Tiers by levels completed.
-const DECODE_MS = 75000, DECODE_HEARTS = 3;
-const DECODE_TIERS = [[5, 'vang'], [4, 'bac'], [3, 'dong']];
-const DECODE_SYMBOLS = [
-  { name: 'ĐỎ', color: '#FF4757' }, { name: 'XANH', color: '#3FA9F5' },
-  { name: 'VÀNG', color: '#FFC93D' }, { name: 'HỒNG', color: '#F77FB0' },
-];
 // ---------------------------------------------------------------------------
 // Wave 4: the two PLATFORMER games (Người Que Đại Chiến + Đền Lửa & Nước)
 // share one small platform-physics helper (platStep below): entities are

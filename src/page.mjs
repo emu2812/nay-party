@@ -63,8 +63,6 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
    big enough to read from the sofa. */
 .stage .baloo { font-size: 28px !important; line-height: 1.25; }
 .g-do-vui { background: #4F7BE8; }
-.g-ma-soi { background: #4A2A85; }
-.g-ca-ngua { background: #B45309; }
 .g-tien-len { background: #0F766E; }
 .tlchips { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; margin: 8px 0; }
 .tlcard2 { display: inline-block; background: #FFFDF5; color: #26314A; border-radius: 9px; padding: 7px 10px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 21px; line-height: 1.1; box-shadow: 0 2px 0 rgba(0,0,0,.25); }
@@ -160,9 +158,7 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
 .g-day-hop { background: #241503; }
 .g-xe-tank { background: #0B2018; }
 .g-dat-bom { background: #241006; }
-.g-ke-gia-mao { background: #1E0A38; }
 .g-thu-thanh { background: #06222E; }
-.g-giai-ma-chung { background: #191238; }
 .g-nguoi-que { background: #2A0A16; }
 .g-den-lua-nuoc { background: #241305; }
 .fplat { position: absolute; z-index: 1; pointer-events: none; border-radius: 7px; background: #2A1220; border: 2px solid #FF7890; }
@@ -244,7 +240,6 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
 .g-day-ra { background: #1D0B20; }
 .g-ne-dan { background: #150826; }
 .g-keo-co { background: #06231B; }
-.g-chia-cuop { background: #171038; }
 .stage.neon-stage h2 { text-shadow: none; }
 .aball { position: absolute; width: 34px; height: 34px; border-radius: 50%; z-index: 1;
   background: #FF8C42; transform: translate(-50%, -50%);
@@ -1331,22 +1326,17 @@ var GAME_CTL = {
   'day-ra': '🎮 D-Pad: chạy · A: đẩy · B: lướt',
   'ne-dan': '🎮 D-Pad: chạy · A: NHẢY · B: lướt',
   'keo-co': '🎮 B: kéo dây thật nhanh',
-  'chia-cuop': '📱 Điện thoại: chọn Chia hay Cướp',
   'cuop-sao': '🎮 D-Pad: bay · A: xô rơi sao · B: lướt',
   'giu-vuong-mien': '🎮 D-Pad: chạy · A: xô người giữ · B: lướt',
   'son-san': '🎮 D-Pad: chạy · A: sơn bùng · B: lướt',
   'cao-boi': '🎮 A: rút súng ngay khi có hiệu BẮN',
   'xe-tank': '🎮 D-Pad: lái xe · A: bắn · B: lướt',
   'dat-bom': '🎮 D-Pad: chạy · A: đặt bom · B: lướt',
-  'ke-gia-mao': '📱 Điện thoại: trả lời & tố kẻ giả mạo',
-  'ma-soi': '📱 Điện thoại: chọn hành động mỗi đêm',
-  'ca-ngua': '📱 Điện thoại: tung xúc xắc & chọn ngựa',
   'tien-len': '📱 Điện thoại: chọn bài & đánh',
   'chung-mot-than': '🎮 D-Pad: lái hướng của bạn · A: đẩy',
   'day-hop': '🎮 D-Pad: đẩy hộp · A: đẩy mạnh · B: lướt',
   'cheo-thuyen': '🎮 A: chèo theo nhịp trống',
   'thu-thanh': '🎮 D-Pad: ngắm · A: bắn slime',
-  'giai-ma-chung': '📱 Điện thoại: bấm ký hiệu của bạn đúng thứ tự',
   'nguoi-que': '🎮 D-Pad: di chuyển · A: đánh · B: lướt',
   'den-lua-nuoc': '🎮 D-Pad: chạy · A: nhảy',
   'da-bong': '🎮 D-Pad: chạy · A: sút · B: lướt',
@@ -1355,24 +1345,21 @@ var GAME_CTL = {
 };
 var GCOLORS = {
   'do-vui': '#6BCBFF',
-  'ma-soi': '#1E1B4B', 'ca-ngua': '#78350F',
   'tien-len': '#134E4A',
   'day-ra': '#4A0E24',
   'ne-dan': '#2A0A54', 'keo-co': '#064A38',
-  'chia-cuop': '#241457',
   'cuop-sao': '#8A5A00', 'giu-vuong-mien': '#5B21B6',
   'son-san': '#0E7490', 'cao-boi': '#7C2D12',
   'chung-mot-than': '#312E81', 'day-hop': '#92400E',
   'cheo-thuyen': '#0C4A6E',
   'xe-tank': '#14532D', 'dat-bom': '#7C2D12',
-  'ke-gia-mao': '#4C1D95',
-  'thu-thanh': '#0E7490', 'giai-ma-chung': '#3730A3',
+  'thu-thanh': '#0E7490',
   'nguoi-que': '#7F1D1D', 'den-lua-nuoc': '#451A03',
   'da-bong': '#14532D', 'ech-op': '#713F12',
   'can-goc': '#0C4A6E'
 };
-function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'giai-ma-chung' || id === 'nguoi-que' || id === 'den-lua-nuoc' || id === 'da-bong' || id === 'ech-op' || id === 'can-goc' || id === 'tien-len'; }
-function isActionGame(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'chia-cuop' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'nguoi-que' || id === 'den-lua-nuoc' || id === 'da-bong' || id === 'ech-op'; }
+function noX2(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'nguoi-que' || id === 'den-lua-nuoc' || id === 'da-bong' || id === 'ech-op' || id === 'can-goc' || id === 'tien-len'; }
+function isActionGame(id) { return id === 'day-ra' || id === 'ne-dan' || id === 'keo-co' || id === 'cuop-sao' || id === 'giu-vuong-mien' || id === 'son-san' || id === 'chung-mot-than' || id === 'day-hop' || id === 'cheo-thuyen' || id === 'xe-tank' || id === 'dat-bom' || id === 'thu-thanh' || id === 'nguoi-que' || id === 'den-lua-nuoc' || id === 'da-bong' || id === 'ech-op'; }
 function topbarHTML(v, isHost) {
   var h = '<div class="topbar"><span class="baloo" style="font-size:24px">Nảy Party</span>';
   h += '<span class="chip cool">Phòng ' + esc(v.code) + '</span>';
@@ -1444,7 +1431,7 @@ function myTlSync(g) {
 function mySeatHTML(v) {
   return '<div id="myseat" class="card' + (S.phoneMode ? ' phonemode' : '') + '">' + mySeatInner(v) + '</div>';
 }
-var MYSEAT_INTER = { 'tien-len': 1, 'ma-soi': 1, 'ca-ngua': 1, 'ke-gia-mao': 1, 'do-vui': 1, 'giai-ma-chung': 1, 'chia-cuop': 1 };
+var MYSEAT_INTER = { 'tien-len': 1, 'do-vui': 1 };
 function renderMySeat() {
   var box = el('myseat');
   if (!box) { S.mySeatSig = ''; return; }
@@ -1458,6 +1445,7 @@ function renderMySeat() {
   var sig = MYSEAT_INTER[g.id]
     ? g.id + '|' + g.phase + '|' + JSON.stringify(v.myView) + '|' + (S.myTlSel || []).join(',')
     : g.id + '|' + g.phase;
+  sig += '|bub:' + (v.bubble ? v.bubble.seat + ':' + v.bubble.text : '');
   if (sig === S.mySeatSig) return;
   var ci = el('myChatText');
   var cval = ci ? ci.value : null;
@@ -1525,97 +1513,6 @@ function mySeatInner(v) {
     }
     return h;
   }
-  if (g.id === 'ma-soi') {
-    h += '<div class="center"><span class="chip ' + (g.myRole === 'soi' ? 'hot' : 'cool') + '" style="font-size:16px">Vai của bạn: ' + (WOLF_ROLE_NAMES[g.myRole] || '') + '</span></div>';
-    if (!g.myAlive) {
-      h += '<p class="center">💀 Bạn đã chết — theo dõi tiếp trên bàn chung nhé!</p>';
-    } else if (g.phase === 'night') {
-      if (g.myRole === 'soi') {
-        if (g.myWolfVote == null) { h += '<div class="baloo" style="font-size:19px">🐺 Chọn con mồi đêm nay:</div>' + pickBtns('myWolf', 'wolfVote', true, null); }
-        else h += '<p class="center baloo" style="font-size:19px">Đã chọn con mồi: ' + esc(nm(g.myWolfVote)) + '<br><span style="font-size:16px">Phiếu sói đã vào: ' + (g.wolfVotesIn || 0) + '/' + (g.wolfTeam || []).length + '</span></p>';
-      } else if (g.myRole === 'bao-ve') {
-        if (g.myGuardPick == null) { h += '<div class="baloo" style="font-size:19px">🛡️ Đêm nay bạn bảo vệ ai?</div>' + pickBtns('myWolf', 'wolfGuard', false, g.myGuardLast); }
-        else h += '<p class="center baloo" style="font-size:19px">🛡️ Đang bảo vệ: ' + esc(nm(g.myGuardPick)) + '</p>';
-      } else if (g.myRole === 'tien-tri') {
-        if (g.mySeerPick == null) { h += '<div class="baloo" style="font-size:19px">🔮 Đêm nay bạn soi ai?</div>' + pickBtns('myWolf', 'wolfSeer', true, null); }
-        else { var seenW = (g.mySeerNotes || []).some(function (n2) { return n2.seat === g.mySeerPick && n2.wolf; }); h += '<p class="center baloo" style="font-size:19px">🔮 ' + esc(nm(g.mySeerPick)) + (seenW ? ' LÀ SÓI! 🐺' : ' là dân lành ✅') + '</p>'; }
-        if (g.mySeerNotes && g.mySeerNotes.length) {
-          h += '<p class="center small" style="margin:4px 0 0">📖 Sổ tay: ';
-          for (var sn2 = 0; sn2 < g.mySeerNotes.length; sn2++) h += esc(nm(g.mySeerNotes[sn2].seat)) + (g.mySeerNotes[sn2].wolf ? ' 🐺' : ' ✅') + (sn2 < g.mySeerNotes.length - 1 ? ' · ' : '');
-          h += '</p>';
-        }
-      } else if (g.myRole === 'phu-thuy') {
-        if (g.myWitchDone) h += '<p class="center baloo" style="font-size:19px">🧙 Đã quyết định xong — đi ngủ thôi!</p>';
-        else if (!g.wolvesIn) h += '<p class="center">🧙 Đợi bầy sói chọn xong con mồi… · 🧪 cứu ×' + (g.mySaveLeft || 0) + ' · ☠️ độc ×' + (g.myPoisonLeft || 0) + '</p>';
-        else {
-          h += '<p class="center baloo" style="font-size:19px">Con mồi của sói đêm nay: ' + (g.myVictim ? esc(nm(g.myVictim)) + (g.myVictim === seat ? ' (CHÍNH LÀ BẠN!)' : '') : '—') + '</p>';
-          if ((g.mySaveLeft || 0) > 0) h += '<p class="center"><button class="btn ' + (g.myWitchSave ? 'green' : 'ghost') + '" data-cmd="myWitchSave">' + (g.myWitchSave ? '🧪 ĐÃ CHỌN CỨU — bấm để huỷ' : '🧪 Dùng thuốc cứu người này') + '</button></p>';
-          else h += '<p class="center muted">Thuốc cứu đã dùng hết.</p>';
-          if ((g.myPoisonLeft || 0) > 0) {
-            h += '<div class="baloo" style="font-size:18px">☠️ Đầu độc ai? ' + (g.myWitchPoison ? '(đang chọn: ' + esc(nm(g.myWitchPoison)) + ')' : '(chưa chọn)') + '</div>' + pickBtns('myWolf', 'wolfPoison', true, null);
-            if (g.myWitchPoison) h += '<p class="center"><button class="btn small ghost" data-cmd="myWitchClear">Bỏ chọn đầu độc</button></p>';
-          } else h += '<p class="center muted">Thuốc độc đã dùng hết.</p>';
-          h += '<p class="center"><button class="btn pink" data-cmd="myWitchDone">Xác nhận — đi ngủ</button></p>';
-        }
-      } else {
-        h += '<p class="center">😴 Bạn là dân làng — ngủ ngon, đợi trời sáng…</p>';
-      }
-    } else if (g.phase === 'dawn') {
-      h += '<p class="center baloo" style="font-size:19px">' + (g.dawnDeaths && g.dawnDeaths.length ? '☀️ Đêm qua làng mất: ' + g.dawnDeaths.map(function (d3) { return esc(nm(d3.seat)); }).join(', ') : '☀️ Đêm qua bình yên — không ai ra đi!') + '</p>';
-    } else if (g.phase === 'discuss') {
-      h += '<p class="center">🗣️ Bàn luận: ai là sói? (xem bàn chung ở trên)</p>';
-    } else if (g.phase === 'vote') {
-      if (g.voted && g.voted[seat]) h += '<p class="center baloo" style="font-size:19px">Đã bỏ phiếu! Đợi kết quả…</p>';
-      else { h += '<div class="baloo" style="font-size:19px">⚖️ Treo cổ ai? Chọn người bạn nghi là sói:</div>' + pickBtns('myVote', null, true, null); }
-    } else if (g.phase === 'execute') {
-      h += '<p class="center baloo" style="font-size:19px">' + (g.exec && g.exec.seat ? '⚖️ ' + esc(nm(g.exec.seat)) + ' bị treo cổ — là ' + (WOLF_ROLE_NAMES[g.exec.role] || '') : '⚖️ Hôm nay không ai bị treo cổ.') + '</p>';
-    } else if (g.phase === 'wolfEnd') {
-      h += '<p class="center baloo" style="font-size:19px">' + (g.winner === 'soi' ? '🐺 Bầy sói thắng!' : '🎉 Dân làng thắng!') + ' · Bạn +' + fmt(g.points ? (g.points[seat] || 0) : 0) + ' điểm</p>';
-    }
-    return h;
-  }
-  if (g.id === 'ca-ngua') {
-    if (g.phase === 'ngWin') {
-      h += '<p class="center baloo" style="font-size:19px">🏆 ' + esc(nm(g.winner)) + ' thắng!</p>';
-    } else if (g.myTurn && g.phase === 'roll') {
-      h += '<p class="center baloo" style="font-size:19px">🎲 LƯỢT CỦA BẠN!</p>';
-      h += '<p class="center"><button class="btn pink" data-cmd="myRoll" style="font-size:22px;padding:14px 30px">THẢY XÚC XẮC</button></p>';
-      h += '<p class="center small">Thảy 6 để xuất chuồng và được thảy tiếp · Ba lần 6 liên tiếp là mất lượt!</p>';
-    } else if (g.myTurn && g.phase === 'pick') {
-      h += '<p class="center baloo" style="font-size:19px">Bạn thảy được: ' + (g.dice || '') + ' chấm — chọn ngựa để đi:</p>';
-      if (g.myLegal && g.myLegal.length) {
-        h += '<div class="optgrid">';
-        for (var ml2 = 0; ml2 < g.myLegal.length; ml2++) h += '<button class="opt" data-cmd="myMove" data-i="' + g.myLegal[ml2].horse + '">🐴 Ngựa ' + (g.myLegal[ml2].horse + 1) + '<br><span style="font-size:15px">' + esc(g.myLegal[ml2].hint) + '</span></button>';
-        h += '</div>';
-      } else h += '<p class="center">Không có nước đi nào — đợi qua lượt…</p>';
-    } else {
-      h += '<p class="center">Lượt của ' + esc(nm(g.turn)) + (g.dice ? ' · vừa thảy ' + g.dice + ' chấm' : '') + ' — xem bàn cờ ở bàn chung.</p>';
-    }
-    return h;
-  }
-  if (g.id === 'ke-gia-mao') {
-    if (g.phase === 'answer') {
-      h += '<div class="center"><span class="chip cool">Chủ đề: ' + esc(g.category || '') + '</span></div>';
-      h += '<div class="baloo" style="font-size:20px">' + esc(g.myQuestion || '') + '</div>';
-      if (g.mine == null) {
-        h += '<div class="optgrid">';
-        for (var a3 = 0; a3 < 4; a3++) h += '<button class="opt" data-cmd="myAnswer" data-i="' + a3 + '">' + LETTERS[a3] + '. ' + esc(g.options ? g.options[a3] : '') + '</button>';
-        h += '</div>';
-        h += '<p class="center small">Trả lời bí mật — đừng đọc to câu hỏi hay đáp án của bạn!</p>';
-      } else h += '<p class="center baloo" style="font-size:19px">Đã trả lời! Đợi mọi người…</p>';
-    } else if (g.phase === 'discuss') {
-      h += '<p class="center">🗣️ Bàn luận: ai đang giả vờ? (xem bàn chung ở trên)</p>';
-    } else if (g.phase === 'vote') {
-      if (g.myVote == null) {
-        h += '<div class="baloo" style="font-size:19px">Bạn tố cáo ai là kẻ giả mạo?</div><div class="optgrid">';
-        for (var v3 = 0; v3 < v.players.length; v3++) { if (v.players[v3].seat === seat) continue; h += '<button class="opt" data-cmd="myVote" data-i="' + v.players[v3].seat + '">' + esc(v.players[v3].name) + '</button>'; }
-        h += '</div>';
-      } else h += '<p class="center baloo" style="font-size:19px">Đã tố cáo! Đợi công bố…</p>';
-    } else if (g.phase === 'reveal' && g.reveal) {
-      h += '<p class="center baloo" style="font-size:19px">' + (g.reveal.caught ? 'Bắt được kẻ giả mạo!' : 'Kẻ giả mạo đã thoát!') + ' Kẻ giả mạo: ' + esc(nm(g.reveal.impostor)) + (g.reveal.impostor === seat ? ' — chính là BẠN!' : '') + ' · +' + fmt(g.reveal.points[seat] || 0) + ' điểm</p>';
-    }
-    return h;
-  }
   if (g.id === 'do-vui') {
     if (g.phase === 'question') {
       h += '<div class="baloo" style="font-size:19px">' + esc(g.question || '') + '</div>';
@@ -1627,48 +1524,6 @@ function mySeatInner(v) {
     } else if (g.phase === 'reveal' && g.reveal) {
       var okA = g.mine != null && g.mine === g.reveal.correct;
       h += '<p class="center baloo" style="font-size:19px">' + (okA ? 'ĐÚNG RỒI!' : 'Chưa đúng!') + ' Đáp án đúng: ' + LETTERS[g.reveal.correct] + '. ' + esc(g.options[g.reveal.correct]) + ' · +' + fmt(g.reveal.points[seat] || 0) + ' điểm</p>';
-    }
-    return h;
-  }
-  if (g.id === 'giai-ma-chung') {
-    if (g.phase === 'decode' || g.phase === 'levelup') {
-      h += '<p class="center">Màn ' + (g.level || 1) + ' · Tim đội: ' + '❤'.repeat(Math.max(0, g.hearts || 0)) + ' · Tiến độ: ' + (g.done || 0) + '/' + (g.total || 0) + ' bước · Đã qua ' + (g.levelsDone || 0) + ' màn</p>';
-      if (g.phase === 'levelup') h += '<p class="center baloo" style="font-size:19px">QUA MÀN! 🎉</p>';
-      var ms3 = g.mySteps || [];
-      h += '<p class="center" style="margin:4px 0"><b>Phần mật mã của bạn:</b> ';
-      if (!ms3.length) h += 'Màn này bạn không giữ bước nào — cổ vũ đồng đội nhé!';
-      for (var s3 = 0; s3 < ms3.length; s3++) h += '<span class="mystep">Bước ' + ms3[s3].pos + ': <span style="color:' + SYMCOLORS[ms3[s3].sym] + '">' + ms3[s3].name + '</span></span> ';
-      h += '</p>';
-      h += '<div class="symgrid">';
-      for (var y3 = 0; y3 < 4; y3++) h += '<button class="symbtn" data-cmd="mySymbol" data-i="' + y3 + '" style="background:' + SYMCOLORS[y3] + '">' + SYMNAMES[y3] + '</button>';
-      h += '</div>';
-      h += '<p class="center small">Chỉ bấm khi tới lượt bước của bạn và đúng ký hiệu của bước đó — bấm sai cả đội mất 1 tim!</p>';
-    }
-    return h;
-  }
-  if (g.id === 'chia-cuop') {
-    var inPair2 = g.pair && g.pair.indexOf(seat) >= 0;
-    if (g.phase === 'talk') {
-      h += '<p class="center baloo" style="font-size:19px">Nồi ' + fmt(g.pot || 400) + ' điểm' + (g.finalRound ? ' · VÒNG CUỐI ×2' : '') + '</p>';
-      if (g.chat) for (var c3 = 0; c3 < g.chat.length; c3++) { var cp3 = playerOf(v, g.chat[c3].seat); h += '<div class="chatrow">' + blobSVG(cp3 ? cp3.color : 'blue', 'cuoi', 24) + ' <b>' + esc(cp3 ? cp3.name : '') + ':</b> ' + esc(g.chat[c3].text) + '</div>'; }
-      if (inPair2) {
-        h += '<p class="center">Bạn đấu với <b>' + esc(nm(g.pair[g.pair[0] === seat ? 1 : 0])) + '</b>. Nói gì cũng được — lát nữa chọn mới là thật!</p>';
-        h += '<p class="center"><input type="text" id="myChatText" maxlength="60" placeholder="Lời thương lượng…" style="width:min(70vw,300px)"> <button class="btn small blue" data-cmd="myChatSend">Gửi</button></p>';
-      } else {
-        h += '<p class="center">Vòng này hai người khác thương lượng — bạn ngồi ngoài xem.</p>';
-      }
-    } else if (g.phase === 'choose') {
-      if (!inPair2) h += '<p class="center">Hai người kia đang chọn bí mật…</p>';
-      else if (g.mineChosen) h += '<p class="center baloo" style="font-size:19px">Đã khoá lựa chọn! Đợi đối thủ…</p>';
-      else {
-        h += '<p class="center baloo" style="font-size:19px">CHỌN BÍ MẬT ĐI!</p>';
-        h += '<p class="center">Cả hai CHIA: mỗi người một nửa nồi · Một người CƯỚP: cướp hết · Cả hai CƯỚP: mất trắng!</p>';
-        h += '<p class="center"><button class="btn green" data-cmd="myChoose" data-c="chia" style="font-size:20px">CHIA</button> <button class="btn pink" data-cmd="myChoose" data-c="cuop" style="font-size:20px">CƯỚP</button></p>';
-      }
-    } else if (g.phase === 'reveal' && g.reveal) {
-      var myE3 = null;
-      for (var q3 = 0; q3 < g.reveal.entries.length; q3++) if (g.reveal.entries[q3].seat === seat) myE3 = g.reveal.entries[q3];
-      h += '<p class="center baloo" style="font-size:19px">' + (myE3 ? 'Bạn đã ' + (myE3.choice === 'cuop' ? 'CƯỚP' : 'CHIA') + ' · +' + fmt(myE3.points) + ' điểm' : 'Xem kết quả ở bàn chung!') + '</p>';
     }
     return h;
   }
@@ -1835,7 +1690,7 @@ function hostHTML(v) {
   return h + '<div class="card center"><h2>Đang tải…</h2></div>';
 }
 function countdownHTML(g) {
-  var title = g.id === 'ma-soi' ? 'Đêm ' + g.round : (g.id === 'ca-ngua' || g.id === 'tien-len') ? 'Bắt đầu nào!' : 'Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · VÒNG QUYẾT ĐỊNH ×2' : '');
+  var title = g.id === 'tien-len' ? 'Bắt đầu nào!' : 'Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · VÒNG QUYẾT ĐỊNH ×2' : '');
   return '<div class="cdwrap"><div class="baloo" style="font-size:30px">' + title + '</div>'
     + '<div class="cdnum" id="cdnum">3</div><div class="baloo" style="font-size:24px">Chuẩn bị…</div></div>';
 }
@@ -1859,7 +1714,7 @@ function dmgColor(d) { return d >= 100 ? '#FF5A3C' : d >= 50 ? '#FFC93D' : '#7BE
 function hostStage(v) {
   var g = v.game;
   if (g.phase === 'countdown') return countdownHTML(g);
-  var h = '<h2>' + esc(g.name) + (g.id === 'ma-soi' ? ' · Đêm ' + (g.night || g.round) : (g.id === 'ca-ngua' || g.id === 'tien-len') ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
+  var h = '<h2>' + esc(g.name) + (g.id === 'tien-len' ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
   var t = serverNow();
   if (g.id === 'do-vui') {
     if (g.phase === 'question' || g.phase === 'reveal') {
@@ -1908,31 +1763,6 @@ function hostStage(v) {
       for (var tI = 0; tI < v.players.length; tI++) { var tp = v.players[tI]; var tm = tp.seat % 2 === 1 ? 'A' : 'B'; h += '<span class="scorechip">' + blobSVG(tp.color, tp.mood, 28) + ' ' + esc(tp.name) + ' · Đội ' + tm + ' · <span id="tugpress-' + tp.seat + '">' + (g.presses ? (g.presses[tp.seat] || 0) : 0) + '</span> lần kéo</span>'; }
       h += '</div>';
 
-    }
-  } else if (g.id === 'chia-cuop') {
-    var pa = g.pair ? playerOf(v, g.pair[0]) : null; var pb = g.pair ? playerOf(v, g.pair[1]) : null;
-    if (pa && pb) {
-      h += '<div class="center"><span class="blobbob">' + orbSVG(pa.color, 74) + '</span> <span class="baloo" style="font-size:26px"> ' + esc(pa.name) + ' ⚔ ' + esc(pb.name) + ' </span> <span class="blobbob">' + orbSVG(pb.color, 74) + '</span></div>';
-      h += '<div class="center baloo" style="font-size:23px">Nồi điểm vòng này: ' + fmt(g.pot || 400) + ' điểm' + (g.finalRound ? ' (VÒNG CUỐI ×2!)' : '') + '</div>';
-    }
-    if (g.phase === 'talk') {
-      h += '<div class="baloo" style="font-size:24px">Đang thương lượng… hai người cứ thuyết phục nhau đi!</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 60000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      if (g.chat) for (var cI2 = 0; cI2 < g.chat.length; cI2++) { var cp = playerOf(v, g.chat[cI2].seat); h += '<div class="chatrow">' + blobSVG(cp ? cp.color : 'blue', 'cuoi', 26) + ' <b>' + esc(cp ? cp.name : '') + ':</b> ' + esc(g.chat[cI2].text) + '</div>'; }
-
-    } else if (g.phase === 'choose') {
-      h += '<div class="baloo" style="font-size:26px">Đang chọn bí mật… không ai biết ai chọn gì!</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 15000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      h += '<div class="scorebar">';
-      if (g.pair) for (var sI = 0; sI < g.pair.length; sI++) { var sp = playerOf(v, g.pair[sI]); h += '<span class="scorechip">' + blobSVG(sp.color, sp.mood, 28) + ' ' + esc(sp.name) + ' ' + (g.chosen && g.chosen[sp.seat] ? 'đã khoá ✓' : 'đang nghĩ…') + '</span>'; }
-      h += '</div>';
-    } else if (g.phase === 'reveal' && g.reveal) {
-      h += '<div class="baloo" style="font-size:27px">Công bố!</div><div class="rows">';
-      for (var vI = 0; vI < g.reveal.entries.length; vI++) {
-        var ve = g.reveal.entries[vI]; var vp = playerOf(v, ve.seat);
-        h += '<div class="rrow rev" data-reveal="' + ve.revealAt + '">' + orbSVG(vp.color, 34) + ' ' + esc(vp.name) + '<span class="chip ' + (ve.choice === 'cuop' ? 'hot' : 'cool') + '">' + (ve.choice === 'cuop' ? 'CƯỚP!' : 'CHIA') + '</span><span class="pts">+' + fmt(ve.points) + '</span></div>';
-      }
-      h += '</div>';
     }
   } else if (g.id === 'cuop-sao') {
     if (g.phase === 'steal') {
@@ -2038,38 +1868,6 @@ function hostStage(v) {
       h += '</div>';
       h += '<p class="center">Tường xám không phá được · Tường gỗ phá được · Nổ dây chuyền khi lửa chạm bom khác · Trúng nổ mất 1 mạng (có 2 mạng)</p>';
     }
-  } else if (g.id === 'ke-gia-mao') {
-    h += '<div class="center baloo" style="font-size:31px">🕵️ AI LÀ KẺ GIẢ MẠO?</div>';
-    h += '<div class="center"><span class="chip cool">Chủ đề: ' + esc(g.category || '') + '</span></div>';
-    if (g.phase === 'answer') {
-      h += '<div class="baloo" style="font-size:24px">Mỗi người đang trả lời MỘT câu hỏi bí mật trên điện thoại của mình… và một người nhận câu hỏi KHÁC!</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      h += '<div class="scorebar">';
-      for (var iI = 0; iI < v.players.length; iI++) { var ip = v.players[iI]; h += '<span class="scorechip">' + blobSVG(ip.color, ip.mood, 28) + ' ' + esc(ip.name) + ' ' + (g.answered && g.answered[ip.seat] ? 'đã trả lời ✓' : 'đang nghĩ…') + '</span>'; }
-      h += '</div>';
-    } else if (g.phase === 'discuss') {
-      h += '<div class="baloo" style="font-size:24px">Bàn luận đi! Ai đang nói dối về câu hỏi của mình?</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 45000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      if (g.chatLog) for (var cI6 = 0; cI6 < g.chatLog.length; cI6++) { var cp6 = playerOf(v, g.chatLog[cI6].seat); h += '<div class="chatrow">' + blobSVG(cp6 ? cp6.color : 'blue', 'cuoi', 26) + ' <b>' + esc(cp6 ? cp6.name : '') + ':</b> ' + esc(g.chatLog[cI6].text) + '</div>'; }
-    } else if (g.phase === 'vote') {
-      h += '<div class="baloo" style="font-size:26px">Tố cáo! Mọi người chọn kẻ giả mạo trên điện thoại…</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 20000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      h += '<div class="scorebar">';
-      for (var vI2 = 0; vI2 < v.players.length; vI2++) { var vp3 = v.players[vI2]; h += '<span class="scorechip">' + blobSVG(vp3.color, vp3.mood, 28) + ' ' + esc(vp3.name) + ' ' + (g.voted && g.voted[vp3.seat] ? 'đã tố cáo ✓' : 'đang chọn…') + '</span>'; }
-      h += '</div>';
-    } else if (g.phase === 'reveal' && g.reveal) {
-      var rv = g.reveal; var imp = playerOf(v, rv.impostor);
-      h += '<div class="center baloo" style="font-size:29px">' + (rv.caught ? '🎉 BẮT ĐƯỢC KẺ GIẢ MẠO!' : '😈 KẺ GIẢ MẠO ĐÃ THOÁT!') + '</div>';
-      h += '<div class="center"><span class="blobbob">' + orbSVG(imp.color, 84, !rv.caught) + '</span><div class="baloo" style="font-size:24px">Kẻ giả mạo là: ' + esc(imp.name) + '!</div></div>';
-      h += '<div class="impq"><div class="qcard"><b>Câu hỏi thật:</b><br>' + esc(rv.realQ) + '</div><div class="qcard"><b>Câu hỏi của kẻ giả mạo:</b><br>' + esc(rv.fakeQ) + '</div></div>';
-      h += '<div class="rows">';
-      for (var rI4 = 0; rI4 < v.players.length; rI4++) {
-        var rp4 = v.players[rI4]; var vt = rv.votes ? rv.votes[rp4.seat] : null; var tp4 = vt ? playerOf(v, vt) : null;
-        var ans = rv.answers ? rv.answers[rp4.seat] : null;
-        h += '<div class="rrow">' + blobSVG(rp4.color, rp4.mood, 34) + ' ' + esc(rp4.name) + (rp4.seat === rv.impostor ? '<span class="chip hot">GIẢ MẠO</span>' : '') + '<span class="muted">' + (ans == null ? 'không trả lời' : 'đã chọn ' + LETTERS[ans]) + ' · tố cáo: ' + (tp4 ? esc(tp4.name) : '—') + '</span><span class="pts">' + (rv.points[rp4.seat] > 0 ? '+' : '') + fmt(rv.points[rp4.seat] || 0) + '</span></div>';
-      }
-      h += '</div>';
-    }
   } else if (g.id === 'thu-thanh') {
     if (g.phase === 'defend') {
       h += '<div class="scorebar"><span class="scorechip">💎 Pha lê: <b id="crystalhp">' + (g.crystal ? g.crystal.hp : 10) + '</b>/10</span><span class="scorechip">🟢 Đã hạ: <b id="killn">' + (g.kills || 0) + '</b> slime</span></div>';
@@ -2078,16 +1876,6 @@ function hostStage(v) {
       for (var dI4 = 0; dI4 < v.players.length; dI4++) { var dp4 = v.players[dI4]; var fc2 = g.facing ? g.facing[dp4.seat] : null; var deg2 = fc2 ? Math.round(Math.atan2(fc2.y, fc2.x) * 180 / Math.PI) : 0; h += '<div class="ablob" id="ablob-' + dp4.seat + '" style="left:50%;top:50%;color:' + COLORS[dp4.color] + '"><span class="orbwrap">' + orbSVG(dp4.color, 62) + '<span class="abarrel" id="barrel-' + dp4.seat + '" style="transform:rotate(' + deg2 + 'deg)"></span></span><div class="aname">' + esc(dp4.name) + '</div></div>'; }
       h += '</div>';
       h += '<p class="center">Đừng để slime chạm vào pha lê! Sống sót hết giờ: pha lê còn ≥7 tim = hạng VÀNG · ≥4 = BẠC · ≥1 = ĐỒNG</p>';
-    }
-  } else if (g.id === 'giai-ma-chung') {
-    if (g.phase === 'decode' || g.phase === 'levelup') {
-      h += '<div class="teambanner">MÀN ' + (g.level || 1) + ' · Tim đội: ' + '❤'.repeat(Math.max(0, g.hearts || 0)) + ' · Đã qua: ' + (g.levelsDone || 0) + ' màn</div>';
-      if (g.phase === 'levelup') h += '<div class="center baloo" style="font-size:30px">QUA MÀN! 🎉 Chuẩn bị màn tiếp theo…</div>';
-      h += '<div class="pips">';
-      for (var pI5 = 0; pI5 < (g.total || 0); pI5++) h += '<div class="pip' + (pI5 < (g.done || 0) ? ' done' : pI5 === (g.done || 0) ? ' now' : '') + '"></div>';
-      h += '</div>';
-      h += '<div class="baloo center" style="font-size:22px">Mỗi người chỉ thấy phần mật mã CỦA MÌNH trên điện thoại — gọi nhau mà bấm cho đúng thứ tự!</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 75000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
   } else if (g.id === 'nguoi-que') {
     if (g.phase === 'fight') {
@@ -2122,86 +1910,6 @@ function hostStage(v) {
       h += '</div>';
       h += '<p class="center">Hồ đỏ chỉ Lửa qua được, hồ xanh chỉ Nước, hồ xanh lá hại cả hai! Đứng lên nút vàng để mở cổng cho đồng đội, rồi về đúng cửa của mình.</p>';
     }
-  } else if (g.id === 'ma-soi') {
-    var deadRole = {};
-    if (g.deadList) for (var dL = 0; dL < g.deadList.length; dL++) deadRole[g.deadList[dL].seat] = g.deadList[dL].role;
-    var wbanner = { night: '🌙 ĐÊM ' + (g.night || 1) + ' — LÀNG ĐANG NGỦ…', dawn: '☀️ BÌNH MINH ĐÊM ' + (g.night || 1), discuss: '🗣️ BÀN LUẬN — AI LÀ SÓI?', vote: '🗳️ BỎ PHIẾU TREO CỔ', execute: '⚖️ KẾT QUẢ BỎ PHIẾU', wolfEnd: '🏁 TRỜI SÁNG HẲN — KẾT THÚC!' };
-    h += '<div class="center baloo" style="font-size:27px">' + (wbanner[g.phase] || '') + '</div>';
-    if (g.phase === 'night') {
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 45000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      h += '<p class="center">Sói đang săn mồi · Bảo Vệ đang canh giữ · Tiên Tri đang soi · Phù Thủy đang cân nhắc hai lọ thuốc — tất cả bí mật trên điện thoại của từng người!</p>';
-    } else if (g.phase === 'dawn') {
-      if (g.dawnDeaths && g.dawnDeaths.length) {
-        h += '<div class="baloo center" style="font-size:24px">Đêm qua, làng đã mất:</div><div class="rows">';
-        for (var dI = 0; dI < g.dawnDeaths.length; dI++) { var dd = g.dawnDeaths[dI]; var dp5 = playerOf(v, dd.seat); if (dp5) h += '<div class="rrow">' + blobSVG(dp5.color, 'buon', 34) + ' ' + esc(dp5.name) + '<span class="chip hot">' + (WOLF_ROLE_NAMES[dd.role] || '') + '</span><span class="muted">' + (dd.role === 'soi' ? 'Một con sói đã gục ngã!' : 'Một người vô tội ra đi…') + '</span></div>'; }
-        h += '</div>';
-      } else {
-        h += '<div class="baloo center" style="font-size:25px">🌿 Một đêm yên bình — không ai phải ra đi!</div>';
-      }
-    } else if (g.phase === 'discuss') {
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 60000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      if (g.chatLog) for (var cI7 = 0; cI7 < g.chatLog.length; cI7++) { var cp7 = playerOf(v, g.chatLog[cI7].seat); h += '<div class="chatrow">' + blobSVG(cp7 ? cp7.color : 'blue', 'cuoi', 26) + ' <b>' + esc(cp7 ? cp7.name : '') + ':</b> ' + esc(g.chatLog[cI7].text) + '</div>'; }
-    } else if (g.phase === 'vote') {
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      h += '<div class="scorebar">';
-      for (var vI4 = 0; vI4 < v.players.length; vI4++) { var vp5 = v.players[vI4]; var isDead = g.aliveMap && !g.aliveMap[vp5.seat]; h += '<span class="scorechip">' + blobSVG(vp5.color, vp5.mood, 28) + ' ' + esc(vp5.name) + ' ' + (isDead ? '💀' : (g.voted && g.voted[vp5.seat] ? 'đã bỏ phiếu ✓' : 'đang nghĩ…')) + '</span>'; }
-      h += '</div>';
-    } else if (g.phase === 'execute' || g.phase === 'wolfEnd') {
-      if (g.exec) {
-        if (g.exec.seat) { var ep2 = playerOf(v, g.exec.seat); h += '<div class="center baloo" style="font-size:26px">Làng đã treo cổ ' + esc(ep2 ? ep2.name : '') + ' — đó là ' + (WOLF_ROLE_NAMES[g.exec.role] || '') + '!</div>'; }
-        else h += '<div class="center baloo" style="font-size:25px">Phiếu hoà hoặc chưa đủ — hôm nay không ai bị treo cổ.</div>';
-      }
-      if (g.voteTally) {
-        h += '<div class="rows">';
-        for (var tSeat in g.voteTally) { var tp5 = playerOf(v, +tSeat); if (tp5) h += '<div class="rrow">' + blobSVG(tp5.color, tp5.mood, 30) + ' ' + esc(tp5.name) + '<span class="pts">' + g.voteTally[tSeat] + ' phiếu</span></div>'; }
-        h += '</div>';
-      }
-    }
-    if (g.phase === 'wolfEnd') {
-      h += '<div class="center baloo" style="font-size:30px">' + (g.winner === 'soi' ? '🐺 BẦY SÓI THẮNG! Làng đã bị sói ăn mòn…' : '🎉 DÂN LÀNG THẮNG! Sói đã bị quét sạch!') + '</div>';
-      h += '<div class="rows">';
-      for (var wI = 0; wI < v.players.length; wI++) { var wp = v.players[wI]; var wr = g.roles ? g.roles[wp.seat] : null; h += '<div class="rrow">' + blobSVG(wp.color, wp.mood, 34) + ' ' + esc(wp.name) + (wr ? '<span class="chip ' + (wr === 'soi' ? 'hot' : 'cool') + '">' + WOLF_ROLE_NAMES[wr] + '</span>' : '') + '<span class="pts">+' + fmt(g.points[wp.seat] || 0) + '</span></div>'; }
-      h += '</div>';
-    } else {
-      h += '<div class="wolfgrid">';
-      for (var gI2 = 0; gI2 < v.players.length; gI2++) {
-        var gp3 = v.players[gI2]; var alive3 = !g.aliveMap || g.aliveMap[gp3.seat];
-        h += '<div class="wolfcard' + (alive3 ? '' : ' dead') + '">' + blobSVG(gp3.color, alive3 ? gp3.mood : 'buon', 54) + '<div>' + esc(gp3.name) + '</div>'
-          + (alive3 ? '<div class="small muted">😴 đang yên giấc / còn sống</div>' : '<div class="rolechip">💀 ' + (WOLF_ROLE_NAMES[deadRole[gp3.seat]] || '') + '</div>') + '</div>';
-      }
-      h += '</div>';
-    }
-  } else if (g.id === 'ca-ngua') {
-    var turnP = g.turn ? playerOf(v, g.turn) : null;
-    if (g.phase === 'ngWin' && g.winner) {
-      var winP = playerOf(v, g.winner);
-      h += '<div class="center baloo" style="font-size:29px">🏆 ' + esc(winP ? winP.name : '') + ' ĐƯA CẢ 4 NGỰA VỀ CHUỒNG — THẮNG!</div>';
-    } else {
-      h += '<div class="center baloo" style="font-size:24px">Lượt của: ' + (turnP ? esc(turnP.name) : '') + (g.dice ? ' · <span class="diceface">' + DICE_FACES[g.dice] + '</span> ' + g.dice + ' chấm' : ' · đang chờ thảy xúc xắc…') + '</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    }
-    // Wide layout: the square board keeps the full stage height in the
-    // middle; the freed side columns carry the turn order + per-player
-    // progress (left) and the event log (right), so the whole row
-    // spans the TV instead of leaving two dead bands.
-    h += '<div class="ngrow"><div class="ngside"><h3>Thứ tự lượt & tiến độ</h3>';
-    var turnIdx = 0;
-    for (var tIx = 0; tIx < v.players.length; tIx++) if (v.players[tIx].seat === g.turn) turnIdx = tIx;
-    for (var nI2 = 0; nI2 < v.players.length; nI2++) {
-      var np3 = v.players[(turnIdx + nI2) % v.players.length];
-      var hs = g.horses ? (g.horses[np3.seat] || []) : [];
-      var home3 = 0, sum3 = 0;
-      for (var hI3 = 0; hI3 < hs.length; hI3++) { if (hs[hI3] === 58) home3++; sum3 += hs[hI3]; }
-      var isTurn = np3.seat === g.turn && g.phase !== 'ngWin';
-      h += '<div class="rrow"' + (isTurn ? ' style="outline:3px solid #FFC93D"' : '') + '>' + blobSVG(np3.color, np3.mood, 28) + '<span>' + esc(np3.name) + (isTurn ? ' <b>◀ đang đi</b>' : '') + '<br><span class="muted">🐴 về đích ' + home3 + '/4 · tiến độ ' + (g.progress ? (g.progress[np3.seat] || 0) : 0) + '</span><span class="progbar"><i style="width:' + Math.round(sum3 / 232 * 100) + '%;background:' + COLORS[np3.color] + '"></i></span></span></div>';
-    }
-    h += '</div><div class="ngmid">';
-    h += nguaBoardHTML(v, g);
-    h += '</div><div class="ngside"><h3>Diễn biến</h3>';
-    if (g.log && g.log.length) for (var lI = 0; lI < g.log.length; lI++) h += '<div class="chatrow">🎲 ' + esc(g.log[lI]) + '</div>';
-    else h += '<p class="muted">Chưa có diễn biến nào…</p>';
-    h += '</div></div>';
-    h += '<p class="center">Ô vàng là ô an toàn — ngựa đứng đó không bị đá. Thảy 6 được đi tiếp; 6 ba lần liên tiếp thì mất lượt!</p>';
   } else if (g.id === 'tien-len') {
     if (g.phase === 'tlWin' && g.winner) {
       var winT = playerOf(v, g.winner);
@@ -2452,66 +2160,48 @@ function viewSig(v) {
   var gp = null;
   if (g) {
     if (g.id === 'day-ra') {
-      var ak = '';
-      if (g.blobs) for (var bs in g.blobs) ak += bs + (g.blobs[bs].alive ? '1' : '0');
-      gp = [g.id, g.phase, ak, g.lastRound];
+      // Alive/lives are NOT in the signature: patchPositions paints
+      // blob opacity + hearts in place. A death must never rebuild
+      // the arena (the death-judder fix).
+      gp = [g.id, g.phase, g.lastRound];
     } else if (g.id === 'ne-dan') {
-      var ak2 = '';
-      if (g.blobs) for (var bs2 in g.blobs) ak2 += bs2 + (g.blobs[bs2].alive ? '1' : '0') + g.blobs[bs2].lives;
-      gp = [g.id, g.phase, ak2, g.lastRound];
+      gp = [g.id, g.phase, g.lastRound];
+      gp = [g.id, g.phase, g.lastRound];
     } else if (g.id === 'keo-co') {
       gp = pl ? [g.id, g.phase, Math.round((g.knot || 0) / 9), g.lastRound] : [g.id, g.phase, g.lastRound];
-    } else if (g.id === 'chia-cuop') {
-      gp = [g.id, g.phase, g.round, g.points, g.chosen, g.chat, g.reveal, g.mineChosen, g.lastRound];
     } else if (g.id === 'cuop-sao') {
-      gp = pl ? [g.id, g.phase, g.banked ? g.banked[S.seat] : 0, g.lastRound] : [g.id, g.phase, g.lastRound];
+      gp = [g.id, g.phase, g.lastRound]; // banked stars are painted in place (bankn-<seat>)
     } else if (g.id === 'giu-vuong-mien') {
-      gp = [g.id, g.phase, g.crown ? g.crown.holder : '-', g.lastRound];
+      gp = [g.id, g.phase, g.lastRound]; // crown holder is painted in place (holder class + crown node)
     } else if (g.id === 'son-san') {
       gp = [g.id, g.phase, g.lastRound];
     } else if (g.id === 'chung-mot-than') {
-      gp = [g.id, g.phase, g.hearts, g.checks, g.owners, g.lastRound];
+      gp = [g.id, g.phase, g.owners, g.lastRound]; // hearts/checks painted in place
     } else if (g.id === 'day-hop') {
-      gp = [g.id, g.phase, g.deliveries, g.layout, g.lastRound];
+      gp = [g.id, g.phase, g.layout, g.lastRound]; // deliveries painted in place
     } else if (g.id === 'cheo-thuyen') {
       gp = [g.id, g.phase, g.lastRound];
     } else if (g.id === 'xe-tank') {
-      var tk = '';
-      if (g.blobs) for (var ts in g.blobs) tk += ts + (g.blobs[ts].alive ? '1' : '0') + g.blobs[ts].lives;
-      gp = [g.id, g.phase, tk, g.lastRound];
+      gp = [g.id, g.phase, g.lastRound];
     } else if (g.id === 'dat-bom') {
-      var bk = '';
-      if (g.blobs) for (var bs3 in g.blobs) bk += bs3 + (g.blobs[bs3].alive ? '1' : '0') + g.blobs[bs3].lives;
-      gp = [g.id, g.phase, bk, g.lastRound];
+      gp = [g.id, g.phase, g.lastRound];
     } else if (g.id === 'thu-thanh') {
-      gp = [g.id, g.phase, g.crystal ? g.crystal.hp : 0, g.kills, g.lastRound];
-    } else if (g.id === 'ke-gia-mao') {
-      gp = [g.id, g.phase, g.round, g.points, g.answered, g.voted, g.chatLog, g.reveal, g.mine, g.myVote, g.lastRound];
-    } else if (g.id === 'giai-ma-chung') {
-      gp = pl ? [g.id, g.phase, g.level, g.hearts, g.done, g.mySteps, g.levelsDone, g.lastRound]
-        : [g.id, g.phase, g.level, g.hearts, g.done, g.total, g.levelsDone, g.lastRound];
+      // Crystal HP + kills are painted in place by patchPositions.
+      gp = [g.id, g.phase, g.lastRound];
     } else if (g.id === 'nguoi-que') {
-      var fk = '';
-      if (g.blobs) for (var fs in g.blobs) fk += fs + (g.blobs[fs].alive ? '1' : '0') + g.blobs[fs].lives;
-      gp = pl ? [g.id, g.phase, fk, g.myDmg, g.lastRound] : [g.id, g.phase, fk, g.lastRound];
+      gp = [g.id, g.phase, g.lastRound];
     } else if (g.id === 'den-lua-nuoc') {
-      gp = pl ? [g.id, g.phase, g.hearts, g.gemCount, g.myEl, g.myHome, g.lastRound]
-        : [g.id, g.phase, g.hearts, g.gemCount, g.gateOpen, g.lastRound];
-    } else if (g.id === 'ma-soi') {
-      gp = pl ? [g.id, g.phase, g.night, g.aliveMap, g.deadList, g.myRole, g.myAlive, g.myWolfVote, g.wolfVotesIn, g.myGuardPick, g.mySeerPick, g.mySeerNotes, g.myVictim, g.myWitchSave, g.myWitchPoison, g.myWitchDone, g.voted, g.chatLog, g.exec, g.winner, g.points, g.lastRound]
-        : [g.id, g.phase, g.night, g.aliveMap, g.deadList, g.dawnDeaths, g.voted, g.chatLog, g.exec, g.voteTally, g.winner, g.roles, g.points, g.lastRound];
-    } else if (g.id === 'ca-ngua') {
-      gp = pl ? [g.id, g.phase, g.turn, g.dice, g.horses, g.last, g.winner, g.myLegal, g.myTurn]
-        : [g.id, g.phase, g.turn, g.dice, g.horses, g.last, g.winner, g.log];
+      gp = pl ? [g.id, g.phase, g.myEl, g.myHome, g.lastRound]
+        : [g.id, g.phase, g.lastRound];
     } else if (g.id === 'tien-len') {
       gp = pl ? [g.id, g.phase, g.counts, g.table, g.turn, g.leader, g.passed, g.finished, g.log, g.myHand, g.myTurn, g.myPassed, g.myRank, g.lastRound]
         : [g.id, g.phase, g.counts, g.table, g.turn, g.leader, g.passed, g.finished, g.log, g.winner, g.instantWin, g.lastRound];
     } else if (g.id === 'da-bong') {
-      gp = pl ? [g.id, g.phase, g.scoreboard, g.myTeam, g.lastRound]
-        : [g.id, g.phase, g.scoreboard, g.goalInfo, g.lastRound];
+      gp = pl ? [g.id, g.phase, g.myTeam, g.lastRound]
+        : [g.id, g.phase, g.lastRound];
     } else if (g.id === 'ech-op') {
-      gp = pl ? [g.id, g.phase, g.chamber, g.hearts, g.fliesEaten, g.myState, g.myPassengerSeat, g.myCarrierSeat, g.myDoor, g.lastRound]
-        : [g.id, g.phase, g.chamber, g.hearts, g.fliesEaten, g.lastRound];
+      gp = pl ? [g.id, g.phase, g.chamber, g.myState, g.myPassengerSeat, g.myCarrierSeat, g.myDoor, g.lastRound]
+        : [g.id, g.phase, g.chamber, g.lastRound];
     } else if (g.id === 'can-goc') {
       var ck = '';
       if (g.cannons) for (var cs in g.cannons) { var cc9 = g.cannons[cs]; ck += cs + ':' + cc9.hp + (cc9.alive ? 1 : 0) + ':' + cc9.face + ';'; }
@@ -2537,7 +2227,12 @@ function viewSig(v) {
     }
   }
   var pls = v.playlist ? [v.playlist.active ? 1 : 0, v.playlist.pos || 0, v.playlist.total || 0, v.playlist.nextName || '', v.playlist.nextInSec] : 0;
-  return JSON.stringify([v.phase, v.players, v.bubble, v.standings, v.gap, gp, v.lastGame, pls]);
+  var pstruct = (v.players || []).map(function (p) { return [p.seat, p.name, p.color, p.type, p.local ? 1 : 0, p.hostSeat ? 1 : 0, p.difficulty || '']; });
+  // Scores/standings/gap/bubble are NOT in the signature: they change
+  // on every score, death and bot quip, and each change used to
+  // rebuild the whole page mid-play (the score/death judder).
+  // patchScoreboard + renderMySeat paint them in place instead.
+  return JSON.stringify([v.phase, pstruct, gp, v.lastGame, pls]);
 }
 var FIELD_GAMES = { 'day-ra': 1, 'ne-dan': 1, 'cuop-sao': 1, 'giu-vuong-mien': 1, 'son-san': 1, 'xe-tank': 1, 'dat-bom': 1, 'thu-thanh': 1, 'chung-mot-than': 1, 'day-hop': 1, 'nguoi-que': 1, 'den-lua-nuoc': 1, 'ech-op': 1, 'da-bong': 1, 'can-goc': 1 };
 // The phone's control cluster for the current screen, as a key: the
@@ -2565,20 +2260,6 @@ function playerCtrlKey(v) {
       return g.id + '|' + g.phase + '|' + (g.mine || '');
     case 'do-vui':
       return g.id + '|' + g.phase + '|' + g.round + '|' + (g.mine == null ? 'ans' : 'done');
-    case 'chia-cuop': {
-      var inP = g.pair && g.pair.indexOf(S.seat) >= 0;
-      return g.id + '|' + g.phase + '|' + (inP ? 'in' : 'out') + '|' + (g.mineChosen ? 'chosen' : '');
-    }
-    case 'ke-gia-mao':
-      return g.id + '|' + g.phase + '|' + g.round + '|' + (g.mine == null ? 'a0' : 'a1') + '|' + (g.myVote == null ? 'v0' : 'v1');
-    case 'ma-soi': {
-      var k = g.id + '|' + g.phase + '|' + (g.myRole || '') + '|' + (g.myAlive ? 'alive' : 'dead');
-      if (g.phase === 'night') k += '|' + (g.myWolfVote == null ? 0 : 1) + (g.myGuardPick == null ? 0 : 1) + (g.mySeerPick == null ? 0 : 1) + '|' + (g.myWitchDone ? 'wd' : '') + (g.wolvesIn ? 'wi' : '') + '|' + (g.myWitchSave ? 'ws' : '') + '|' + (g.myWitchPoison || '');
-      if (g.phase === 'vote') k += '|' + (g.voted && g.voted[S.seat] ? 'voted' : '');
-      return k;
-    }
-    case 'ca-ngua':
-      return g.id + '|' + g.phase + '|' + (g.myTurn ? 'my' : 'other') + '|' + (g.dice || 0) + '|' + (g.myLegal || []).map(function (e) { return e.horse; }).join(',');
   }
   return g.id + '|' + g.phase;
 }
@@ -3330,7 +3011,35 @@ function rafLoop(ts) {
 function setT(elm, txt) { if (!elm) return; txt = '' + txt; if (elm._tx !== txt) { elm._tx = txt; elm.textContent = txt; } }
 function setTf(elm, tf) { if (!elm) return; if (elm._tf !== tf) { elm._tf = tf; elm.style.transform = tf; } }
 function setOp(elm, op) { if (!elm) return; if (elm._op !== op) { elm._op = op; elm.style.opacity = op; } }
+// In-place painters for everything the view signature no longer
+// carries: the score strip (scores change on every point scored)
+// and the host-seat panel (bot speech bubbles). Called every frame
+// from patchPositions; each painter is key-cached and writes only
+// when its content actually changed.
+function patchScoreboard(v) {
+  if (!v || !v.standings || !v.players) return;
+  var key = (v.game ? v.game.id : '') + '|' + v.standings.join(',') + '|' + v.standings.map(function (s) { var p = playerOf(v, s); return p ? p.liveScore : 0; }).join(',') + '|' + (v.gap ? v.gap.topSeat + ':' + v.gap.diff : '');
+  if (S._sbKey === key) return;
+  S._sbKey = key;
+  var bars = document.querySelectorAll('.scorebar');
+  if (!bars.length) return;
+  var tmp = document.createElement('div');
+  tmp.innerHTML = scoreStrip(v);
+  var newBar = tmp.querySelector('.scorebar');
+  var newGap = tmp.querySelector('.gapline');
+  if (!newBar) return;
+  for (var i = 0; i < bars.length; i++) {
+    bars[i].innerHTML = newBar.innerHTML;
+    var sib = bars[i].nextElementSibling;
+    var liveGap = sib && sib.classList && sib.classList.contains('gapline') ? sib : null;
+    if (newGap && liveGap) liveGap.textContent = newGap.textContent;
+    else if (newGap && !liveGap) bars[i].insertAdjacentHTML('afterend', newGap.outerHTML);
+    else if (!newGap && liveGap) liveGap.remove();
+  }
+}
 function patchPositions(v) {
+  patchScoreboard(v);
+  if (S.role === 'host') renderMySeat();
   var g = v && v.game;
   if (!g) return;
   var t = serverNow();
@@ -3718,7 +3427,7 @@ function homeHTML() {
   h += '<p><input type="text" id="joinName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
   h += '<p id="idNote" class="small" style="display:none;margin:2px 0 0"></p>';
   h += '<p><button class="btn pink" data-cmd="join" style="font-size:22px">Vào phòng</button></p></div>';
-  h += '<p class="center muted small" style="margin-top:14px">25 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Laze · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Ma Sói · Cờ Cá Ngựa · Tiến Lên Miền Nam · Người Que Đại Chiến · Đá Bóng Đầu To · Đại Bác Căn Góc · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước · Ếch Ộp Phiêu Lưu — 18 game đấu + 7 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
+  h += '<p class="center muted small" style="margin-top:14px">20 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Laze · Kéo Co · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Tiến Lên Miền Nam · Người Que Đại Chiến · Đá Bóng Đầu To · Đại Bác Căn Góc · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Đền Lửa & Nước · Ếch Ộp Phiêu Lưu — 14 game đấu + 6 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
   return h;
 }
 function playerHTML(v) {
@@ -3784,7 +3493,7 @@ function playerGame(v) {
   var me = playerOf(v, S.seat);
   var h = '<div class="stage pstage g-' + g.id + (isActionGame(g.id) ? ' neon-stage' : '') + '">';
   if (g.phase === 'countdown') { h += '<div class="center baloo" style="font-size:26px">' + esc(g.name) + '</div>' + countdownHTML(g) + '</div>'; return h; }
-  h += '<h2>' + esc(g.name) + (g.id === 'ma-soi' ? ' · Đêm ' + (g.night || g.round) : (g.id === 'ca-ngua' || g.id === 'tien-len') ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
+  h += '<h2>' + esc(g.name) + (g.id === 'tien-len' ? '' : ' · Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · ×2' : '')) + '</h2>';
   h += pfieldHTML(v, g);
   if (g.id === 'do-vui') {
     if (g.phase === 'question') {
@@ -3861,40 +3570,6 @@ function playerGame(v) {
         + '<div class="abtns"><button class="abtn" data-pad="b" style="background:#E84F4F;width:92px;height:92px;font-size:30px">B<span>KÉO!</span></button></div></div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 20000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
-  } else if (g.id === 'chia-cuop') {
-    var inPair = g.pair && g.pair.indexOf(S.seat) >= 0;
-    var foeSeat = inPair ? g.pair[g.pair[0] === S.seat ? 1 : 0] : null;
-    var foe = foeSeat ? playerOf(v, foeSeat) : null;
-    if (g.phase === 'talk') {
-      h += '<div class="center baloo" style="font-size:23px">Nồi ' + fmt(g.pot || 400) + ' điểm' + (g.finalRound ? ' · VÒNG CUỐI ×2' : '') + '</div>';
-      if (g.chat) for (var pI = 0; pI < g.chat.length; pI++) { var pp2 = playerOf(v, g.chat[pI].seat); h += '<div class="chatrow">' + blobSVG(pp2 ? pp2.color : 'blue', 'cuoi', 24) + ' <b>' + esc(pp2 ? pp2.name : '') + ':</b> ' + esc(g.chat[pI].text) + '</div>'; }
-      if (inPair) {
-        h += '<p class="center">Bạn đấu với <b>' + esc(foe ? foe.name : '') + '</b>. Nói gì cũng được — lát nữa chọn mới là thật!</p>';
-        h += '<p class="center"><input type="text" id="chatText" maxlength="60" placeholder="Lời thương lượng…" style="width:min(70vw,300px)"> <button class="btn small blue" data-cmd="chatSend">Gửi</button></p>';
-      } else {
-        var w1 = g.pair ? playerOf(v, g.pair[0]) : null; var w2 = g.pair ? playerOf(v, g.pair[1]) : null;
-        h += '<p class="center">Vòng này ' + esc(w1 ? w1.name : '') + ' và ' + esc(w2 ? w2.name : '') + ' thương lượng — bạn ngồi ngoài xem.</p>';
-      }
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 60000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    } else if (g.phase === 'choose') {
-      if (!inPair) {
-        h += '<div class="center baloo" style="font-size:25px">Hai người kia đang chọn bí mật…</div><p class="center">Xem TV đoán thử ai sẽ cướp!</p>';
-      } else if (g.mineChosen) {
-        h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, 'ngacnhien', 100) + '</span><div class="baloo" style="font-size:26px">Đã khoá lựa chọn!</div><p>Bí mật đến phút công bố — đợi đối thủ…</p></div>';
-      } else {
-        h += '<div class="center baloo" style="font-size:25px">CHỌN BÍ MẬT ĐI!</div>';
-        h += '<p class="center">Cả hai CHIA: mỗi người một nửa nồi · Một người CƯỚP: cướp hết · Cả hai CƯỚP: mất trắng!</p>';
-        h += '<p class="center"><button class="btn green" data-cmd="choose" data-c="chia" style="font-size:23px">X · CHIA</button></p>';
-        h += '<p class="center"><button class="btn pink" data-cmd="choose" data-c="cuop" style="font-size:23px">B · CƯỚP</button></p>';
-        h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 15000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      }
-    } else if (g.phase === 'reveal' && g.reveal) {
-      var myE2 = null; for (var qI = 0; qI < g.reveal.entries.length; qI++) if (g.reveal.entries[qI].seat === S.seat) myE2 = g.reveal.entries[qI];
-      h += '<div class="center"><span class="blobbob">' + orbSVG(me.color, 100, !!(myE2 && myE2.points <= 0)) + '</span>';
-      if (myE2) h += '<div class="baloo" style="font-size:27px">Bạn đã ' + (myE2.choice === 'cuop' ? 'CƯỚP' : 'CHIA') + ' · +' + fmt(myE2.points) + ' điểm</div>';
-      else h += '<div class="baloo" style="font-size:25px">Xem kết quả trên TV!</div>';
-      h += '</div>';
-    }
   } else if (g.id === 'chung-mot-than') {
     if (g.phase === 'shared') {
       var arrowOf = { u: '▲', r: '▶', d: '▼', l: '◀' };
@@ -3934,60 +3609,6 @@ function playerGame(v) {
         h += '<p class="center small">' + (g.id === 'xe-tank' ? 'Nòng súng hướng theo hướng di chuyển cuối · A: bắn (hồi 1 giây) · Núp sau thùng chắn' : g.id === 'dat-bom' ? 'A: đặt bom (mỗi người 1 quả một lúc) · Bom nổ sau 2 giây theo hình chữ thập — đặt xong chạy ngay!' : 'Bắn slime trước khi chúng chạm vào pha lê · Nòng súng hướng theo hướng di chuyển cuối') + '</p>';
       }
     }
-  } else if (g.id === 'ke-gia-mao') {
-    if (g.phase === 'answer') {
-      h += '<div class="center"><span class="chip cool">Chủ đề: ' + esc(g.category || '') + '</span></div>';
-      h += '<div class="baloo" style="font-size:22px">' + esc(g.myQuestion || '') + '</div>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      if (g.mine == null) {
-        h += '<div class="optgrid">';
-        for (var a2 = 0; a2 < 4; a2++) h += '<button class="opt" data-cmd="answer" data-i="' + a2 + '">' + LETTERS[a2] + '. ' + esc(g.options[a2]) + '</button>';
-        h += '</div>';
-        h += '<p class="center small">Trả lời bí mật — đừng đọc to câu hỏi hay đáp án của bạn!</p>';
-      } else {
-        h += '<div class="center baloo" style="font-size:26px">Đã trả lời! Đợi mọi người…</div>';
-      }
-    } else if (g.phase === 'discuss') {
-      h += '<div class="baloo" style="font-size:22px">Bàn luận: ai đang giả vờ?</div>';
-      if (g.chatLog) for (var pI6 = 0; pI6 < g.chatLog.length; pI6++) { var pp6 = playerOf(v, g.chatLog[pI6].seat); h += '<div class="chatrow">' + blobSVG(pp6 ? pp6.color : 'blue', 'cuoi', 24) + ' <b>' + esc(pp6 ? pp6.name : '') + ':</b> ' + esc(g.chatLog[pI6].text) + '</div>'; }
-      h += '<p class="center"><input type="text" id="chatText" maxlength="60" placeholder="Nói gì đó…" style="width:min(70vw,300px)"> <button class="btn small blue" data-cmd="chatSend">Gửi</button></p>';
-      h += '<p class="center small">Đừng lộ đáp án của bạn — kẻ giả mạo đang nghe đấy!</p>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 45000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    } else if (g.phase === 'vote') {
-      if (g.myVote == null) {
-        h += '<div class="baloo" style="font-size:23px">Bạn tố cáo ai là kẻ giả mạo?</div>';
-        h += '<div class="optgrid">';
-        for (var vI3 = 0; vI3 < v.players.length; vI3++) { var vp4 = v.players[vI3]; if (vp4.seat === S.seat) continue; h += '<button class="opt" data-cmd="vote" data-i="' + vp4.seat + '">' + esc(vp4.name) + '</button>'; }
-        h += '</div>';
-      } else {
-        h += '<div class="center baloo" style="font-size:26px">Đã tố cáo! Đợi công bố…</div>';
-      }
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 20000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    } else if (g.phase === 'reveal' && g.reveal) {
-      var rv2 = g.reveal; var iAmImp = rv2.impostor === S.seat;
-      var iWon = (rv2.caught && !iAmImp) || (!rv2.caught && iAmImp);
-      h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, iWon ? 'reo' : 'buon', 100) + '</span>';
-      h += '<div class="baloo" style="font-size:27px">' + (rv2.caught ? 'Bắt được kẻ giả mạo!' : 'Kẻ giả mạo đã thoát!') + '</div>';
-      var impP = playerOf(v, rv2.impostor);
-      h += '<p>Kẻ giả mạo: <b>' + esc(impP ? impP.name : '') + '</b>' + (iAmImp ? ' — chính là BẠN!' : '') + '</p>';
-      h += '<div class="baloo" style="font-size:24px">+' + fmt(rv2.points[S.seat] || 0) + ' điểm</div></div>';
-    }
-  } else if (g.id === 'giai-ma-chung') {
-    if (g.phase === 'decode' || g.phase === 'levelup') {
-      h += '<div class="center baloo" style="font-size:21px">Màn ' + (g.level || 1) + ' · Tim đội: <span style="color:#FFD7DE">' + '❤'.repeat(Math.max(0, g.hearts || 0)) + '</span> · Đã qua ' + (g.levelsDone || 0) + ' màn</div>';
-      h += '<div class="center baloo" style="font-size:20px">Tiến độ màn này: ' + (g.done || 0) + '/' + (g.total || 0) + ' bước</div>';
-      if (g.phase === 'levelup') h += '<div class="center baloo" style="font-size:26px">QUA MÀN! 🎉</div>';
-      h += '<div class="center"><b>Phần mật mã của bạn:</b><br>';
-      var ms = g.mySteps || [];
-      if (!ms.length) h += '<span class="mystep">Màn này bạn không giữ bước nào — cổ vũ đồng đội nhé!</span>';
-      for (var sI6 = 0; sI6 < ms.length; sI6++) h += '<span class="mystep">Bước ' + ms[sI6].pos + ': <span style="color:' + SYMCOLORS[ms[sI6].sym] + '">' + ms[sI6].name + '</span></span>';
-      h += '</div>';
-      h += '<div class="symgrid">';
-      for (var yI = 0; yI < 4; yI++) h += '<button class="symbtn" data-cmd="symbol" data-i="' + yI + '" style="background:' + SYMCOLORS[yI] + '">' + SYMNAMES[yI] + '</button>';
-      h += '</div>';
-      h += '<p class="center small">Chỉ bấm khi tới lượt bước của bạn và đúng ký hiệu của bước đó — bấm sai cả đội mất 1 tim!</p>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 75000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    }
   } else if (g.id === 'nguoi-que') {
     var myF = g.blobs ? g.blobs[S.seat] : null;
     if (g.phase === 'fight') {
@@ -4009,118 +3630,6 @@ function playerGame(v) {
       h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'NHẢY', '—') + '</div>';
       h += '<p class="center small">' + (g.myEl === 'lua' ? 'Bạn là LỬA: hồ đỏ an toàn, hồ xanh dương chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc đỏ.' : 'Bạn là NƯỚC: hồ xanh dương an toàn, hồ đỏ chết, hồ xanh lá chết! Chỉ bạn nhặt được ngọc xanh.') + ' Đứng lên nút vàng để mở cổng cho đồng đội. A hoặc Y: nhảy.</p>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 150000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    }
-  } else if (g.id === 'ma-soi') {
-    var roleName = WOLF_ROLE_NAMES[g.myRole] || '';
-    h += '<div class="center"><span class="chip ' + (g.myRole === 'soi' ? 'hot' : 'cool') + '" style="font-size:17px">Vai của bạn: ' + roleName + '</span></div>';
-    if (!g.myAlive) {
-      h += '<div class="center"><div class="ko-big">💀</div><div class="baloo" style="font-size:26px">Bạn đã chết — theo dõi tiếp nhé!</div><p>Xem mọi người bàn luận và bỏ phiếu trên TV. Vai của bạn sẽ được công bố khi game kết thúc.</p></div>';
-    } else if (g.phase === 'night') {
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 45000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      if (g.myRole === 'soi') {
-        h += '<div class="center baloo" style="font-size:21px">🐺 Bầy sói: ' + (g.wolfTeam || []).map(function (s2) { var wp2 = playerOf(v, s2); return esc(wp2 ? wp2.name : ''); }).join(', ') + '</div>';
-        if (g.myWolfVote == null) {
-          h += '<div class="baloo" style="font-size:21px">Chọn con mồi đêm nay:</div><div class="optgrid">';
-          for (var wv = 0; wv < v.players.length; wv++) { var wvp = v.players[wv]; if (wvp.seat === S.seat || (g.aliveMap && !g.aliveMap[wvp.seat])) continue; var isMate = (g.wolfTeam || []).indexOf(wvp.seat) >= 0; h += '<button class="opt" data-cmd="wolfPick" data-kind="wolfVote" data-i="' + wvp.seat + '">' + esc(wvp.name) + (isMate ? ' 🐺 (đồng đội)' : '') + '</button>'; }
-          h += '</div>';
-        } else {
-          var vt = playerOf(v, g.myWolfVote);
-          h += '<div class="center baloo" style="font-size:23px">Đã chọn con mồi: ' + esc(vt ? vt.name : '') + '<br><span style="font-size:18px">Phiếu sói đã vào: ' + (g.wolfVotesIn || 0) + '/' + (g.wolfTeam || []).length + '</span></div>';
-        }
-      } else if (g.myRole === 'bao-ve') {
-        if (g.myGuardPick == null) {
-          h += '<div class="baloo" style="font-size:21px">Đêm nay bạn bảo vệ ai? (được bảo vệ chính mình; không trùng người đêm qua)</div><div class="optgrid">';
-          for (var gv = 0; gv < v.players.length; gv++) { var gvp = v.players[gv]; if (g.aliveMap && !g.aliveMap[gvp.seat]) continue; var wasLast = g.myGuardLast === gvp.seat; h += '<button class="opt" data-cmd="wolfPick" data-kind="wolfGuard" data-i="' + gvp.seat + '"' + (wasLast ? ' disabled style="opacity:.45"' : '') + '>' + esc(gvp.name) + (gvp.seat === S.seat ? ' (bạn)' : '') + (wasLast ? ' · đêm qua đã bảo vệ' : '') + '</button>'; }
-          h += '</div>';
-        } else { var gp6 = playerOf(v, g.myGuardPick); h += '<div class="center baloo" style="font-size:23px">🛡️ Đang bảo vệ: ' + esc(gp6 ? gp6.name : '') + '</div>'; }
-      } else if (g.myRole === 'tien-tri') {
-        if (g.mySeerPick == null) {
-          h += '<div class="baloo" style="font-size:21px">Đêm nay bạn soi ai?</div><div class="optgrid">';
-          for (var sv2 = 0; sv2 < v.players.length; sv2++) { var svp = v.players[sv2]; if (svp.seat === S.seat || (g.aliveMap && !g.aliveMap[svp.seat])) continue; h += '<button class="opt" data-cmd="wolfPick" data-kind="wolfSeer" data-i="' + svp.seat + '">' + esc(svp.name) + '</button>'; }
-          h += '</div>';
-        } else { var sp7 = playerOf(v, g.mySeerPick); var seenWolf = (g.mySeerNotes || []).some(function (n2) { return n2.seat === g.mySeerPick && n2.wolf; }); h += '<div class="center baloo" style="font-size:23px">🔮 ' + esc(sp7 ? sp7.name : '') + (seenWolf ? ' LÀ SÓI! 🐺' : ' là dân lành ✅') + '</div>'; }
-        if (g.mySeerNotes && g.mySeerNotes.length) {
-          h += '<div class="rows"><div class="baloo" style="font-size:19px">📖 Sổ tay tiên tri (chỉ mình bạn thấy):</div>';
-          for (var sn = 0; sn < g.mySeerNotes.length; sn++) { var np4 = playerOf(v, g.mySeerNotes[sn].seat); h += '<div class="rrow">' + blobSVG(np4 ? np4.color : 'blue', 'cuoi', 28) + ' ' + esc(np4 ? np4.name : '') + '<span class="pts">' + (g.mySeerNotes[sn].wolf ? '🐺 SÓI' : '✅ dân') + '</span></div>'; }
-          h += '</div>';
-        }
-      } else if (g.myRole === 'phu-thuy') {
-        if (g.myWitchDone) {
-          h += '<div class="center baloo" style="font-size:23px">🧙 Đã quyết định xong — đi ngủ thôi!</div>';
-        } else if (!g.wolvesIn) {
-          h += '<div class="center baloo" style="font-size:22px">🧙 Đợi bầy sói chọn xong con mồi…</div><p class="center">Thuốc của bạn: 🧪 cứu ×' + (g.mySaveLeft || 0) + ' · ☠️ độc ×' + (g.myPoisonLeft || 0) + '</p>';
-        } else {
-          var vic = g.myVictim ? playerOf(v, g.myVictim) : null;
-          h += '<div class="center baloo" style="font-size:22px">Con mồi của sói đêm nay: ' + (vic ? esc(vic.name) : '—') + (g.myVictim === S.seat ? ' (CHÍNH LÀ BẠN!)' : '') + '</div>';
-          if (g.mySaveLeft > 0) h += '<p class="center"><button class="btn ' + (g.myWitchSave ? 'green' : 'ghost') + '" data-cmd="witchSave">' + (g.myWitchSave ? '🧪 ĐÃ CHỌN CỨU — bấm để huỷ' : '🧪 Dùng thuốc cứu người này') + '</button></p>';
-          else h += '<p class="center muted">Thuốc cứu đã dùng hết.</p>';
-          if (g.myPoisonLeft > 0) {
-            h += '<div class="baloo" style="font-size:20px">☠️ Đầu độc ai? ' + (g.myWitchPoison ? '(đang chọn: ' + esc((playerOf(v, g.myWitchPoison) || {}).name || '') + ')' : '(chưa chọn)') + '</div><div class="optgrid">';
-            for (var pv2 = 0; pv2 < v.players.length; pv2++) { var pvp = v.players[pv2]; if (pvp.seat === S.seat || (g.aliveMap && !g.aliveMap[pvp.seat])) continue; h += '<button class="opt" data-cmd="wolfPick" data-kind="wolfPoison" data-i="' + pvp.seat + '">' + esc(pvp.name) + '</button>'; }
-            h += '</div>';
-            if (g.myWitchPoison) h += '<p class="center"><button class="btn small ghost" data-cmd="witchPoisonClear">Bỏ chọn đầu độc</button></p>';
-          } else h += '<p class="center muted">Thuốc độc đã dùng hết.</p>';
-          h += '<p class="center"><button class="btn pink" data-cmd="witchDone" style="font-size:21px">Xác nhận — đi ngủ</button></p>';
-        }
-      } else {
-        h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, 'ngu', 100) + '</span><div class="baloo" style="font-size:24px">Bạn là dân làng — ngủ ngon nhé…</div><p>Đợi trời sáng trên TV.</p></div>';
-      }
-    } else if (g.phase === 'dawn') {
-      if (g.dawnDeaths && g.dawnDeaths.length) {
-        h += '<div class="center baloo" style="font-size:24px">☀️ Đêm qua làng mất: ' + g.dawnDeaths.map(function (d3) { var dp6 = playerOf(v, d3.seat); return esc(dp6 ? dp6.name : ''); }).join(', ') + '</div>';
-      } else h += '<div class="center baloo" style="font-size:24px">☀️ Đêm qua bình yên — không ai ra đi!</div>';
-    } else if (g.phase === 'discuss') {
-      h += '<div class="baloo" style="font-size:21px">Bàn luận: ai là sói?</div>';
-      if (g.chatLog) for (var pI7 = 0; pI7 < g.chatLog.length; pI7++) { var pp7 = playerOf(v, g.chatLog[pI7].seat); h += '<div class="chatrow">' + blobSVG(pp7 ? pp7.color : 'blue', 'cuoi', 24) + ' <b>' + esc(pp7 ? pp7.name : '') + ':</b> ' + esc(g.chatLog[pI7].text) + '</div>'; }
-      h += '<p class="center"><input type="text" id="chatText" maxlength="60" placeholder="Nói gì đó…" style="width:min(70vw,300px)"> <button class="btn small blue" data-cmd="chatSend">Gửi</button></p>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 60000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    } else if (g.phase === 'vote') {
-      if (g.voted && g.voted[S.seat]) {
-        h += '<div class="center baloo" style="font-size:25px">Đã bỏ phiếu! Đợi kết quả…</div>';
-      } else {
-        h += '<div class="baloo" style="font-size:22px">Treo cổ ai? Chọn một người bạn nghi là sói:</div><div class="optgrid">';
-        for (var vv = 0; vv < v.players.length; vv++) { var vvp = v.players[vv]; if (vvp.seat === S.seat || (g.aliveMap && !g.aliveMap[vvp.seat])) continue; h += '<button class="opt" data-cmd="vote" data-i="' + vvp.seat + '">' + esc(vvp.name) + '</button>'; }
-        h += '</div>';
-      }
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    } else if (g.phase === 'execute') {
-      if (g.exec && g.exec.seat) { var ep3 = playerOf(v, g.exec.seat); h += '<div class="center baloo" style="font-size:25px">⚖️ ' + esc(ep3 ? ep3.name : '') + ' bị treo cổ — là ' + (WOLF_ROLE_NAMES[g.exec.role] || '') + '</div>'; }
-      else h += '<div class="center baloo" style="font-size:24px">⚖️ Hôm nay không ai bị treo cổ.</div>';
-    } else if (g.phase === 'wolfEnd') {
-      var iWon2 = (g.winner === 'soi') === (g.myRole === 'soi');
-      h += '<div class="center"><span class="blobbob">' + blobSVG(me.color, iWon2 ? 'reo' : 'buon', 100) + '</span>';
-      h += '<div class="baloo" style="font-size:27px">' + (g.winner === 'soi' ? '🐺 Bầy sói thắng!' : '🎉 Dân làng thắng!') + '</div>';
-      h += '<p>Bạn là ' + roleName + ' · +' + fmt(g.points[S.seat] || 0) + ' điểm</p>';
-      if (g.roles) { h += '<div class="rows">'; for (var wr2 = 0; wr2 < v.players.length; wr2++) { var wrp = v.players[wr2]; h += '<div class="rrow">' + blobSVG(wrp.color, wrp.mood, 30) + ' ' + esc(wrp.name) + '<span class="chip ' + (g.roles[wrp.seat] === 'soi' ? 'hot' : 'cool') + '">' + (WOLF_ROLE_NAMES[g.roles[wrp.seat]] || '') + '</span></div>'; } h += '</div>'; }
-      h += '</div>';
-    }
-  } else if (g.id === 'ca-ngua') {
-    var myHs = g.horses ? (g.horses[S.seat] || []) : [];
-    var turnP2 = g.turn ? playerOf(v, g.turn) : null;
-    if (g.phase === 'ngWin') {
-      var winP2 = g.winner ? playerOf(v, g.winner) : null;
-      h += '<div class="center"><div class="baloo" style="font-size:27px">🏆 ' + esc(winP2 ? winP2.name : '') + ' thắng!</div><p>Bạn về hạng theo tiến độ — xem bảng điểm trên TV nhé.</p></div>';
-    } else if (g.myTurn && g.phase === 'roll') {
-      h += '<div class="center baloo" style="font-size:25px">🎲 LƯỢT CỦA BẠN!</div>';
-      h += '<p class="center"><button class="btn pink" data-cmd="roll" style="font-size:26px;padding:18px 34px">THẢY XÚC XẮC</button></p>';
-      h += '<p class="center small">Thảy 6 để xuất chuồng và được thảy tiếp · Ba lần 6 liên tiếp là mất lượt!</p>';
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    } else if (g.myTurn && g.phase === 'pick') {
-      h += '<div class="center baloo" style="font-size:24px">Bạn thảy được: <span class="diceface">' + DICE_FACES[g.dice] + '</span> ' + g.dice + ' chấm</div>';
-      if (g.myLegal && g.myLegal.length) {
-        h += '<div class="baloo" style="font-size:21px">Chọn ngựa để đi:</div><div class="optgrid">';
-        for (var ml = 0; ml < g.myLegal.length; ml++) { var mle = g.myLegal[ml]; h += '<button class="opt" data-cmd="move" data-i="' + mle.horse + '">🐴 Ngựa ' + (mle.horse + 1) + '<br><span style="font-size:16px">' + esc(mle.hint) + '</span></button>'; }
-        h += '</div>';
-      } else {
-        h += '<div class="center baloo" style="font-size:22px">Không có nước đi nào — đợi qua lượt…</div>';
-      }
-      h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-    } else {
-      h += '<div class="center baloo" style="font-size:22px">Lượt của ' + esc(turnP2 ? turnP2.name : '') + (g.dice ? ' · vừa thảy ' + DICE_FACES[g.dice] : '') + '</div>';
-      h += '<div class="rows">';
-      for (var mh = 0; mh < myHs.length; mh++) h += '<div class="rrow">🐴 Ngựa ' + (mh + 1) + '<span class="muted">' + (myHs[mh] === 0 ? 'đang trong chuồng' : myHs[mh] === 58 ? 'ĐÃ VỀ ĐÍCH 🏆' : myHs[mh] >= 52 ? 'đường về chuồng ' + (myHs[mh] - 51) + '/6' : 'ô ' + myHs[mh] + '/51') + '</span></div>';
-      h += '</div>';
-      h += '<p class="center">Xem bàn cờ trên TV nhé!</p>';
     }
   } else if (g.id === 'tien-len') {
     if (!S.tlSel) S.tlSel = [];
@@ -4908,11 +4417,8 @@ function pkTranslate(bit) {
   var ci = bit === 'a' ? 0 : bit === 'b' ? 1 : bit === 'x' ? 2 : bit === 'y' ? 3 : -1;
   if (ci < 0) return;
   if (g.id === 'do-vui' && g.phase === 'question') { if (g.mine == null) { sfxTap(); act({ action: 'answer', choice: ci }); } }
-  else if (g.id === 'ke-gia-mao' && g.phase === 'answer') { if (g.mine == null) { sfxTap(); act({ action: 'answer', choice: ci }); } }
-  else if (g.id === 'giai-ma-chung') { beep(320 + ci * 130, 0.1, 'triangle', 0.14); act({ action: 'symbol', sym: ci }); }
   else if (g.id === 'cao-boi') { if (bit === 'a') { sfxTap(); act({ action: 'tap' }); } }
   else if (g.id === 'cheo-thuyen' && g.phase === 'row') { if (bit === 'a') { sfxTap(); act({ action: 'tap' }); } }
-  else if (g.id === 'ca-ngua' && g.phase === 'roll') { if (bit === 'a' && g.myTurn) { sfxTap(); act({ action: 'roll' }); } }
 }
 window.addEventListener('keydown', function (ev) {
   if (!pkActive()) return;
@@ -5037,33 +4543,6 @@ function lkOptions(v, seat) {
     for (var i = 0; i < v.players.length; i++) { var p = v.players[i]; if (p.seat !== seat && g.aliveMap && g.aliveMap[p.seat]) out.push(p); }
     return out;
   }
-  if (g.id === 'ma-soi' && lv.myAlive) {
-    if (g.phase === 'night') {
-      if (lv.myRole === 'soi' && lv.myWolfVote == null) {
-        opts = aliveOthers().map(function (p) { return { label: esc(p.name) + ((lv.wolfTeam || []).indexOf(p.seat) >= 0 ? ' 🐺 đồng đội' : ''), act: { action: 'wolfVote', seat: p.seat } }; });
-      } else if (lv.myRole === 'bao-ve' && lv.myGuardPick == null) {
-        opts = [];
-        for (var gi = 0; gi < v.players.length; gi++) { var gp = v.players[gi]; if (!g.aliveMap || !g.aliveMap[gp.seat]) continue; if (gp.seat === lv.myGuardLast) continue; opts.push({ label: esc(gp.name) + (gp.seat === seat ? ' (bạn)' : ''), act: { action: 'wolfGuard', seat: gp.seat } }); }
-      } else if (lv.myRole === 'tien-tri' && lv.mySeerPick == null) {
-        opts = aliveOthers().map(function (p) { return { label: esc(p.name), act: { action: 'wolfSeer', seat: p.seat } }; });
-      } else if (lv.myRole === 'phu-thuy' && !lv.myWitchDone && lv.wolvesIn) {
-        opts = [];
-        if (lv.myVictim && (lv.mySaveLeft || 0) > 0) opts.push({ label: '🧪 Cứu ' + esc(lkPlayerName(v, lv.myVictim)) + (lv.myWitchSave ? ' ✓ đang chọn' : ''), act: { action: 'wolfWitch', save: true } });
-        if ((lv.myPoisonLeft || 0) > 0) {
-          var ao = aliveOthers();
-          for (var pi = 0; pi < ao.length; pi++) opts.push({ label: '☠️ Độc: ' + esc(ao[pi].name) + (lv.myWitchPoison === ao[pi].seat ? ' ✓ đang chọn' : ''), act: { action: 'wolfWitch', poison: ao[pi].seat } });
-        }
-        opts.push({ label: '✔ Xong — đi ngủ', act: { action: 'wolfWitch', done: true } });
-      }
-    } else if (g.phase === 'vote' && !(g.voted && g.voted[seat])) {
-      opts = aliveOthers().map(function (p) { return { label: esc(p.name), act: { action: 'vote', seat: p.seat } }; });
-    }
-  } else if (g.id === 'ke-gia-mao' && g.phase === 'vote' && lv.myVote == null) {
-    opts = [];
-    for (var vi = 0; vi < v.players.length; vi++) { var vp = v.players[vi]; if (vp.seat !== seat) opts.push({ label: esc(vp.name), act: { action: 'vote', seat: vp.seat } }); }
-  } else if (g.id === 'ca-ngua' && g.phase === 'pick' && lv.myTurn && lv.myLegal && lv.myLegal.length) {
-    opts = lv.myLegal.map(function (e) { return { label: '🐴 Ngựa ' + (e.horse + 1) + ' · ' + esc(e.hint), act: { action: 'move', horse: e.horse } }; });
-  }
   if (!opts || !opts.length) return null;
   var sig = g.id + '|' + g.phase + '|' + opts.map(function (o) { return JSON.stringify(o.act); }).join(',');
   var st = lkState(seat);
@@ -5128,63 +4607,6 @@ function lkTienLenKey(seat, bit, fresh, repeat) {
 function lkPanelBody(v, seat) {
   var g = v.game; var lv = (v.localViews || {})[seat] || {}; var st = lkState(seat);
   if (g.phase === 'countdown') return '<div class="lpline">⏳ Chuẩn bị… sẵn sàng trên bộ phím của bạn!</div>';
-  if (g.id === 'ke-gia-mao') {
-    if (g.phase === 'answer') {
-      var kh = '';
-      if (lv.mine != null) kh += '<div class="lpline">✅ Đã trả lời — đợi mọi người…</div>';
-      if (st.peek && lv.myQuestion) {
-        kh += '<div class="lpsecret"><b>' + esc(lv.myQuestion) + '</b>';
-        if (lv.options) for (var oi = 0; oi < lv.options.length; oi++) kh += '<div>' + (oi + 1) + '. ' + esc(lv.options[oi]) + '</div>';
-        kh += '</div><div class="lpfoot">A/B/X: đáp án 1–3 · chạm nhanh Y: đáp án 4</div>';
-      } else if (lv.mine == null) kh += '<div class="lpline">🤫 Giữ phím Y của bạn để xem câu hỏi</div>';
-      return kh;
-    }
-    if (g.phase === 'discuss') return '<div class="lpline">🗣️ Thảo luận trực tiếp với nhau!</div>';
-    if (g.phase === 'vote') {
-      if (lv.myVote != null) return '<div class="lpline">✅ Đã tố cáo — đợi kết quả…</div>';
-      return '<div class="lpline">🕵️ Tố cáo ai là kẻ giả mạo?</div>' + lkPickHTML(v, seat);
-    }
-    if (g.phase === 'reveal') return '<div class="lpline">🧐 Xem kẻ giả mạo lộ diện trên màn hình!</div>';
-    return '';
-  }
-  if (g.id === 'ma-soi') {
-    if (lv.myAlive === false) return '<div class="lpline">💀 Bạn đã chết — theo dõi trên TV</div>';
-    var mh = '';
-    if (lv.myRole) {
-      if (st.peek) {
-        mh += '<div class="lpsecret">Vai của bạn: <b>' + (WOLF_ROLE_NAMES[lv.myRole] || '') + '</b>';
-        if (lv.myRole === 'soi' && lv.wolfTeam) mh += '<div>Bầy sói: ' + lv.wolfTeam.map(function (s2) { return esc(lkPlayerName(v, s2)); }).join(', ') + '</div>';
-        if (lv.myRole === 'tien-tri' && lv.mySeerNotes && lv.mySeerNotes.length) mh += '<div>Sổ tay: ' + lv.mySeerNotes.map(function (n2) { return esc(lkPlayerName(v, n2.seat)) + (n2.wolf ? ' 🐺' : ' ✅'); }).join(' · ') + '</div>';
-        mh += '</div>';
-      } else mh += '<div class="lpline">🤫 Giữ phím Y để xem vai trò</div>';
-    }
-    if (g.phase === 'night' && lv.myAlive) {
-      if (lv.myRole === 'soi') mh += (lv.myWolfVote != null) ? '<div class="lpline">✅ Đã chọn con mồi: ' + esc(lkPlayerName(v, lv.myWolfVote)) + '</div>' : '<div class="lpline">🐺 Chọn con mồi đêm nay:</div>' + lkPickHTML(v, seat);
-      else if (lv.myRole === 'bao-ve') mh += (lv.myGuardPick != null) ? '<div class="lpline">🛡️ Đang bảo vệ: ' + esc(lkPlayerName(v, lv.myGuardPick)) + '</div>' : '<div class="lpline">🛡️ Đêm nay bạn bảo vệ ai?</div>' + lkPickHTML(v, seat);
-      else if (lv.myRole === 'tien-tri') {
-        if (lv.mySeerPick != null) { var seen1 = (lv.mySeerNotes || []).filter(function (n3) { return n3.seat === lv.mySeerPick; })[0]; mh += '<div class="lpline">🔮 ' + esc(lkPlayerName(v, lv.mySeerPick)) + (seen1 && seen1.wolf ? ' LÀ SÓI! 🐺' : ' là dân lành ✅') + '</div>'; }
-        else mh += '<div class="lpline">🔮 Đêm nay bạn soi ai?</div>' + lkPickHTML(v, seat);
-      } else if (lv.myRole === 'phu-thuy') {
-        if (lv.myWitchDone) mh += '<div class="lpline">🧙 Đã quyết định xong — đi ngủ thôi!</div>';
-        else if (!lv.wolvesIn) mh += '<div class="lpline">🧙 Đợi bầy sói chọn xong con mồi…</div>';
-        else mh += '<div class="lpline">Con mồi của sói: ' + (lv.myVictim ? esc(lkPlayerName(v, lv.myVictim)) : '—') + ' · 🧪 cứu ×' + (lv.mySaveLeft || 0) + ' · ☠️ độc ×' + (lv.myPoisonLeft || 0) + '</div>' + lkPickHTML(v, seat);
-      } else if (lv.myRole === 'dan') mh += '<div class="lpline">😴 Bạn là dân làng — ngủ ngon, đợi trời sáng…</div>';
-    } else if (g.phase === 'vote' && lv.myAlive) {
-      if (g.voted && g.voted[seat]) mh += '<div class="lpline">✅ Đã bỏ phiếu! Đợi kết quả…</div>';
-      else mh += '<div class="lpline">⚖️ Treo cổ ai? Chọn người bạn nghi là sói:</div>' + lkPickHTML(v, seat);
-    } else if (g.phase === 'discuss') {
-      mh += '<div class="lpline">🗣️ Bàn luận trực tiếp: ai là sói?</div>';
-    }
-    return mh;
-  }
-  if (g.id === 'ca-ngua') {
-    if (g.phase === 'roll') return lv.myTurn ? '<div class="lpline">🎲 Lượt của bạn — nhấn phím A để thảy xúc xắc!</div>' : '';
-    if (g.phase === 'pick') {
-      if (!lv.myTurn) return '';
-      return '<div class="lpline">🎲 Bạn thảy được ' + (g.dice || '') + ' chấm — chọn ngựa để đi:</div>' + lkPickHTML(v, seat);
-    }
-    return '';
-  }
   if (g.id === 'tien-len') {
     if (g.phase === 'tlWin') {
       var winL = g.winner ? playerOf(v, g.winner) : null;
@@ -5222,13 +4644,7 @@ function lkPanelBody(v, seat) {
     if (g.phase === 'question') return '<div class="lpline">' + (lv.mine != null ? '✅ Đã trả lời — đợi kết quả…' : '⌨️ A/B/X/Y = chọn đáp án 1–4') + '</div>';
     return '';
   }
-  if (g.id === 'giai-ma-chung') return '<div class="lpline">⌨️ A/B/X/Y = bấm ký hiệu của bạn</div>';
   if (g.id === 'cao-boi') return '<div class="lpline">🔫 Nghe hiệu lệnh… phím A = BẮN!</div>';
-  if (g.id === 'chia-cuop') {
-    if (g.phase === 'choose') return '<div class="lpline">🤝 Phím A = Chia · B = Cướp (chọn bí mật)</div>';
-    if (g.phase === 'talk') return '<div class="lpline">🗣️ Thương lượng trực tiếp với nhau!</div>';
-    return '';
-  }
   if (g.id === 'cheo-thuyen' && g.phase === 'row') return '<div class="lpline">🚣 Phím A = chèo theo nhịp!</div>';
   if (g.id === 'keo-co') return '<div class="lpline">🪢 Nhấn liên tục phím B để KÉO!</div>';
   // Pad games need no panel body while playing: the header chip
@@ -5281,11 +4697,8 @@ function lkTranslate(seat, bit) {
   var lv = (v.localViews || {})[seat] || {};
   var ci = bit === 'a' ? 0 : bit === 'b' ? 1 : bit === 'x' ? 2 : bit === 'y' ? 3 : -1;
   if (g.id === 'do-vui' && g.phase === 'question') { if (ci >= 0 && lv.mine == null) localAct(seat, { action: 'answer', choice: ci }); }
-  else if (g.id === 'ke-gia-mao' && g.phase === 'answer') { if (ci >= 0 && ci < 3 && lv.mine == null) localAct(seat, { action: 'answer', choice: ci }); }
-  else if (g.id === 'giai-ma-chung') { if (ci >= 0) localAct(seat, { action: 'symbol', sym: ci }); }
   else if (g.id === 'cao-boi') { if (bit === 'a') localAct(seat, { action: 'tap' }); }
   else if (g.id === 'cheo-thuyen' && g.phase === 'row') { if (bit === 'a') localAct(seat, { action: 'tap' }); }
-  else if (g.id === 'ca-ngua' && g.phase === 'roll') { if (bit === 'a' && lv.myTurn) localAct(seat, { action: 'roll' }); }
 }
 window.addEventListener('keydown', function (ev) {
   if (!lkActive()) return;
@@ -5322,10 +4735,6 @@ window.addEventListener('keyup', function (ev) {
   if (bit === 'y' && st.peek) {
     st.peek = false;
     var v = S.view;
-    if (v && v.game && v.game.id === 'ke-gia-mao' && v.game.phase === 'answer' && Date.now() - st.yAt < 300) {
-      var lv = (v.localViews || {})[seat] || {};
-      if (lv.mine == null) localAct(seat, { action: 'answer', choice: 3 });
-    }
     renderLocalPanels();
   }
 });

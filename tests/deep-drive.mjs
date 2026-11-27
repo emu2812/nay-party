@@ -122,7 +122,7 @@ async function buildRoom(seats, phones, local) {
   return { drv, toks, localSeat };
 }
 
-const SECRET_GAMES = ['ma-soi', 'ke-gia-mao', 'tien-len', 'giai-ma-chung'];
+const SECRET_GAMES = ['tien-len'];
 const GAME_IDS = Object.keys(GAMES);
 const matrix = {}; // gameId -> {minOk, maxOk, minMs, maxMs, errors, countdown, secrecy}
 
@@ -225,26 +225,6 @@ async function tlDriveStep(drv, tok) {
   beaters.sort((a, b) => TL.comboOf(a).top - TL.comboOf(b).top);
   await drv.pAct(tok, { action: 'play', cards: beaters[0] });
 }
-async function nguaDriveStep(drv, tok) {
-  const hv = await drv.pState(tok);
-  if (!hv || !hv.game || !hv.game.myTurn) return;
-  if (hv.game.phase === 'roll') { await drv.pAct(tok, { action: 'roll' }); return; }
-  if (hv.game.phase !== 'pick') return;
-  const legal = hv.game.myLegal || [];
-  if (!legal.length) return;
-  const dice = hv.game.dice;
-  let best = null, bestScore = -1;
-  legal.forEach((e) => {
-    const to = e.from === 0 ? 1 : e.from + dice;
-    let score;
-    if (to === 58) score = 100;
-    else if (e.hint && e.hint.indexOf('ĐÁ NGỰA') >= 0) score = 90;
-    else if (e.from === 0) score = 80;
-    else score = 10 + to;
-    if (score > bestScore) { bestScore = score; best = e.horse; }
-  });
-  if (best != null) await drv.pAct(tok, { action: 'move', horse: best });
-}
 let coopCheckDone = false;
 async function driveMatch(gameId, seats) {
   const meta = GAMES[gameId];
@@ -254,10 +234,9 @@ async function driveMatch(gameId, seats) {
   if (!st || st.ok !== true) return { ok: false, fakeMs: 0, errors: ['startGame failed: ' + (st && st.error)] };
   const t0 = now;
   const errors = [];
-  const cap = gameId === 'ma-soi' ? 30000 : 24000;
+  const cap = 24000;
   for (let i = 0; i < cap; i++) {
-    if (gameId === 'ca-ngua') await nguaDriveStep(drv, tok);
-    else if (gameId === 'tien-len') await tlDriveStep(drv, tok);
+    if (gameId === 'tien-len') await tlDriveStep(drv, tok);
     else if (gameId === 'ech-op' && i % 24 === 0) await drv.pAct(tok, { action: 'pad', pad: { r: true } });
     const v = await drv.state();
     if (!v || v.error) { errors.push('state error: ' + (v && v.error)); return { ok: false, fakeMs: now - t0, errors }; }
@@ -397,7 +376,7 @@ async function partD() {
       + (res && res.lastGame && res.lastGame.points[localSeat]) + ')');
   } catch (e) { check(false, 'D4 local-only threw: ' + e.message); }
 
-  // (5) Phone-mode room (hostSeat + phone + bots) completes ma-soi.
+  // (5) Phone-mode room (hostSeat + phone + bots) completes tien-len.
   try {
     const drv = await newDrv();
     const hj = await drv.act({ action: 'hostJoin', name: 'Chủ ĐT' });
@@ -405,109 +384,65 @@ async function partD() {
     const j = await drv.join('Bạn ĐT');
     await drv.act({ action: 'addBot', seat: 3 });
     await drv.act({ action: 'addBot', seat: 4 });
-    const st = await drv.act({ action: 'startGame', game: 'ma-soi' });
-    check(!!st && st.ok === true, 'D5 phone-mode: ma-soi starts (hostSeat + phone + 2 bots)');
+    const st = await drv.act({ action: 'startGame', game: 'tien-len' });
+    check(!!st && st.ok === true, 'D5 phone-mode: tien-len starts (hostSeat + phone + 2 bots)');
     let res = null; let sawMyView = false;
     for (let i = 0; i < 30000 && !res; i++) {
       const v = await drv.state();
       if (v.error) { check(false, 'D5 phone-mode: state error: ' + v.error); break; }
       if (v.phase === 'results') { res = v; break; }
-      const mv = v.myView;
-      if (mv && mv.id) { // myView IS the seat's gameView (fields at top level)
+      const g = v.myView;
+      if (g && g.id) { // myView IS the seat's gameView (fields at top level)
         sawMyView = true;
-        const g = mv;
-        const aliveOthers = Object.keys(g.aliveMap || {}).map(Number).filter((s) => s !== 1 && g.aliveMap[s]);
-        if (g.phase === 'night' && g.myAlive) {
-          if (g.myRole === 'soi' && g.myWolfVote == null && aliveOthers.length)
-            await drv.act({ action: 'wolfVote', forSeat: 1, seat: aliveOthers[0] });
-          else if (g.myRole === 'bao-ve' && g.myGuardPick == null) {
-            const tgt = g.myGuardLast === 1 ? (aliveOthers[0] || 1) : 1;
-            await drv.act({ action: 'wolfGuard', forSeat: 1, seat: tgt });
-          } else if (g.myRole === 'tien-tri' && g.mySeerPick == null && aliveOthers.length)
-            await drv.act({ action: 'wolfSeer', forSeat: 1, seat: aliveOthers[0] });
-          else if (g.myRole === 'phu-thuy' && !g.myWitchDone && g.wolvesIn)
-            await drv.act({ action: 'wolfWitch', forSeat: 1, done: true });
-        } else if (g.phase === 'vote' && g.myAlive && aliveOthers.length) {
-          const voted = (v.game && v.game.voted) || {};
-          if (!voted[1]) await drv.act({ action: 'vote', forSeat: 1, seat: aliveOthers[0] });
+        if (g.phase === 'cards' && g.myTurn && (g.myHand || []).length) {
+          const hand = g.myHand;
+          const cands = tlCandidates(hand);
+          if (cands.length) {
+            if (!g.table) {
+              let pool = cands;
+              if (g.mustInclude3) pool = cands.filter((c) => c.indexOf(0) >= 0);
+              if (!pool.length) pool = cands;
+              pool = pool.slice().sort((a, b) => (b.length - a.length) || (TL.comboOf(a).top - TL.comboOf(b).top));
+              await drv.act({ action: 'play', forSeat: 1, cards: pool[0] });
+            } else {
+              const tableCombo = TL.comboOf(g.table.cards);
+              const beaters = cands.filter((c) => TL.beats(TL.comboOf(c), tableCombo));
+              if (!beaters.length) await drv.act({ action: 'pass', forSeat: 1 });
+              else { beaters.sort((a, b) => TL.comboOf(a).top - TL.comboOf(b).top); await drv.act({ action: 'play', forSeat: 1, cards: beaters[0] }); }
+            }
+          }
         }
       }
       tick(250);
     }
     check(sawMyView, 'D5 phone-mode: the host view carries myView for the host seat during play');
-    check(!!res && res.lastGame && res.lastGame.id === 'ma-soi',
-      'D5 phone-mode: the phone-mode room completes ma-soi to results');
+    check(!!res && res.lastGame && res.lastGame.id === 'tien-len',
+      'D5 phone-mode: the phone-mode room completes tien-len to results');
     check(!!res && res.lastGame && typeof res.lastGame.points[1] === 'number' && res.lastGame.points[1] >= 50,
-      'D5 phone-mode: the host seat banked side points (got ' + (res && res.lastGame && res.lastGame.points[1]) + ')');
+      'D5 phone-mode: the host seat banked placement points (got ' + (res && res.lastGame && res.lastGame.points[1]) + ')');
   } catch (e) { check(false, 'D5 phone-mode threw: ' + e.message); }
 }
 
 // ============================ PART E =====================================
 async function partE() {
   console.log('\nPART E: secrecy string audits (2 phones per game)');
-  // --- ma-soi: night 1, before any death makes roles public.
-  const f0w = failures.length;
-  try {
-    const { drv, toks } = await buildRoom(4, 2, false);
-    await drv.act({ action: 'startGame', game: 'ma-soi' });
-    await pumpToPhase(drv, (g) => g.phase === 'night', 'E ma-soi night 1', 400);
-    const A = await drv.pState(toks[0]);
-    const B = await drv.pState(toks[1]);
-    const H = await drv.state();
-    const hJson = JSON.stringify(H);
-    check(hJson.indexOf('"myRole"') === -1 && hJson.indexOf('"wolfTeam"') === -1
-      && hJson.indexOf('"myVictim"') === -1 && hJson.indexOf('"mySeerNotes"') === -1
-      && hJson.indexOf('"roles"') === -1,
-      'E ma-soi: the host view carries no role secrets at night');
-    let nonWolfChecked = 0;
-    for (const [nm, X] of [['A', A], ['B', B]]) {
-      if (X.game && X.game.myRole !== 'soi') {
-        check(JSON.stringify(X).indexOf('"soi"') === -1,
-          'E ma-soi: non-wolf phone ' + nm + ' never contains the wolf role string');
-        nonWolfChecked += 1;
-      }
-    }
-    check(nonWolfChecked >= 1, 'E ma-soi: at least one non-wolf phone was audited (n=4 deals exactly 1 wolf)');
-    check(!!A.game.myRole && !!B.game.myRole,
-      'E ma-soi: each phone still sees exactly its own role');
-  } catch (e) { check(false, 'E ma-soi threw: ' + e.message); }
-  matrix['ma-soi'].secrecy = failures.length === f0w ? 'OK' : 'FAIL';
 
-  // --- ke-gia-mao: answer phase of round 1.
-  const f0i = failures.length;
-  try {
-    const { drv, toks } = await buildRoom(4, 2, false);
-    await drv.act({ action: 'startGame', game: 'ke-gia-mao' });
-    await pumpToPhase(drv, (g) => g.phase === 'answer', 'E impostor answer phase', 400);
-    const A = await drv.pState(toks[0]);
-    const B = await drv.pState(toks[1]);
-    const H = await drv.state();
-    const hJson = JSON.stringify(H);
-    const qA = A.game.myQuestion, qB = B.game.myQuestion;
-    check(typeof qA === 'string' && qA.length > 0 && typeof qB === 'string' && qB.length > 0,
-      'E ke-gia-mao: both phones hold a question in the answer phase');
-    check(hJson.indexOf(qA) === -1 && hJson.indexOf(qB) === -1,
-      'E ke-gia-mao: the host view contains NEITHER phone question before the reveal');
-    const rec = doFake.records.get(drv.code);
-    const stored = JSON.parse((await rec.state.storage.get('room')).json);
-    const impSeat = stored.game.imp && stored.game.imp.seat;
-    if (impSeat === 1 || impSeat === 2) {
-      const impQ = impSeat === 1 ? qA : qB;
-      const otherJson = JSON.stringify(impSeat === 1 ? B : A);
-      check(otherJson.indexOf(impQ) === -1,
-        'E ke-gia-mao: the impostor phone\'s fake question never reaches the other phone');
-    } else {
-      check(qA === qB, 'E ke-gia-mao: with a bot impostor both phones share the real question');
-    }
-  } catch (e) { check(false, 'E ke-gia-mao threw: ' + e.message); }
-  matrix['ke-gia-mao'].secrecy = failures.length === f0i ? 'OK' : 'FAIL';
 
   // --- tien-len: full hands exist only in their owner's view.
   const f0t = failures.length;
   try {
     const { drv, toks } = await buildRoom(4, 2, false);
     await drv.act({ action: 'startGame', game: 'tien-len' });
-    await pumpToPhase(drv, (g) => g.phase === 'cards', 'E tien-len cards phase', 400);
+    // A natural tới trắng skips the cards phase entirely; replay
+    // until a normal deal lands (same guard as local-test).
+    for (let tryN = 0; ; tryN++) {
+      await pumpToPhase(drv, (g) => g.phase === 'cards' || g.phase === 'tlWin', 'E tien-len cards phase', 400);
+      const gv = (await drv.state()).game;
+      if (gv && gv.phase === 'cards') break;
+      if (tryN >= 11) throw new Error('E tien-len: no non-tới-trắng deal in 12 attempts');
+      await pumpD(drv, 125, (s) => s.phase === 'results', 'E tien-len instant-win results', 400);
+      await drv.act({ action: 'replay' });
+    }
     const A = await drv.pState(toks[0]);
     const B = await drv.pState(toks[1]);
     const H = await drv.state();
@@ -523,41 +458,6 @@ async function partE() {
   } catch (e) { check(false, 'E tien-len threw: ' + e.message); }
   matrix['tien-len'].secrecy = failures.length === f0t ? 'OK' : 'FAIL';
 
-  // --- giai-ma-chung: mySteps are partitioned by seat.
-  const f0d = failures.length;
-  try {
-    const { drv, toks } = await buildRoom(4, 2, false);
-    await drv.act({ action: 'startGame', game: 'giai-ma-chung' });
-    await pumpToPhase(drv, (g) => g.phase === 'decode', 'E decode level 1', 400);
-    let checked = false;
-    for (let i = 0; i < 3000 && !checked; i++) {
-      const H = await drv.state();
-      if (H.phase === 'results') break;
-      const A = await drv.pState(toks[0]);
-      const B = await drv.pState(toks[1]);
-      if (A.game && A.game.mySteps && A.game.mySteps.length) {
-        const stepsA = JSON.stringify(A.game.mySteps);
-        check(JSON.stringify(B).indexOf(stepsA) === -1,
-          'E giai-ma: phone A\'s steps never appear in phone B\'s view');
-        check(JSON.stringify(H).indexOf(stepsA) === -1,
-          'E giai-ma: phone A\'s steps never appear in the host view');
-        check(JSON.stringify(A).indexOf(JSON.stringify(B.game.mySteps)) === -1 || !(B.game.mySteps || []).length,
-          'E giai-ma: phone B\'s steps never appear in phone A\'s view');
-        checked = true;
-        break;
-      }
-      // Drive whichever phone owns the current step so levels advance.
-      const done = H.game ? H.game.done : 0;
-      for (const [tok, X] of [[toks[0], A], [toks[1], B]]) {
-        const mine = (X.game && X.game.mySteps) || [];
-        const cur = mine.find((s) => s.pos === done + 1);
-        if (cur) await drv.pAct(tok, { action: 'symbol', sym: cur.sym });
-      }
-      tick(125);
-    }
-    check(checked, 'E giai-ma: phone A held steps to audit (round-robin deal guarantees them by level 2)');
-  } catch (e) { check(false, 'E giai-ma threw: ' + e.message); }
-  matrix['giai-ma-chung'].secrecy = failures.length === f0d ? 'OK' : 'FAIL';
 }
 
 // ============================ RUNNER =====================================

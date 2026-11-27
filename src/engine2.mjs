@@ -80,7 +80,6 @@ function createGame(room, gameId) {
   room.players.forEach((p) => { game.points[p.seat] = 0; game.streaks[p.seat] = 0; });
   if (gameId === 'do-vui') game.order = shuffle(QUIZ_BANK.map((_, i) => i)).slice(0, meta.rounds);
   // Chia Hay Cướp rotates pairs across the table: one round per player.
-  if (gameId === 'chia-cuop') game.totalRounds = Math.max(2, room.players.length);
   room.game = game;
   room.phase = 'playing';
   room.prevRanks = ranksOf(room);
@@ -127,11 +126,6 @@ function botDelay(diff, range) { return Math.round(rand(range[0], range[1])); }
 // Chia Hay Cướp bot personalities are deliberately deterministic so a
 // bot's word can be read at the table: Dễ bots always split, Khó bots
 // always steal, Vừa bots split on odd rounds and steal on even rounds.
-function chiaBotChoice(diff, round) {
-  if (diff === 'de') return 'chia';
-  if (diff === 'kho') return 'cuop';
-  return round % 2 === 1 ? 'chia' : 'cuop';
-}
 const NEGOT_LINES = [
   'Chia đôi cho lành nhé!',
   'Tin tui đi, chia là chắc ăn nhất.',
@@ -141,16 +135,6 @@ const NEGOT_LINES = [
 // Kẻ Giả Mạo bot discussion lines: deliberately generic — a bot must
 // never reference either question (it only knows its own, and saying
 // it out loud would break the secrecy rule for everyone).
-const IMP_CHAT_LINES = [
-  'Hmm… câu này ai cũng biết mà nhỉ?',
-  'Tôi trả lời chắc chắn 100% luôn.',
-  'Có người đang giấu đấy, nhìn là biết.',
-  'Mọi người bình tĩnh, tôi vô tội!',
-  'Câu này dễ ợt, khỏi bàn.',
-  'Ai cười tủm tỉm nãy giờ ấy nhỉ?',
-  'Tôi nghi người im lặng nhất phòng này.',
-  'Thề luôn, đáp án của tôi là thật.',
-];
 // Round setup must not erase a gamepad state the player is physically
 // still holding: both clients send pad state only when it changes, so
 // wiping g.pad at spawn would freeze anyone who grabbed a direction (or
@@ -261,20 +245,6 @@ function beginRound(room) {
       (p.seat % 2 === 1 ? teamA : teamB).push(p.seat);
     });
     g.teams = { A: teamA, B: teamB };
-  } else if (g.id === 'chia-cuop') {
-    // Pairs rotate around the table: round r pairs seats[(r-1) mod n] with
-    // seats[r mod n]; everyone else sits out and watches the negotiation.
-    const seats = room.players.map((p) => p.seat).sort((x, y) => x - y);
-    const n = seats.length;
-    g.pair = [seats[(g.round - 1) % n], seats[g.round % n]];
-    g.phase = 'talk'; g.endsAt = t + TALK_MS; g.chat = {};
-    g.pair.forEach((seat) => {
-      const p = playerAt(room, seat);
-      if (p && p.type === 'bot') {
-        g.botPlan[seat] = { choice: chiaBotChoice(p.difficulty, g.round) };
-        g.chat[seat] = { text: NEGOT_LINES[(g.round + seat) % NEGOT_LINES.length], at: t };
-      }
-    });
   } else if (g.id === 'cuop-sao') {
     g.phase = 'steal';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + STEAL_MS;
@@ -387,24 +357,6 @@ function beginRound(room) {
         if (Math.random() < BOM_SOFT_P) g.softCells.push([c, r]);
       }
     }
-  } else if (g.id === 'ke-gia-mao') {
-    // Secrecy starts here: the impostor seat and the question pair live
-    // only in g.imp on the server; views hand each player their OWN
-    // question and the host nothing but status (see gameView).
-    const impostor = pick(room.players);
-    const avail = IMPOSTOR_BANK.map((_, i) => i).filter((i) => (g.usedPairs || []).indexOf(i) < 0);
-    const pairIdx = avail.length ? pick(avail) : randInt(0, IMPOSTOR_BANK.length - 1);
-    g.usedPairs.push(pairIdx);
-    g.imp = { seat: impostor.seat, pair: pairIdx };
-    g.votes = {}; g.chatLog = [];
-    g.phase = 'answer'; g.endsAt = t + IMP_ANSWER_MS;
-    bots.forEach((p) => {
-      g.botPlan[p.seat] = {
-        answerAt: t + Math.round(rand(3000, 20000)), answer: randInt(0, 3),
-        chatAt: t + IMP_ANSWER_MS + Math.round(rand(4000, 30000)), chatLine: pick(IMP_CHAT_LINES), chatted: false,
-        voteAt: 0, vote: null,
-      };
-    });
   } else if (g.id === 'thu-thanh') {
     g.phase = 'defend';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + DEF_MS;
@@ -412,11 +364,6 @@ function beginRound(room) {
     initGuns(room);
     g.crystal = { hp: DEF_CRYSTAL_HP };
     g.slimes = []; g.slimeSeq = 0; g.kills = 0; g.spawnIn = 16;
-  } else if (g.id === 'giai-ma-chung') {
-    g.phase = 'decode';
-    g.endsAt = t + DECODE_MS;
-    g.hearts = DECODE_HEARTS; g.level = 0; g.levelsDone = 0;
-    startDecodeLevel(room, t);
   } else if (g.id === 'nguoi-que') {
     g.phase = 'fight';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + FIGHT_MS;
@@ -446,41 +393,6 @@ function beginRound(room) {
       g.chars[p.seat] = { x: st.x, y: st.y, vx: 0, vy: 0, ground: true, el, home: false };
       g.wpIdx[p.seat] = 0; g.wpAt[p.seat] = 0;
     });
-  } else if (g.id === 'ma-soi') {
-    // Roles are dealt secretly HERE and live only in g.wolf; views
-    // hand each phone its own role and nothing else (see gameView).
-    const seats = room.players.map((p) => p.seat);
-    const n = seats.length;
-    const nWolves = n <= 5 ? 1 : n <= 8 ? 2 : 3;
-    const deal = shuffle(seats.slice());
-    const roles = {}; const alive = {};
-    deal.forEach((seat, i) => {
-      roles[seat] = i < nWolves ? 'soi'
-        : i === nWolves ? 'tien-tri'
-        : i === nWolves + 1 ? 'bao-ve'
-        : (n >= 6 && i === nWolves + 2) ? 'phu-thuy' : 'dan';
-      alive[seat] = true;
-    });
-    g.wolf = {
-      roles, alive,
-      wolfVotes: {}, guardPick: null, guardLast: null, seerPick: null, seerNotes: {},
-      witch: { save: false, poison: null, done: false }, saveLeft: 1, poisonLeft: 1,
-      deaths: [], dawnDeaths: [], exec: null, voteTally: null, winner: null,
-    };
-    g.votes = {}; g.chatLog = [];
-    g.phase = 'night'; g.endsAt = t + WOLF_NIGHT_MS;
-    wolfPlanNight(room, t);
-  } else if (g.id === 'ca-ngua') {
-    const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
-    g.ng = {
-      boards: {}, horses: {}, turn: seats[0], dice: null, legal: [], chain: 0,
-      actAt: t + NGUA_BOT_MS, autoAt: 0, winner: null, last: null, log: [],
-    };
-    room.players.forEach((p) => {
-      g.ng.boards[p.seat] = seats.indexOf(p.seat);
-      g.ng.horses[p.seat] = [0, 0, 0, 0];
-    });
-    g.phase = 'roll'; g.endsAt = t + NGUA_TURN_MS;
   } else if (g.id === 'tien-len') {
     const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
     const deck = shuffle(Array.from({ length: 52 }, (_, i) => i));
@@ -605,7 +517,6 @@ function step(room) {
   if (g.id === 'day-ra') return stepArena(room, t);
   if (g.id === 'ne-dan') return stepDodge(room, t);
   if (g.id === 'keo-co') return stepTug(room, t);
-  if (g.id === 'chia-cuop') return stepChia(room, t);
   if (g.id === 'cuop-sao') return stepSteal(room, t);
   if (g.id === 'giu-vuong-mien') return stepCrown(room, t);
   if (g.id === 'son-san') return stepSplat(room, t);
@@ -615,13 +526,9 @@ function step(room) {
   if (g.id === 'cheo-thuyen') return stepRow(room, t);
   if (g.id === 'xe-tank') return stepTank(room, t);
   if (g.id === 'dat-bom') return stepBomber(room, t);
-  if (g.id === 'ke-gia-mao') return stepImpostor(room, t);
   if (g.id === 'thu-thanh') return stepDefend(room, t);
-  if (g.id === 'giai-ma-chung') return stepDecode(room, t);
   if (g.id === 'nguoi-que') return stepFight(room, t);
   if (g.id === 'den-lua-nuoc') return stepTemple(room, t);
-  if (g.id === 'ma-soi') return stepWolf(room, t);
-  if (g.id === 'ca-ngua') return stepNgua(room, t);
   if (g.id === 'tien-len') return stepTienLen(room, t);
   if (g.id === 'da-bong') return stepSoccer(room, t);
   if (g.id === 'ech-op') return stepFrog(room, t);
@@ -1088,58 +995,6 @@ function finishTug(room, winnerTeam) {
 // are NEVER put into any view before the reveal phase. A player who does
 // not choose in time defaults to Chia. Pot is POT, doubled on the final
 // round: both Chia = half each, lone Cướp takes all, both Cướp = 0.
-function stepChia(room, t) {
-  const g = room.game;
-  if (g.phase === 'talk') {
-    if (t >= g.endsAt) { enterChiaChoose(room); return true; }
-    return false;
-  }
-  if (g.phase === 'choose') {
-    const both = (g.pair || []).every((s) => !!g.inputs[s]);
-    if (both || t >= g.endsAt) { resolveChia(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'reveal') {
-    if (t >= g.endsAt) { nextRoundOrEnd(room); return true; }
-  }
-  return false;
-}
-function enterChiaChoose(room) {
-  const g = room.game; const t = now();
-  g.phase = 'choose'; g.endsAt = t + CHOOSE_MS;
-  (g.pair || []).forEach((seat) => {
-    const p = playerAt(room, seat);
-    if (p && p.type === 'bot') { const plan = g.botPlan[seat]; if (plan) g.inputs[seat] = { choice: plan.choice, at: t }; }
-  });
-}
-function resolveChia(room, t) {
-  const g = room.game;
-  const pot = isFinalRound(g) ? POT * 2 : POT;
-  const sa = g.pair[0], sb = g.pair[1];
-  const ca = (g.inputs[sa] && g.inputs[sa].choice) || 'chia';
-  const cb = (g.inputs[sb] && g.inputs[sb].choice) || 'chia';
-  const won = {};
-  won[sa] = 0; won[sb] = 0;
-  if (ca === 'chia' && cb === 'chia') { won[sa] = pot / 2; won[sb] = pot / 2; }
-  else if (ca === 'cuop' && cb === 'chia') won[sa] = pot;
-  else if (ca === 'chia' && cb === 'cuop') won[sb] = pot;
-  const entries = [sa, sb].map((seat, i) => ({
-    seat, choice: seat === sa ? ca : cb, points: won[seat], revealAt: t + 700 + i * 1500,
-  }));
-  const ptsAll = {};
-  room.players.forEach((p) => { ptsAll[p.seat] = won[p.seat] || 0; g.points[p.seat] = (g.points[p.seat] || 0) + ptsAll[p.seat]; });
-  g.reveal = { pot, entries };
-  g.lastRound = { round: g.round, points: ptsAll, pair: g.pair.slice() };
-  finishTimedRound(room, 'reveal', t + 700 + 2 * 1500 + 900);
-}
-
-// ---------------------------------------------------------------------------
-// Shared helpers for the three walled tick-arena games below (Cướp Sao,
-// Giữ Vương Miện, Sơn Sàn). They follow the same patterns as Đẩy Ra Khỏi
-// Sàn / Né Đạn: gamepad held-state for humans, per-difficulty bot brains
-// that re-decide on a fixed tick cadence, one simulation tick per
-// TICK_MS, placement points awarded once per match (300/200/100/50).
-// ---------------------------------------------------------------------------
 function collectMoves(room, brain) {
   const g = room.game;
   const moves = {};
@@ -2296,537 +2151,6 @@ function botBrainBomber(room, p) {
 // strict plurality accusation against the impostor catches them
 // (everyone else +150); any tie or a wrong plurality lets the impostor
 // escape (+300, doubled in the final round).
-function stepImpostor(room, t) {
-  const g = room.game;
-  if (g.phase === 'answer') {
-    room.players.forEach((p) => {
-      if (p.type !== 'bot') return;
-      const plan = g.botPlan[p.seat];
-      if (plan && plan.answerAt <= t && !g.inputs[p.seat]) g.inputs[p.seat] = { choice: plan.answer, at: plan.answerAt };
-    });
-    if (t >= g.endsAt || humansAllIn(room, (s) => !!g.inputs[s])) {
-      g.phase = 'discuss'; g.endsAt = t + IMP_DISCUSS_MS;
-      return true;
-    }
-    return false;
-  }
-  if (g.phase === 'discuss') {
-    room.players.forEach((p) => {
-      if (p.type !== 'bot') return;
-      const plan = g.botPlan[p.seat];
-      if (plan && !plan.chatted && plan.chatAt <= t) {
-        plan.chatted = true;
-        g.chatLog.push({ seat: p.seat, text: plan.chatLine, at: t });
-        if (g.chatLog.length > 30) g.chatLog = g.chatLog.slice(-30);
-      }
-    });
-    if (t >= g.endsAt) {
-      g.phase = 'vote'; g.endsAt = t + IMP_VOTE_MS;
-      room.players.forEach((p) => {
-        if (p.type !== 'bot') return;
-        const others = room.players.filter((q) => q.seat !== p.seat).map((q) => q.seat);
-        g.botPlan[p.seat].voteAt = t + Math.round(rand(2000, 14000));
-        g.botPlan[p.seat].vote = pick(others);
-      });
-      return true;
-    }
-    return false;
-  }
-  if (g.phase === 'vote') {
-    room.players.forEach((p) => {
-      if (p.type !== 'bot') return;
-      const plan = g.botPlan[p.seat];
-      if (plan && plan.voteAt && plan.voteAt <= t && g.votes[p.seat] == null) g.votes[p.seat] = plan.vote;
-    });
-    if (t >= g.endsAt || humansAllIn(room, (s) => g.votes[s] != null)) { resolveImpostor(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'reveal') {
-    if (t >= g.endsAt) { nextRoundOrEnd(room); return true; }
-  }
-  return false;
-}
-function resolveImpostor(room, t) {
-  const g = room.game;
-  const counts = {};
-  Object.keys(g.votes).forEach((s) => { counts[g.votes[s]] = (counts[g.votes[s]] || 0) + 1; });
-  let topSeat = null, topCount = 0, tie = false;
-  Object.keys(counts).forEach((s) => {
-    const c = counts[s];
-    if (c > topCount) { topCount = c; topSeat = +s; tie = false; }
-    else if (c === topCount) tie = true;
-  });
-  const caught = !tie && topCount > 0 && topSeat === g.imp.seat;
-  const pts = {};
-  room.players.forEach((p) => {
-    let v = 0;
-    if (caught) v = p.seat === g.imp.seat ? 0 : 150;
-    else if (p.seat === g.imp.seat) v = isFinalRound(g) ? 600 : 300;
-    pts[p.seat] = v;
-    g.points[p.seat] = (g.points[p.seat] || 0) + v;
-  });
-  const answers = {};
-  room.players.forEach((p) => { answers[p.seat] = g.inputs[p.seat] ? g.inputs[p.seat].choice : null; });
-  g.reveal = { impostor: g.imp.seat, pair: g.imp.pair, caught, votes: Object.assign({}, g.votes), answers, points: pts };
-  g.lastRound = { round: g.round, entries: room.players.map((p) => ({ seat: p.seat, points: pts[p.seat] })) };
-  finishTimedRound(room, 'reveal', t + IMP_REVEAL_MS);
-}
-
-// --- Game: Ma Sói (hidden-role social deduction) ---------------------------
-// Flow per round: night (wolves pick a victim by vote — plurality,
-// ties broken by the lowest-seat wolf's choice; guard protects one
-// player, never the same target two nights running; seer inspects
-// one player and learns wolf/not-wolf into their PRIVATE notes; the
-// witch, once every living wolf has locked a vote, privately sees
-// the victim and may spend her one save and/or her one poison) ->
-// dawn (the dead are announced, roles public from death on) -> day
-// discussion (public chat) -> vote (plurality executed, tie = nobody)
-// -> execute reveal. Win checks run after every death resolution:
-// wolves win at parity, the village wins when the last wolf dies.
-// Points go to the WINNING SIDE as a block: wolves 300 each, village
-// 200 each, losers 50 each — dying early never costs your side's pay.
-function wolfWinner(room) {
-  const g = room.game; const w = g.wolf;
-  const alive = room.players.filter((p) => w.alive[p.seat]);
-  const wolves = alive.filter((p) => w.roles[p.seat] === 'soi').length;
-  if (wolves === 0) return 'dan';
-  if (wolves >= alive.length - wolves) return 'soi';
-  if (g.round >= WOLF_NIGHT_CAP) return wolves * 2 >= alive.length ? 'soi' : 'dan';
-  return null;
-}
-function wolfWolvesIn(room) {
-  const w = room.game.wolf;
-  return room.players.every((p) => !w.alive[p.seat] || w.roles[p.seat] !== 'soi' || w.wolfVotes[p.seat] != null);
-}
-function wolfVictim(room) {
-  const w = room.game.wolf;
-  const counts = {}; const firstVoter = {};
-  Object.keys(w.wolfVotes).forEach((s) => {
-    const tgt = w.wolfVotes[s];
-    counts[tgt] = (counts[tgt] || 0) + 1;
-    if (firstVoter[tgt] == null || +s < firstVoter[tgt]) firstVoter[tgt] = +s;
-  });
-  let best = null;
-  Object.keys(counts).forEach((tgt) => {
-    if (best == null || counts[tgt] > counts[best]
-      || (counts[tgt] === counts[best] && firstVoter[tgt] < firstVoter[best])) best = +tgt;
-  });
-  return best;
-}
-function wolfSeerApply(room, seat, target) {
-  const w = room.game.wolf;
-  w.seerPick = target;
-  if (!w.seerNotes[seat]) w.seerNotes[seat] = {};
-  w.seerNotes[seat][target] = w.roles[target] === 'soi';
-}
-function wolfAllIn(room) {
-  const g = room.game; const w = g.wolf;
-  return room.players.every((p) => {
-    if (!w.alive[p.seat]) return true;
-    const role = w.roles[p.seat];
-    if (role === 'soi') return w.wolfVotes[p.seat] != null;
-    if (role === 'bao-ve') return w.guardPick != null;
-    if (role === 'tien-tri') return w.seerPick != null;
-    if (role === 'phu-thuy') {
-      const needed = (w.saveLeft > 0 || w.poisonLeft > 0);
-      return !needed || w.witch.done;
-    }
-    return true;
-  });
-}
-function wolfPlanNight(room, t) {
-  const g = room.game; const w = g.wolf;
-  g.botPlan = {};
-  const nonWolves = room.players.filter((p) => w.alive[p.seat] && w.roles[p.seat] !== 'soi').map((p) => p.seat);
-  const packTarget = nonWolves.length ? pick(nonWolves) : null;
-  room.players.forEach((p) => {
-    if (p.type !== 'bot' || !w.alive[p.seat]) return;
-    const role = w.roles[p.seat];
-    const at = t + Math.round(rand(2500, 20000));
-    if (role === 'soi') {
-      // Pack play: Khó wolves always hunt the shared victim, Vừa
-      // wolves join it half the time, Dễ wolves wander off alone.
-      const share = p.difficulty === 'kho' || (p.difficulty === 'vua' && Math.random() < 0.5);
-      g.botPlan[p.seat] = { at, target: share && packTarget != null ? packTarget : (nonWolves.length ? pick(nonWolves) : null) };
-    } else if (role === 'bao-ve') {
-      let cands = room.players.filter((q) => w.alive[q.seat] && q.seat !== w.guardLast).map((q) => q.seat);
-      if (!cands.length && w.guardLast != null && w.alive[w.guardLast]) cands = [w.guardLast];
-      g.botPlan[p.seat] = { at, target: cands.length ? pick(cands) : null };
-    } else if (role === 'tien-tri') {
-      const notes = w.seerNotes[p.seat] || {};
-      const cands = room.players.filter((q) => w.alive[q.seat] && q.seat !== p.seat && !(q.seat in notes)).map((q) => q.seat);
-      g.botPlan[p.seat] = { at, target: cands.length ? pick(cands) : null };
-    } else if (role === 'phu-thuy') {
-      g.botPlan[p.seat] = { at }; // decided live in stepWolf — she needs the victim first
-    }
-  });
-}
-function wolfBotVote(room, p) {
-  const g = room.game; const w = g.wolf;
-  const role = w.roles[p.seat];
-  const others = room.players.filter((q) => w.alive[q.seat] && q.seat !== p.seat).map((q) => q.seat);
-  if (!others.length) return null;
-  if (role === 'tien-tri') {
-    // The seer pushes a wolf they have SEEN — but only through the
-    // ballot box, never by claiming in chat (lines stay generic).
-    const notes = w.seerNotes[p.seat] || {};
-    const known = others.find((s) => notes[s] === true);
-    if (known != null) return known;
-    const uncleared = others.filter((s) => notes[s] !== false);
-    return pick(uncleared.length ? uncleared : others);
-  }
-  if (role === 'soi') {
-    const nonWolves = others.filter((s) => w.roles[s] !== 'soi');
-    if (p.difficulty === 'kho' && nonWolves.length) return pick(nonWolves);
-    if (p.difficulty === 'vua' && nonWolves.length && Math.random() < 0.8) return pick(nonWolves);
-    return pick(others);
-  }
-  return pick(others);
-}
-function stepWolf(room, t) {
-  const g = room.game; const w = g.wolf;
-  if (g.phase === 'night') {
-    room.players.forEach((p) => {
-      if (p.type !== 'bot' || !w.alive[p.seat]) return;
-      const plan = g.botPlan[p.seat];
-      if (!plan || plan.at > t || plan.done) return;
-      const role = w.roles[p.seat];
-      if (role === 'soi' && w.wolfVotes[p.seat] == null && plan.target != null) {
-        w.wolfVotes[p.seat] = plan.target; plan.done = true;
-      } else if (role === 'bao-ve' && w.guardPick == null && plan.target != null) {
-        w.guardPick = plan.target; plan.done = true;
-      } else if (role === 'tien-tri' && w.seerPick == null && plan.target != null) {
-        wolfSeerApply(room, p.seat, plan.target); plan.done = true;
-      } else if (role === 'phu-thuy' && !w.witch.done) {
-        if (!wolfWolvesIn(room)) return; // the witch wakes after the pack
-        const victim = wolfVictim(room);
-        const saveP = p.difficulty === 'kho' ? 0.8 : p.difficulty === 'vua' ? 0.55 : 0.3;
-        if (victim != null && w.saveLeft > 0 && Math.random() < saveP) w.witch.save = true;
-        const poisonP = p.difficulty === 'kho' ? 0.25 : p.difficulty === 'vua' ? 0.12 : 0.05;
-        if (w.poisonLeft > 0 && Math.random() < poisonP) {
-          const cands = room.players.filter((q) => w.alive[q.seat] && q.seat !== p.seat && q.seat !== victim).map((q) => q.seat);
-          if (cands.length) w.witch.poison = pick(cands);
-        }
-        w.witch.done = true; plan.done = true;
-      }
-    });
-    if (t >= g.endsAt || wolfAllIn(room)) { resolveWolfNight(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'dawn') {
-    if (t >= g.endsAt) { wolfEnterDiscuss(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'discuss') {
-    room.players.forEach((p) => {
-      if (p.type !== 'bot' || !w.alive[p.seat]) return;
-      const plan = g.botPlan[p.seat];
-      if (plan && !plan.chatted && plan.chatAt && plan.chatAt <= t) {
-        plan.chatted = true;
-        g.chatLog.push({ seat: p.seat, text: plan.chatLine, at: t });
-        if (g.chatLog.length > 40) g.chatLog = g.chatLog.slice(-40);
-      }
-    });
-    if (t >= g.endsAt) { wolfEnterVote(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'vote') {
-    room.players.forEach((p) => {
-      if (p.type !== 'bot' || !w.alive[p.seat]) return;
-      const plan = g.botPlan[p.seat];
-      if (plan && plan.voteAt && plan.voteAt <= t && g.votes[p.seat] == null && plan.vote != null) {
-        g.votes[p.seat] = plan.vote;
-      }
-    });
-    const allIn = room.players.every((p) => !w.alive[p.seat] || g.votes[p.seat] != null);
-    if (t >= g.endsAt || allIn) { resolveWolfVote(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'execute') {
-    if (t >= g.endsAt) { wolfNextNight(room, t); return true; }
-    return false;
-  }
-  if (g.phase === 'wolfEnd') {
-    if (t >= g.endsAt) { endGame(room); return true; }
-  }
-  return false;
-}
-function resolveWolfNight(room, t) {
-  const g = room.game; const w = g.wolf;
-  const victim = wolfVictim(room);
-  // Resolution order: the guard's protection and the witch's save
-  // both cancel the wolf kill; the witch's poison always kills
-  // (it slips past the guard and past a save spent on the victim).
-  const saved = victim != null && (w.guardPick === victim || (w.witch.done && w.witch.save));
-  const deaths = [];
-  if (victim != null && !saved) deaths.push({ seat: victim, cause: 'soi' });
-  if (w.witch.done && w.witch.poison != null && w.alive[w.witch.poison]
-    && !deaths.some((d) => d.seat === w.witch.poison)) {
-    deaths.push({ seat: w.witch.poison, cause: 'doc' });
-  }
-  if (w.witch.done) {
-    if (w.witch.save && victim != null) w.saveLeft = 0;
-    if (w.witch.poison != null) w.poisonLeft = 0;
-  }
-  w.guardLast = w.guardPick;
-  w.dawnDeaths = [];
-  deaths.forEach((d) => {
-    w.alive[d.seat] = false;
-    const rec = { seat: d.seat, role: w.roles[d.seat], cause: d.cause, night: g.round };
-    w.deaths.push(rec); w.dawnDeaths.push(rec);
-  });
-  const winner = wolfWinner(room);
-  if (winner) { finishWolf(room, winner, t); return; }
-  g.phase = 'dawn'; g.endsAt = t + WOLF_DAWN_MS;
-}
-function wolfEnterDiscuss(room, t) {
-  const g = room.game;
-  g.chatLog = [];
-  g.phase = 'discuss'; g.endsAt = t + WOLF_DISCUSS_MS;
-  g.botPlan = {};
-  room.players.forEach((p) => {
-    if (p.type !== 'bot' || !room.game.wolf.alive[p.seat]) return;
-    if (Math.random() < 0.75) {
-      g.botPlan[p.seat] = { chatAt: t + Math.round(rand(4000, 40000)), chatLine: pick(WOLF_CHAT_LINES), chatted: false };
-    }
-  });
-}
-function wolfEnterVote(room, t) {
-  const g = room.game;
-  g.votes = {};
-  g.phase = 'vote'; g.endsAt = t + WOLF_VOTE_MS;
-  g.botPlan = {};
-  room.players.forEach((p) => {
-    if (p.type !== 'bot' || !room.game.wolf.alive[p.seat]) return;
-    g.botPlan[p.seat] = { voteAt: t + Math.round(rand(3000, 20000)), vote: wolfBotVote(room, p) };
-  });
-}
-function resolveWolfVote(room, t) {
-  const g = room.game; const w = g.wolf;
-  const counts = {};
-  Object.keys(g.votes).forEach((s) => {
-    if (w.alive[+s] && w.alive[g.votes[s]]) counts[g.votes[s]] = (counts[g.votes[s]] || 0) + 1;
-  });
-  let top = null, topN = 0, tie = false;
-  Object.keys(counts).forEach((s) => {
-    const c = counts[s];
-    if (c > topN) { topN = c; top = +s; tie = false; }
-    else if (c === topN) tie = true;
-  });
-  w.voteTally = counts;
-  if (top != null && !tie && topN > 0) {
-    w.alive[top] = false;
-    w.deaths.push({ seat: top, role: w.roles[top], cause: 'treo', night: g.round });
-    w.exec = { seat: top, role: w.roles[top] };
-  } else {
-    w.exec = { seat: null, role: null };
-  }
-  const winner = wolfWinner(room);
-  if (winner) { finishWolf(room, winner, t); return; }
-  g.phase = 'execute'; g.endsAt = t + WOLF_EXEC_MS;
-}
-function wolfNextNight(room, t) {
-  const g = room.game; const w = g.wolf;
-  g.round += 1;
-  w.wolfVotes = {}; w.guardPick = null; w.seerPick = null;
-  w.witch = { save: false, poison: null, done: false };
-  w.dawnDeaths = []; w.exec = null; w.voteTally = null;
-  g.votes = {}; g.inputs = {};
-  g.phase = 'night'; g.endsAt = t + WOLF_NIGHT_MS;
-  wolfPlanNight(room, t);
-}
-function finishWolf(room, winner, t) {
-  const g = room.game; const w = g.wolf;
-  w.winner = winner;
-  const entries = room.players.map((p) => {
-    const isWolf = w.roles[p.seat] === 'soi';
-    const won = (winner === 'soi') === isWolf;
-    const pts = won ? (isWolf ? 300 : 200) : 50;
-    g.points[p.seat] = pts;
-    return { seat: p.seat, points: pts, role: w.roles[p.seat] };
-  });
-  g.lastRound = { round: g.round, entries };
-  finishTimedRound(room, 'wolfEnd', t + WOLF_END_MS);
-}
-
-// --- Game: Cờ Cá Ngựa (Vietnamese Ludo) -------------------------------------
-function nguaLegal(room, seat, dice) {
-  const horses = room.game.ng.horses[seat];
-  const out = [];
-  horses.forEach((p, h) => {
-    if (p === 0) { if (dice === 6) out.push(h); }
-    else if (p + dice <= 58) out.push(h);
-  });
-  return out;
-}
-function nguaProgress(room, seat) {
-  const horses = room.game.ng.horses[seat];
-  return horses.filter((p) => p === 58).length * 100 + horses.reduce((a, b) => a + b, 0);
-}
-function nguaCellOf(room, seat, p) {
-  if (p < 1 || p > 51) return null;
-  return (NGUA_OFFSETS[room.game.ng.boards[seat]] + p - 1) % 52;
-}
-function nguaLog(room, text) {
-  const ng = room.game.ng;
-  ng.log.push(text);
-  if (ng.log.length > 6) ng.log = ng.log.slice(-6);
-}
-function nguaRoll(room, t) {
-  const g = room.game; const ng = g.ng;
-  const seat = ng.turn;
-  const dice = randInt(1, 6);
-  ng.dice = dice;
-  if (dice === 6) ng.chain += 1; else ng.chain = 0;
-  // Three consecutive sixes: the third roll is forfeited outright.
-  ng.legal = ng.chain >= 3 ? [] : nguaLegal(room, seat, dice);
-  if (ng.chain >= 3) nguaLog(room, playerAt(room, seat).name + ' thảy 6 ba lần liên tiếp — mất lượt!');
-  g.phase = 'pick';
-  ng.autoAt = t + (playerAt(room, seat).type === 'bot' ? NGUA_BOT_MS : NGUA_BEAT_MS);
-  g.endsAt = t + NGUA_TURN_MS;
-  return dice;
-}
-function nguaMove(room, seat, h, t) {
-  const g = room.game; const ng = g.ng;
-  const me = playerAt(room, seat);
-  const dice = ng.dice;
-  const from = ng.horses[seat][h];
-  const to = from === 0 ? 1 : from + dice;
-  ng.horses[seat][h] = to;
-  const kicked = [];
-  const cell = nguaCellOf(room, seat, to);
-  if (cell != null && !NGUA_SAFE.has(cell)) {
-    room.players.forEach((q) => {
-      if (q.seat === seat) return;
-      ng.horses[q.seat].forEach((qp, qh) => {
-        if (nguaCellOf(room, q.seat, qp) === cell) {
-          ng.horses[q.seat][qh] = 0;
-          if (kicked.indexOf(q.seat) < 0) kicked.push(q.seat);
-        }
-      });
-    });
-  }
-  ng.last = { seat, dice, horse: h, from, to, kicked, at: t };
-  let text = me.name + ' thảy ' + dice + ': ngựa ' + (h + 1);
-  if (from === 0) text += ' xuất chuồng';
-  else if (to === 58) text += ' VỀ CHUỒNG ĐÍCH!';
-  else text += ' đi tới ô ' + to;
-  kicked.forEach((ks) => { text += ' · ĐÁ NGỰA của ' + playerAt(room, ks).name + '!'; });
-  nguaLog(room, text);
-  if (ng.horses[seat].every((p) => p === 58)) { finishNgua(room, seat, t); return; }
-  if (dice === 6) {
-    // A six earns another roll (chain < 3 is guaranteed: a third
-    // consecutive six never reaches the move step at all).
-    g.phase = 'roll'; ng.dice = null; ng.legal = [];
-    ng.actAt = t + NGUA_BOT_MS; g.endsAt = t + NGUA_TURN_MS;
-  } else {
-    nguaEndTurn(room, t);
-  }
-}
-function nguaEndTurn(room, t) {
-  const g = room.game; const ng = g.ng;
-  const seats = room.players.map((p) => p.seat).sort((a, b) => a - b);
-  ng.turn = seats[(seats.indexOf(ng.turn) + 1) % seats.length];
-  ng.chain = 0; ng.dice = null; ng.legal = [];
-  g.phase = 'roll'; ng.actAt = t + NGUA_BOT_MS; g.endsAt = t + NGUA_TURN_MS;
-}
-function nguaBotPick(room, seat) {
-  const g = room.game; const ng = g.ng;
-  const p = playerAt(room, seat);
-  const legal = ng.legal.slice();
-  if (!legal.length) return null;
-  const blunder = p.difficulty === 'de' ? 0.35 : p.difficulty === 'vua' ? 0.15 : 0.05;
-  if (Math.random() < blunder) return pick(legal);
-  const dice = ng.dice;
-  let best = legal[0], bestScore = -1;
-  legal.forEach((h) => {
-    const from = ng.horses[seat][h];
-    const to = from === 0 ? 1 : from + dice;
-    let score;
-    if (to === 58) score = 100;                       // bring a horse home
-    else if (from === 0) score = 80;                  // leave the stable
-    else {
-      const cell = nguaCellOf(room, seat, to);
-      let kicks = false;
-      if (cell != null && !NGUA_SAFE.has(cell)) {
-        room.players.forEach((q) => {
-          if (q.seat === seat) return;
-          if (ng.horses[q.seat].some((qp) => nguaCellOf(room, q.seat, qp) === cell)) kicks = true;
-        });
-      }
-      score = kicks ? 90 : 10 + to;                   // kick, else advance the leader
-    }
-    if (score > bestScore) { bestScore = score; best = h; }
-  });
-  return best;
-}
-function nguaHint(room, seat, h) {
-  const g = room.game; const ng = g.ng;
-  const from = ng.horses[seat][h];
-  const dice = ng.dice;
-  const to = from === 0 ? 1 : from + dice;
-  if (from === 0) return 'Xuất chuồng';
-  if (to === 58) return 'Về chuồng đích!';
-  if (to >= 52) return 'Vào đường về chuồng (' + (to - 51) + '/6)';
-  const cell = nguaCellOf(room, seat, to);
-  if (cell != null && !NGUA_SAFE.has(cell)) {
-    let kickName = null;
-    room.players.forEach((q) => {
-      if (q.seat === seat) return;
-      if (ng.horses[q.seat].some((qp) => nguaCellOf(room, q.seat, qp) === cell)) kickName = q.name;
-    });
-    if (kickName) return 'ĐÁ NGỰA của ' + kickName + '!';
-    return 'Đi ' + dice + ' ô';
-  }
-  return 'Về ô an toàn';
-}
-function stepNgua(room, t) {
-  const g = room.game; const ng = g.ng;
-  if (g.phase === 'ngWin') {
-    if (t >= g.endsAt) { endGame(room); return true; }
-    return false;
-  }
-  if (g.phase === 'roll') {
-    const cur = playerAt(room, ng.turn);
-    if (cur && cur.type === 'bot' && t >= ng.actAt) { nguaRoll(room, t); return true; }
-    if (t >= g.endsAt) { nguaRoll(room, t); return true; } // idle human: the server rolls for them
-    return false;
-  }
-  if (g.phase === 'pick') {
-    if (!ng.legal.length) {
-      if (t >= ng.autoAt) { nguaEndTurn(room, t); return true; }
-      return false;
-    }
-    const cur = playerAt(room, ng.turn);
-    if (cur && cur.type === 'bot' && t >= ng.autoAt) {
-      const h = nguaBotPick(room, ng.turn);
-      if (h != null) nguaMove(room, ng.turn, h, t);
-      return true;
-    }
-    if (t >= g.endsAt) { nguaMove(room, ng.turn, pick(ng.legal), t); return true; } // timeout: a random legal move
-    return false;
-  }
-  return false;
-}
-function finishNgua(room, winnerSeat, t) {
-  const g = room.game; const ng = g.ng;
-  ng.winner = winnerSeat;
-  const ranking = room.players.slice().sort((a, b) => {
-    if (a.seat === winnerSeat) return -1;
-    if (b.seat === winnerSeat) return 1;
-    return (nguaProgress(room, b.seat) - nguaProgress(room, a.seat)) || (a.seat - b.seat);
-  });
-  const entries = ranking.map((p, i) => ({ seat: p.seat, points: placementAt(i), progress: nguaProgress(room, p.seat) }));
-  entries.forEach((e) => { g.points[e.seat] = e.points; });
-  g.lastRound = { round: 1, entries };
-  finishTimedRound(room, 'ngWin', t + NGUA_WIN_MS);
-}
-
-// --- Game: Tiến Lên Miền Nam (Vietnamese Thirteen) --------------------------
-// Cards are ids 0..51: rankValue r = id % 13 maps to the ranks
-// 3,4,5,6,7,8,9,10,J,Q,K,A,2 (2 is highest, r = 12); suit
-// s = floor(id / 13) runs ♠ ♣ ♦ ♥ (♥ highest). Strength compares rank
-// first, then suit, so r * 4 + s orders any two cards with one number.
 const TL_RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
 const TL_SUITS = ['♠', '♣', '♦', '♥'];
 function tlRank(id) { return id % 13; }
@@ -3251,72 +2575,6 @@ function botBrainDefend(room, p) {
 // presser owns the current step AND the symbol matches; anything else
 // costs the team a heart. Bots press their own step correctly ~800ms
 // after it becomes current and never press otherwise.
-function startDecodeLevel(room, t) {
-  const g = room.game;
-  g.level += 1;
-  const len = Math.min(3 + g.level - 1, 7);
-  const seats = room.players.map((p) => p.seat).sort((x, y) => x - y);
-  const startIdx = randInt(0, seats.length - 1);
-  g.seq = [];
-  for (let i = 0; i < len; i++) g.seq.push({ seat: seats[(startIdx + i) % seats.length], sym: randInt(0, 3) });
-  g.stepIdx = 0;
-  decodeArmBot(room, t);
-}
-function decodeArmBot(room, t) {
-  const g = room.game;
-  g.botPressAt = 0;
-  const step = g.seq && g.seq[g.stepIdx];
-  if (!step) return;
-  const p = playerAt(room, step.seat);
-  if (p && p.type === 'bot') g.botPressAt = t + 800;
-}
-function decodePress(room, seat, sym, t) {
-  const g = room.game;
-  if (g.phase !== 'decode') return;
-  const step = g.seq && g.seq[g.stepIdx];
-  if (!step) return;
-  if (seat === step.seat && sym === step.sym) {
-    g.stepIdx += 1;
-    if (g.stepIdx >= g.seq.length) {
-      g.levelsDone = g.level;
-      g.phase = 'levelup';
-      g.decodeAt = t + 1500;
-    } else decodeArmBot(room, t);
-  } else {
-    g.hearts -= 1;
-    if (g.hearts <= 0) finishCoop(room, g.levelsDone, coopTier(g.levelsDone, DECODE_TIERS), 'màn đã qua');
-  }
-}
-function stepDecode(room, t) {
-  const g = room.game;
-  if (g.phase === 'decode') {
-    if (t >= g.endsAt) { finishCoop(room, g.levelsDone, coopTier(g.levelsDone, DECODE_TIERS), 'màn đã qua'); return true; }
-    const step = g.seq && g.seq[g.stepIdx];
-    if (step && g.botPressAt && t >= g.botPressAt) {
-      g.botPressAt = 0;
-      decodePress(room, step.seat, step.sym, t);
-      return true;
-    }
-    return false;
-  }
-  if (g.phase === 'levelup') {
-    if (t >= g.endsAt) { finishCoop(room, g.levelsDone, coopTier(g.levelsDone, DECODE_TIERS), 'màn đã qua'); return true; }
-    if (t >= g.decodeAt) { g.phase = 'decode'; startDecodeLevel(room, t); return true; }
-  }
-  return false;
-}
-
-// ---------------------------------------------------------------------------
-// Wave 4: platformers — one shared physics helper, then the two games.
-// ---------------------------------------------------------------------------
-// platStep moves ONE centre-anchored AABB entity (half extents
-// PLAT_HW x PLAT_HH, fields {x, y, vx, vy, ground}) through a list of
-// top-left rect solids. Gravity is applied first, then the axes are
-// integrated and resolved SEPARATELY — X against solid sides, Y
-// against tops/bottoms — so characters slide along walls and land
-// cleanly on ledges. A solid flagged oneWay only catches a falling
-// entity whose feet were at/above its top before the Y move; jumping
-// up through it is free (the fighter stage's floaters).
 function platOverlap(e, s) {
   return e.x - PLAT_HW < s.x + s.w && e.x + PLAT_HW > s.x
     && e.y - PLAT_HH < s.y + s.h && e.y + PLAT_HH > s.y;
@@ -4527,18 +3785,6 @@ function gameView(room, role, seat, t) {
     v.presses = g.presses;
     v.knot = tugKnot(room);
     v.phaseDur = TUG_MS;
-  } else if (g.id === 'chia-cuop') {
-    v.pair = g.pair;
-    v.pot = isFinalRound(g) ? POT * 2 : POT;
-    v.phaseDur = g.phase === 'talk' ? TALK_MS : g.phase === 'choose' ? CHOOSE_MS : 0;
-    v.chat = (g.pair || []).filter((s) => g.chat && g.chat[s]).map((s) => ({ seat: s, text: g.chat[s].text }));
-    const chosen = {};
-    (g.pair || []).forEach((s) => { chosen[s] = !!g.inputs[s]; });
-    v.chosen = chosen;
-    // Secrecy rule: no choice values in ANY view before the reveal phase;
-    // a player only ever sees that they themselves have locked in.
-    if (g.phase === 'reveal') v.reveal = g.reveal;
-    if (seat) v.mineChosen = !!(g.pair && g.pair.indexOf(seat) >= 0 && g.inputs[seat]);
   } else if (g.id === 'cuop-sao') {
     v.arenaR = ARENA_R0;
     v.blobs = {};
@@ -4629,110 +3875,6 @@ function gameView(room, role, seat, t) {
     v.soft = g.softCells;
     v.bombs = (g.bombs || []).map((b) => ({ id: b.id, x: b.x, y: b.y, left: Math.max(0, (b.boomTick - g.tickCount) * TICK_MS) }));
     v.blasts = (g.blasts || []).filter((bl) => bl.until > t).map((bl) => ({ cells: bl.cells }));
-  } else if (g.id === 'ke-gia-mao') {
-    // SECRECY (hard rule, asserted in tests by string search): before
-    // the reveal phase NO view — host or player — may carry the other
-    // question's text or anyone's answer. A player view carries only
-    // that player's own question + the shared options; the host gets
-    // category + answered/voted status only. Chat is public by design.
-    const pair = g.imp ? IMPOSTOR_BANK[g.imp.pair] : null;
-    v.category = pair ? pair.cat : '';
-    v.phaseDur = g.phase === 'answer' ? IMP_ANSWER_MS : g.phase === 'discuss' ? IMP_DISCUSS_MS : g.phase === 'vote' ? IMP_VOTE_MS : IMP_REVEAL_MS;
-    const answered = {}; const voted = {};
-    room.players.forEach((p) => {
-      answered[p.seat] = p.type === 'human' ? !!g.inputs[p.seat] : !!(g.botPlan[p.seat] && g.botPlan[p.seat].answerAt <= t);
-      voted[p.seat] = g.votes[p.seat] != null;
-    });
-    v.answered = answered; v.voted = voted;
-    if (g.phase === 'discuss' || g.phase === 'vote' || g.phase === 'reveal') v.chatLog = g.chatLog || [];
-    if (g.phase === 'reveal' && g.reveal && pair) {
-      v.reveal = {
-        impostor: g.reveal.impostor, caught: g.reveal.caught,
-        realQ: pair.real, fakeQ: pair.fake, options: pair.options,
-        votes: g.reveal.votes, answers: g.reveal.answers, points: g.reveal.points,
-      };
-    }
-    if (seat) {
-      if (pair) {
-        v.myQuestion = g.imp.seat === seat ? pair.fake : pair.real;
-        v.options = pair.options;
-      }
-      v.mine = g.inputs[seat] ? g.inputs[seat].choice : null;
-      v.myVote = g.votes[seat] != null ? g.votes[seat] : null;
-    }
-  } else if (g.id === 'ma-soi') {
-    // SECRECY (hard rule, asserted in tests by string search): before
-    // the wolfEnd phase NO view — host or player — may carry another
-    // player's role or any night choice. Public facts only: who is
-    // alive, the death record (roles are public FROM DEATH ON), the
-    // day's chat, vote-cast flags, and after the vote the tally + the
-    // execution. A phone additionally sees ONLY its own private kit:
-    // its role; a wolf sees the pack list + pack votes-in count; the
-    // guard its own pick; the seer its own notes; the witch (once the
-    // pack has locked) the victim + her own potion state. Death cuts
-    // a phone back to its role card + public facts.
-    const w = g.wolf;
-    v.phaseDur = g.phase === 'night' ? WOLF_NIGHT_MS : g.phase === 'dawn' ? WOLF_DAWN_MS
-      : g.phase === 'discuss' ? WOLF_DISCUSS_MS : g.phase === 'vote' ? WOLF_VOTE_MS
-      : g.phase === 'execute' ? WOLF_EXEC_MS : WOLF_END_MS;
-    v.night = g.round;
-    v.aliveMap = {};
-    room.players.forEach((p) => { v.aliveMap[p.seat] = w ? !!w.alive[p.seat] : true; });
-    v.deadList = w ? w.deaths.map((d) => ({ seat: d.seat, role: d.role, cause: d.cause, night: d.night })) : [];
-    v.dawnDeaths = w ? w.dawnDeaths.map((d) => ({ seat: d.seat, role: d.role })) : [];
-    v.wolfCount = w ? room.players.filter((p) => w.roles[p.seat] === 'soi').length : 0;
-    if (g.phase === 'discuss' || g.phase === 'vote' || g.phase === 'execute' || g.phase === 'wolfEnd') v.chatLog = g.chatLog || [];
-    if (g.phase === 'vote') {
-      v.voted = {};
-      room.players.forEach((p) => { v.voted[p.seat] = g.votes[p.seat] != null; });
-    }
-    if (g.phase === 'execute' || g.phase === 'wolfEnd') { v.exec = w.exec; v.voteTally = w.voteTally || {}; }
-    if (g.phase === 'wolfEnd') { v.winner = w.winner; v.roles = Object.assign({}, w.roles); }
-    if (seat && w) {
-      v.myRole = w.roles[seat];
-      v.myAlive = !!w.alive[seat];
-      if (w.alive[seat]) {
-        if (w.roles[seat] === 'soi') {
-          v.wolfTeam = room.players.filter((p) => w.roles[p.seat] === 'soi').map((p) => p.seat);
-          v.myWolfVote = w.wolfVotes[seat] != null ? w.wolfVotes[seat] : null;
-          v.wolfVotesIn = Object.keys(w.wolfVotes).length;
-        } else if (w.roles[seat] === 'bao-ve') {
-          v.myGuardPick = w.guardPick;
-          v.myGuardLast = w.guardLast;
-        } else if (w.roles[seat] === 'tien-tri') {
-          v.mySeerPick = w.seerPick;
-          const notes = w.seerNotes[seat] || {};
-          v.mySeerNotes = Object.keys(notes).map((s) => ({ seat: +s, wolf: !!notes[s] }));
-        } else if (w.roles[seat] === 'phu-thuy') {
-          v.mySaveLeft = w.saveLeft;
-          v.myPoisonLeft = w.poisonLeft;
-          v.myWitchSave = w.witch.save;
-          v.myWitchPoison = w.witch.poison;
-          v.myWitchDone = w.witch.done;
-          v.wolvesIn = wolfWolvesIn(room);
-          v.myVictim = v.wolvesIn ? wolfVictim(room) : null;
-        }
-      }
-    }
-  } else if (g.id === 'ca-ngua') {
-    const ng = g.ng;
-    v.phaseDur = NGUA_TURN_MS;
-    v.board = { loop: NGUA_LOOP, stretch: NGUA_STRETCH, stable: NGUA_STABLE, safe: Array.from(NGUA_SAFE) };
-    v.horses = ng ? ng.horses : {};
-    v.boards = ng ? ng.boards : {};
-    v.turn = ng ? ng.turn : null;
-    v.dice = ng ? ng.dice : null;
-    v.winner = ng ? ng.winner : null;
-    v.last = ng ? ng.last : null;
-    v.log = ng ? ng.log : [];
-    v.progress = {};
-    if (ng) room.players.forEach((p) => { v.progress[p.seat] = nguaProgress(room, p.seat); });
-    if (seat) {
-      v.myTurn = !!ng && ng.turn === seat;
-      v.myLegal = (ng && g.phase === 'pick' && ng.turn === seat)
-        ? ng.legal.map((h) => ({ horse: h, hint: nguaHint(room, seat, h), from: ng.horses[seat][h] }))
-        : [];
-    }
   } else if (g.id === 'tien-len') {
     // SECRECY: hand contents exist ONLY in the seat's own branch
     // below. Every other field is public table talk: how many cards
@@ -4768,20 +3910,6 @@ function gameView(room, role, seat, t) {
     v.slimes = (g.slimes || []).map((s) => ({ id: s.id, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, hp: s.hp, maxHp: s.maxHp, big: s.big, vx: Math.round((s.vx || 0) * 100) / 100, vy: Math.round((s.vy || 0) * 100) / 100 }));
     v.crystal = g.crystal ? { hp: g.crystal.hp, max: DEF_CRYSTAL_HP } : null;
     v.kills = g.kills;
-  } else if (g.id === 'giai-ma-chung') {
-    // SECRECY: the host view carries level/hearts/progress counts only
-    // — never a step's symbol or owner. A player view lists ONLY their
-    // own steps (position + symbol); nobody sees anyone else's steps.
-    v.level = g.level;
-    v.hearts = g.hearts;
-    v.total = g.seq ? g.seq.length : 0;
-    v.done = g.phase === 'levelup' ? v.total : g.stepIdx;
-    v.levelsDone = g.levelsDone;
-    v.phaseDur = DECODE_MS;
-    if (seat) {
-      v.mySteps = (g.seq || []).filter((s) => s.seat === seat)
-        .map((s) => ({ pos: g.seq.indexOf(s) + 1, sym: s.sym, name: DECODE_SYMBOLS[s.sym].name }));
-    }
   } else if (g.id === 'nguoi-que') {
     v.phaseDur = FIGHT_MS;
     v.platforms = FIGHT_PLATFORMS;
@@ -5318,7 +4446,7 @@ function playerAction(room, player, body) {
   if (room.phase !== 'playing' || !g) return 'Chưa vào game.';
   const seat = player.seat; const t = now(); const a = body.action;
   if (a === 'pad') {
-    if (g.id !== 'day-ra' && g.id !== 'ne-dan' && g.id !== 'keo-co' && g.id !== 'chia-cuop'
+    if (g.id !== 'day-ra' && g.id !== 'ne-dan' && g.id !== 'keo-co'
       && g.id !== 'cuop-sao' && g.id !== 'giu-vuong-mien' && g.id !== 'son-san'
       && g.id !== 'chung-mot-than' && g.id !== 'day-hop'
       && g.id !== 'xe-tank' && g.id !== 'dat-bom' && g.id !== 'thu-thanh'
@@ -5333,10 +4461,6 @@ function playerAction(room, player, body) {
     }
     // Chia Hay Cướp on the gamepad: A (the X position) = Chia, B = Cướp,
     // rising edge only, and only for the pair during the choose phase.
-    if (g.id === 'chia-cuop' && g.phase === 'choose' && g.pair && g.pair.indexOf(seat) >= 0 && !g.inputs[seat]) {
-      if (np.a && !prev.a) g.inputs[seat] = { choice: 'chia', at: t };
-      else if (np.b && !prev.b) g.inputs[seat] = { choice: 'cuop', at: t };
-    }
     g.pad[seat] = np;
     padNudge(room, seat, prev, np, t);
     return null;
@@ -5351,43 +4475,6 @@ function playerAction(room, player, body) {
     if (typeof body.angle === 'number' && isFinite(body.angle)) c.angle = Math.max(5, Math.min(85, body.angle));
     if (typeof body.power === 'number' && isFinite(body.power)) c.power = Math.max(0, Math.min(100, body.power));
     if (body.face === 1 || body.face === -1) c.face = body.face;
-    return null;
-  }
-  if (a === 'choose') {
-    if (g.id !== 'chia-cuop' || g.phase !== 'choose') return 'Chưa đến lúc chọn.';
-    if (!g.pair || g.pair.indexOf(seat) < 0) return 'Vòng này bạn ngồi ngoài, chỉ xem thôi.';
-    if (g.inputs[seat]) return null;
-    if (body.choice !== 'chia' && body.choice !== 'cuop') return 'Lựa chọn không hợp lệ.';
-    g.inputs[seat] = { choice: body.choice, at: t };
-    return null;
-  }
-  if (a === 'chat') {
-    if (g.id === 'ma-soi') {
-      // Day discussion is public — but the dead only watch: a ghost
-      // who could still talk could leak night knowledge.
-      if (g.phase !== 'discuss') return 'Chỉ trò chuyện được trong lúc bàn luận ban ngày.';
-      if (!g.wolf.alive[seat]) return 'Bạn đã chết — chỉ theo dõi thôi nhé.';
-      const text = String(body.text || '').trim().slice(0, 60);
-      if (!text) return 'Hãy nhập lời nhắn.';
-      g.chatLog.push({ seat, text, at: t });
-      if (g.chatLog.length > 40) g.chatLog = g.chatLog.slice(-40);
-      return null;
-    }
-    if (g.id === 'ke-gia-mao') {
-      // Public discussion: EVERY player may chat (unlike Chia Hay
-      // Cướp's pair-only negotiation). Stored as a scrolling log.
-      if (g.phase !== 'discuss') return 'Chỉ trò chuyện được trong lúc bàn luận.';
-      const text = String(body.text || '').trim().slice(0, 60);
-      if (!text) return 'Hãy nhập lời nhắn.';
-      g.chatLog.push({ seat, text, at: t });
-      if (g.chatLog.length > 30) g.chatLog = g.chatLog.slice(-30);
-      return null;
-    }
-    if (g.id !== 'chia-cuop' || g.phase !== 'talk') return 'Chỉ trò chuyện được trong lúc thương lượng.';
-    if (!g.pair || g.pair.indexOf(seat) < 0) return 'Chỉ hai người trong cặp mới thương lượng.';
-    const text = String(body.text || '').trim().slice(0, 60);
-    if (!text) return 'Hãy nhập lời nhắn.';
-    g.chat[seat] = { text, at: t };
     return null;
   }
   if (a === 'tap') {
@@ -5415,106 +4502,11 @@ function playerAction(room, player, body) {
     return 'Game này không dùng nút bấm.';
   }
   if (a === 'answer') {
-    if (g.id === 'ke-gia-mao') {
-      // The choice answers the question THIS player was dealt (real or
-      // variant); it stays secret until the reveal phase.
-      if (g.phase !== 'answer') return 'Chưa đến lúc trả lời.';
-      if (g.inputs[seat]) return null;
-      const ci = body.choice;
-      if (!Number.isInteger(ci) || ci < 0 || ci > 3) return 'Đáp án không hợp lệ.';
-      g.inputs[seat] = { choice: ci, at: t };
-      return null;
-    }
     if (g.id !== 'do-vui' || g.phase !== 'question') return 'Chưa đến lúc trả lời.';
     if (g.inputs[seat]) return null;
     const c = body.choice;
     if (!Number.isInteger(c) || c < 0 || c > 3) return 'Đáp án không hợp lệ.';
     g.inputs[seat] = { choice: c, at: t };
-    return null;
-  }
-  if (a === 'vote') {
-    if (g.id === 'ma-soi') {
-      if (g.phase !== 'vote') return 'Chưa đến lúc bỏ phiếu.';
-      if (!g.wolf.alive[seat]) return 'Bạn đã chết — chỉ theo dõi thôi nhé.';
-      if (g.votes[seat] != null) return null;
-      const target = body.seat;
-      if (!Number.isInteger(target) || target === seat || !playerAt(room, target) || !g.wolf.alive[target]) return 'Không bỏ phiếu cho người này được.';
-      g.votes[seat] = target;
-      return null;
-    }
-    if (g.id !== 'ke-gia-mao' || g.phase !== 'vote') return 'Chưa đến lúc tố cáo.';
-    if (g.votes[seat] != null) return null;
-    const target = body.seat;
-    if (!Number.isInteger(target) || target === seat || !playerAt(room, target)) return 'Không tố cáo được người này.';
-    g.votes[seat] = target;
-    return null;
-  }
-  if (a === 'wolfVote' || a === 'wolfGuard' || a === 'wolfSeer' || a === 'wolfWitch') {
-    if (g.id !== 'ma-soi' || g.phase !== 'night') return 'Chưa đến lúc hành động ban đêm.';
-    const w = g.wolf;
-    if (!w.alive[seat]) return 'Bạn đã chết — chỉ theo dõi thôi nhé.';
-    const role = w.roles[seat];
-    const target = body.seat;
-    const targetOk = Number.isInteger(target) && !!playerAt(room, target) && !!w.alive[target];
-    if (a === 'wolfVote') {
-      if (role !== 'soi') return 'Chỉ có sói mới chọn con mồi.';
-      if (w.wolfVotes[seat] != null) return null;
-      if (!targetOk || target === seat) return 'Không chọn được người này.';
-      w.wolfVotes[seat] = target;
-      return null;
-    }
-    if (a === 'wolfGuard') {
-      if (role !== 'bao-ve') return 'Chỉ có Bảo Vệ mới chọn người để bảo vệ.';
-      if (w.guardPick != null) return null;
-      if (!targetOk) return 'Không chọn được người này.';
-      if (target === w.guardLast) return 'Đêm qua bạn đã bảo vệ người này rồi — luật không cho bảo vệ cùng một người hai đêm liền.';
-      w.guardPick = target;
-      return null;
-    }
-    if (a === 'wolfSeer') {
-      if (role !== 'tien-tri') return 'Chỉ có Tiên Tri mới soi được người khác.';
-      if (w.seerPick != null) return null;
-      if (!targetOk || target === seat) return 'Không soi được người này.';
-      wolfSeerApply(room, seat, target);
-      return null;
-    }
-    // wolfWitch: incremental — set the save flag and/or a poison
-    // target first, then confirm with done:true (the phone renders
-    // her current choices back from the view between steps).
-    if (role !== 'phu-thuy') return 'Chỉ có Phù Thủy mới dùng thuốc được.';
-    if (w.witch.done) return null;
-    if (body.done === true) { w.witch.done = true; return null; }
-    if (typeof body.save === 'boolean') {
-      if (body.save) {
-        if (w.saveLeft <= 0) return 'Thuốc cứu đã dùng hết rồi.';
-        if (!wolfWolvesIn(room)) return 'Sói chưa chọn xong con mồi — đợi một chút.';
-        if (wolfVictim(room) == null) return 'Đêm nay sói chưa chọn được ai.';
-      }
-      w.witch.save = body.save;
-      return null;
-    }
-    if (body.poison === null) { w.witch.poison = null; return null; }
-    if (body.poison !== undefined) {
-      if (w.poisonLeft <= 0) return 'Thuốc độc đã dùng hết rồi.';
-      const pt = body.poison;
-      if (!Number.isInteger(pt) || !playerAt(room, pt) || !w.alive[pt] || pt === seat) return 'Không đầu độc được người này.';
-      w.witch.poison = pt;
-      return null;
-    }
-    return null;
-  }
-  if (a === 'roll') {
-    if (g.id !== 'ca-ngua' || g.phase !== 'roll') return 'Chưa đến lúc thảy xúc xắc.';
-    if (g.ng.turn !== seat) return 'Chưa tới lượt của bạn.';
-    nguaRoll(room, t);
-    return null;
-  }
-  if (a === 'move') {
-    if (g.id !== 'ca-ngua' || g.phase !== 'pick') return 'Chưa đến lúc đi ngựa.';
-    if (g.ng.turn !== seat) return 'Chưa tới lượt của bạn.';
-    const h = body.horse;
-    if (!Number.isInteger(h) || g.ng.legal.indexOf(h) < 0) return 'Ngựa này đi không được.';
-    nguaMove(room, seat, h, t);
     return null;
   }
   if (a === 'play') {
@@ -5546,13 +4538,6 @@ function playerAction(room, player, body) {
     if (tl.turn !== seat) return 'Chưa tới lượt bạn.';
     if (!tl.table) return 'Bạn đang cầm cái, phải đánh bài.';
     tlPassTurn(room, seat, t);
-    return null;
-  }
-  if (a === 'symbol') {
-    if (g.id !== 'giai-ma-chung' || g.phase !== 'decode') return 'Chưa đến lúc bấm ký hiệu.';
-    const sym = body.sym;
-    if (!Number.isInteger(sym) || sym < 0 || sym > 3) return 'Ký hiệu không hợp lệ.';
-    decodePress(room, seat, sym, t);
     return null;
   }
   return 'Hành động không hợp lệ.';
