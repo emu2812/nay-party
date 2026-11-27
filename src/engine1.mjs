@@ -102,7 +102,7 @@ export const DIFF_LABELS = { de: 'Dễ', vua: 'Vừa', kho: 'Khó' };
 export const GAMES = {
   'do-vui': { name: 'Đố Vui Tốc Độ', desc: 'Trả lời đúng và nhanh nhất', rounds: 8, cat: 'versus', min: 2, max: 12 },
   'day-ra': { name: 'Đẩy Ra Khỏi Sàn', desc: 'Gamepad: đẩy hết đối thủ khỏi sàn tròn!', rounds: 1, cat: 'versus', min: 2, max: 8 },
-  'ne-dan': { name: 'Né Đạn', desc: 'Gamepad: né đạn pháo, sống sót đến cuối!', rounds: 1, cat: 'versus', min: 2, max: 8 },
+  'ne-dan': { name: 'Né Laze', desc: 'Né tia laze: nhảy qua tia thấp, đứng yên tránh tia cao!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'keo-co': { name: 'Kéo Co', desc: 'Hai đội bấm nút B, kéo nút thắt về phía mình!', rounds: 1, cat: 'versus', min: 2, max: 12 },
   // Rounds for Chia Hay Cướp are dynamic: one round per seated player
   // (pairs rotate, see beginRound), so `rounds` here is only nominal.
@@ -186,6 +186,11 @@ const DASH_BOOST_TICKS = 4;
 const SHOVE_RANGE = 2.7, SHOVE_FORCE = 2.7;
 // Né Đạn: same tick engine + walled arena (no shrinking, no ring-out).
 const DODGE_MS = 75000, DODGE_LIVES = 3, BALL_SPEED = 0.14375, BALL_HIT_DIST = 1.35, INVULN_TICKS = 32;
+// Né Laze (ne-dan, redesigned 2026-11-27 on the user's order): beams
+// telegraph (warn) then fire across the whole arena. A LOW beam hits
+// grounded players — jump it (A). A HIGH beam hits airborne players —
+// stay on the ground. Jump: JUMP_TICKS airborne, JUMP_CD_TICKS cooldown.
+const LASER_WARN_TICKS = 12, LASER_FIRE_TICKS = 7, LASER_HIT = 1.0, JUMP_TICKS = 10, JUMP_CD_TICKS = 15;
 // Kéo Co: knot = TUG_STEP * (presses of even seats - presses of odd seats);
 // first side to |knot| >= TUG_WIN within TUG_MS wins, else the leader at
 // time out wins (exact tie = draw). Bots add BOT_TUG presses per tug tick.

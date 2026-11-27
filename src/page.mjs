@@ -243,6 +243,18 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
 .aball { position: absolute; width: 34px; height: 34px; border-radius: 50%; z-index: 1;
   background: #FF8C42; transform: translate(-50%, -50%);
   transition: left .18s linear, top .18s linear; border: 2px solid #D63C14; }
+/* Né Laze beams: plain flat divs, geometry set once by syncLasers.
+   Warn blinks (the telegraph), fire is solid. Low = red, high =
+   violet. The jump lifts the blob's face and leaves a flat ground
+   shadow so airborne reads at a glance. */
+.alaser { position: absolute; pointer-events: none; z-index: 1; }
+.alaser.low { background: #FF4757; }
+.alaser.high { background: #B565FF; }
+.alaser.warn { opacity: .45; animation: laserBlink .28s steps(2) infinite; }
+.alaser.fire { opacity: 1; }
+@keyframes laserBlink { 50% { opacity: .12; } }
+.ablob.air svg { transform: scale(1.3) translateY(-7px); }
+.ablob.air::after { content: ''; position: absolute; left: 50%; bottom: -4px; width: 44px; height: 9px; transform: translateX(-50%); background: rgba(0,0,0,.4); border-radius: 50%; }
 .rope { position: relative; height: 40px; border-radius: 999px; margin: 16px 0;
   background: linear-gradient(90deg, #4FA8E8 0 50%, #F77FB0 50% 100%); box-shadow: inset 0 -6px 0 rgba(0,0,0,.18); }
 .rope .mid { position: absolute; left: 50%; top: -6px; bottom: -6px; width: 4px; background: #fff; transform: translateX(-50%); border-radius: 2px; }
@@ -509,13 +521,19 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
    crown holder keeps a single cheaper shadow — one element only);
    everything returns when the game ends. */
 #app.perf .ablob svg, #app.perf .afrog svg, #app.perf .afrog.carry svg { filter: none; }
-#app.perf .ablob.holder svg { filter: drop-shadow(0 0 10px #FFC93D); }
 /* Same logic for paint: a moving element's box-shadow forces the
    browser to repaint its blurred halo every frame, and Né Đạn
    fills the field with triple-shadowed balls plus trail ghosts.
    During field play the glow shadows go; the shapes keep their
    gradient bodies, so the field still reads at a glance. */
 #app.perf .aball, #app.perf .ashell, #app.perf .fx-trail, #app.perf .aring { box-shadow: none; }
+/* ROUND 23 STRIP (user, 2026-11-27: "bỏ hết các đồ họa gây lag …
+   sao cho cực mượt"): while a field game runs, NOTHING in the app
+   may paint a shadow, filter, text-shadow or backdrop blur — the
+   crown holder's last drop-shadow exception goes too. Flat fills
+   and solid borders only, so a weak machine only ever composites
+   flat shapes. Effects return untouched outside play. */
+#app.perf *, #app.perf *::before, #app.perf *::after { box-shadow: none !important; filter: none !important; text-shadow: none !important; backdrop-filter: none !important; }
 /* LITE MODE (Round 22: toggle removed from rafLoop — Round 21 FLAT
    already shed the heavy paint everywhere, and toggling mid-game cost
    a full style recalc per switch. Rules stay, unused, for a future
@@ -1808,7 +1826,7 @@ function hostStage(v) {
     }
   } else if (g.id === 'ne-dan') {
     if (g.phase === 'dodge') {
-      h += '<div class="baloo" style="font-size:25px">Né hết đạn pháo! Trúng là mất 1 mạng…</div>';
+      h += '<div class="baloo" style="font-size:25px">Né laze! Tia ĐỎ thấp: bấm A để NHẢY qua · Tia TÍM cao: đứng yên dưới đất</div>';
       h += '<div class="afield" id="afield"><div class="aring dynring" id="aring" style="transform:translate(-50%,-50%) scale(' + (g.arenaR * 25 / 300) + ')"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
       for (var dI = 0; dI < v.players.length; dI++) { var dp = v.players[dI]; h += '<div class="ablob" id="ablob-' + dp.seat + '" style="left:50%;top:50%;color:' + COLORS[dp.color] + '">' + orbSVG(dp.color, 62) + '<div class="aname">' + esc(dp.name) + '</div><div class="alives" id="alives-' + dp.seat + '"></div></div>'; }
       h += '</div>';
@@ -2765,31 +2783,7 @@ function arenaFX(v, g) {
   }
   var ring = el('aring');
   if (ring && g.id === 'day-ra' && g.arenaR) ring.classList.toggle('danger', g.arenaR <= 5.5);
-  if (g.id === 'ne-dan' && g.balls) {
-    if (P.ballN >= 0 && g.balls.length > P.ballN && field) {
-      for (var bi = P.ballN; bi < g.balls.length; bi++) fxWarn(field, g.balls[bi]);
-    }
-    var nowMs = Date.now();
-    if (field && nowMs - P.trailAt > 210 && g.balls.length <= 14) {
-      P.trailAt = nowMs;
-      for (var ti = 0; ti < g.balls.length; ti++) fxTrail(field, g.balls[ti]);
-    }
-    if (nowMs > P.nearCd) {
-      var near = false;
-      for (var ni = 0; ni < g.balls.length && !near; ni++) {
-        for (var ns in g.blobs) {
-          var bb2 = g.blobs[ns]; if (!bb2.alive || lostLife[ns]) continue;
-          var dd = Math.hypot(g.balls[ni].x - bb2.x, g.balls[ni].y - bb2.y);
-          if (dd > 1.5 && dd < 3.0) { near = true; break; }
-        }
-      }
-      if (near) {
-        P.nearCd = nowMs + 900;
-        sfxWhoosh();
-      }
-    }
-    P.ballN = g.balls.length;
-  }
+  // Né Laze needs no ball FX: the beam's own blink IS the telegraph.
 }
 // Create/move/remove the transient field entities (shells, slimes)
 // whose DOM nodes cannot be rendered once by hostStage: they are keyed
@@ -2842,6 +2836,43 @@ function syncDynIdx(items, prefix, cls) {
     var idx = +(olds[j].id || '').slice(prefix.length);
     if (!(idx >= 0 && idx < items.length)) olds[j].remove();
   }
+}
+// Né Laze beams, keyed by laser id. A beam's geometry never moves,
+// so each element is placed once; only its class flips warn -> fire
+// (which also thickens it). One or two thin flat divs on screen —
+// far cheaper than the cannonball movers they replaced.
+function syncLasers(lasers) {
+  var field = el('afield');
+  if (!field) return;
+  var seen = {};
+  for (var i = 0; i < lasers.length; i++) {
+    var L = lasers[i];
+    var id = 'laser-' + L.id;
+    seen[id] = 1;
+    var n = el(id);
+    if (!n) {
+      n = document.createElement('div');
+      n.id = id;
+      field.appendChild(n);
+    }
+    var key = L.axis + '|' + L.kind + '|' + L.state;
+    if (n._lk !== key) {
+      n._lk = key;
+      n.className = 'alaser ' + L.axis + ' ' + L.kind + ' ' + L.state;
+      var thick = L.state === 'warn' ? 0.35 : 1.5;
+      if (L.axis === 'h') {
+        var hh = thick / 18 * 100;
+        n.style.left = '0px'; n.style.width = '100%';
+        n.style.top = (PY(L.pos) - hh / 2) + '%'; n.style.height = hh + '%';
+      } else {
+        var ww = thick / 32 * 100;
+        n.style.top = '0px'; n.style.height = '100%';
+        n.style.left = (PX(L.pos) - ww / 2) + '%'; n.style.width = ww + '%';
+      }
+    }
+  }
+  var olds = field.querySelectorAll('.alaser');
+  for (var j = 0; j < olds.length; j++) if (!seen[olds[j].id]) olds[j].remove();
 }
 // Bomber blast cells, keyed by grid cell: created/pruned from the live
 // view so explosions no longer force a stage rebuild. Cell (c, r) of
@@ -3207,6 +3238,7 @@ function patchPositions(v) {
       if (bn) {
         moveEl(bn, bb.x, bb.y, 'std', bb.vx, bb.vy);
         bn.style.opacity = bb.alive ? '1' : '0.25';
+        if (bn._air !== !!bb.air) { bn._air = !!bb.air; bn.classList.toggle('air', bn._air); }
       }
       var lv = el('alives-' + bSeat);
       if (lv) lv.textContent = '\u2764'.repeat(bb.lives);
@@ -3220,7 +3252,7 @@ function patchPositions(v) {
     var ml = el('mylives');
     if (ml && g.blobs[S.seat]) ml.textContent = '\u2764'.repeat(g.blobs[S.seat].lives);
   }
-  if (g.id === 'ne-dan' && g.balls) syncDynIdx(g.balls, 'nball-', 'aball');
+  if (g.id === 'ne-dan' && g.lasers) syncLasers(g.lasers);
   if ((g.id === 'day-ra' || g.id === 'ne-dan') && g.blobs) arenaFX(v, g);
   if (g.id === 'keo-co') {
     var kn9 = el('tugknot');
@@ -3581,7 +3613,7 @@ function homeHTML() {
   h += '<p><input type="text" id="joinName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
   h += '<p id="idNote" class="small" style="display:none;margin:2px 0 0"></p>';
   h += '<p><button class="btn pink" data-cmd="join" style="font-size:22px">Vào phòng</button></p></div>';
-  h += '<p class="center muted small" style="margin-top:14px">25 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Đạn · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Ma Sói · Cờ Cá Ngựa · Tiến Lên Miền Nam · Người Que Đại Chiến · Đá Bóng Đầu To · Đại Bác Căn Góc · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước · Ếch Ộp Phiêu Lưu — 18 game đấu + 7 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
+  h += '<p class="center muted small" style="margin-top:14px">25 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Laze · Kéo Co · Chia Hay Cướp · Cướp Sao · Giữ Vương Miện · Sơn Sàn · Cao Bồi · Xe Tăng Đấu Trường · Đặt Bom · Kẻ Giả Mạo · Ma Sói · Cờ Cá Ngựa · Tiến Lên Miền Nam · Người Que Đại Chiến · Đá Bóng Đầu To · Đại Bác Căn Góc · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Giải Mã Chung · Đền Lửa & Nước · Ếch Ộp Phiêu Lưu — 18 game đấu + 7 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
   return h;
 }
 function playerHTML(v) {
@@ -3675,8 +3707,8 @@ function playerGame(v) {
         h += '<div class="center"><div class="ko-big">K.O.!</div>' + orbSVG(me.color, 110, true) + '<div class="baloo" style="font-size:27px">Bạn đã bị loại!</div><p>Xem TV đợi kết quả nhé…</p></div>';
       } else {
         h += '<div class="center baloo" style="font-size:20px">Mạng của bạn: <span id="mylives" style="color:#FFD7DE">' + (myB ? '❤'.repeat(myB.lives) : '') + '</span></div>';
-        h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'ĐẨY', 'Lướt') + '</div>';
-        h += '<p class="center small">' + (g.id === 'ne-dan' ? 'Giữ D-pad để né đạn · B: lướt nhanh' : 'Giữ D-pad để di chuyển · A: đẩy đối thủ · B: lướt nhanh') + '</p>';
+        h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, g.id === 'ne-dan' ? 'NHẢY' : 'ĐẨY', 'Lướt') + '</div>';
+        h += '<p class="center small">' + (g.id === 'ne-dan' ? 'Giữ D-pad để né · A: NHẢY qua tia đỏ thấp · tia tím cao thì đứng yên · B: lướt nhanh' : 'Giữ D-pad để di chuyển · A: đẩy đối thủ · B: lướt nhanh') + '</p>';
       }
     }
   } else if (g.id === 'cuop-sao' || g.id === 'giu-vuong-mien' || g.id === 'son-san') {

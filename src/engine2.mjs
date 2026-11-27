@@ -240,16 +240,16 @@ function beginRound(room) {
   } else if (g.id === 'ne-dan') {
     g.phase = 'dodge';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + DODGE_MS;
-    g.blobs = {}; g.balls = []; g.spawnIn = 24; g.elimOrder = []; g.elimTick = {};
-    g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
+    g.blobs = {}; g.lasers = []; g.laserSeq = 0; g.spawnIn = 20; g.elimOrder = []; g.elimTick = {};
+    g.botIntent = {}; g.dashCd = {}; g.jumpCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
         x: Math.round(Math.cos(ang) * ARENA_R0 * 0.55 * (4 / 3) * 100) / 100,
         y: Math.round(Math.sin(ang) * ARENA_R0 * 0.55 * (3 / 4) * 100) / 100,
-        lives: DODGE_LIVES, alive: true,
+        lives: DODGE_LIVES, alive: true, air: 0,
       };
-      g.dashCd[p.seat] = 0; g.invuln[p.seat] = 0;
+      g.dashCd[p.seat] = 0; g.jumpCd[p.seat] = 0; g.invuln[p.seat] = 0;
     });
   } else if (g.id === 'keo-co') {
     g.phase = 'pull';
@@ -888,21 +888,55 @@ function stepDodge(room, t) {
   return false;
 }
 function botBrainDodge(room, p) {
+  // Né Laze bot: read the telegraphed beams. Escape sideways out of
+  // the beam line when there is time; jump a LOW beam when there is
+  // not; never jump into a HIGH beam. Reaction cadence by difficulty
+  // (kho re-reads every 8 ticks — inside the 12-tick telegraph; de
+  // every 24 — often too late, as an easy bot should be).
   const g = room.game;
   const every = p.difficulty === 'kho' ? 8 : p.difficulty === 'vua' ? 16 : 24;
   const prev = g.botIntent[p.seat];
-  if (prev && (g.tickCount + p.seat) % every !== 0) return prev;
+  if (prev && (g.tickCount + p.seat) % every !== 0) return { x: prev.x, y: prev.y, jump: false };
   const me = g.blobs[p.seat];
-  let tx = -me.x * 0.4, ty = -me.y * 0.4; // drift back towards the centre
-  let ball = null, bd = 1e9;
-  (g.balls || []).forEach((b) => {
-    const d = Math.hypot(b.x - me.x, b.y - me.y);
-    if (d < bd) { bd = d; ball = b; }
+  if (!me) return { x: 0, y: 0, jump: false };
+  let mx = 0, my = 0, jump = false;
+  let threat = null, threatScore = -1;
+  (g.lasers || []).forEach((L) => {
+    const dist = L.axis === 'h' ? me.y - L.pos : me.x - L.pos;
+    if (Math.abs(dist) >= LASER_HIT + 0.45) return; // line does not cover me
+    const score = (L.state === 'fire' ? 100 : 50) - L.tLeft + (Math.abs(dist) < 0.3 ? 10 : 0);
+    if (score > threatScore) { threatScore = score; threat = { L, dist }; }
   });
-  if (ball && bd < 6.5) { tx = me.x - ball.x; ty = me.y - ball.y; } // run away
-  const intent = { x: Math.abs(tx) > 0.4 ? Math.sign(tx) : 0, y: Math.abs(ty) > 0.4 ? Math.sign(ty) : 0 };
+  if (threat) {
+    const { L, dist } = threat;
+    const away = dist >= 0 ? 1 : -1;
+    if (L.axis === 'h') my = away; else mx = away;
+    const canJump = (g.jumpCd[p.seat] || 0) <= 0 && (me.air || 0) <= 0;
+    if (L.kind === 'low' && canJump && (L.state === 'fire' || L.tLeft <= 3)) jump = true;
+    // A HIGH beam while airborne: keep running out (cannot un-jump).
+  } else {
+    // No threat: drift back towards the centre.
+    if (Math.abs(me.x) > 2) mx = -Math.sign(me.x);
+    if (Math.abs(me.y) > 1.5) my = -Math.sign(me.y);
+  }
+  const intent = { x: mx, y: my, jump };
   g.botIntent[p.seat] = intent;
   return intent;
+}
+function spawnLaser(room) {
+  const g = room.game;
+  const axis = Math.random() < 0.5 ? 'h' : 'v';
+  const kind = Math.random() < 0.62 ? 'low' : 'high';
+  let pos;
+  const alive = room.players.filter((pl) => g.blobs[pl.seat] && g.blobs[pl.seat].alive);
+  if (alive.length && Math.random() < 0.55) {
+    const b = g.blobs[alive[randInt(0, alive.length - 1)].seat];
+    pos = (axis === 'h' ? b.y : b.x) + rand(-1.2, 1.2);
+  } else {
+    pos = axis === 'h' ? rand(-8, 8) : rand(-15, 15);
+  }
+  pos = Math.round(Math.max(axis === 'h' ? -8.2 : -15.2, Math.min(axis === 'h' ? 8.2 : 15.2, pos)) * 100) / 100;
+  g.lasers.push({ id: ++g.laserSeq, axis, pos, kind, state: 'warn', tLeft: LASER_WARN_TICKS });
 }
 function simulateDodgeTick(room) {
   const g = room.game;
@@ -912,15 +946,16 @@ function simulateDodgeTick(room) {
   room.players.forEach((p) => {
     const b = g.blobs[p.seat];
     if (!b || !b.alive) return;
-    const mv = { x: 0, y: 0, dash: false };
+    const mv = { x: 0, y: 0, dash: false, jump: false };
     if (p.type === 'human') {
       const pad = g.pad[p.seat] || {};
       mv.x = (pad.r ? 1 : 0) - (pad.l ? 1 : 0);
       mv.y = (pad.d ? 1 : 0) - (pad.u ? 1 : 0);
       mv.dash = !!pad.b && !(g.padPrev[p.seat] || {}).b;
+      mv.jump = !!pad.a && !(g.padPrev[p.seat] || {}).a;
     } else {
       const intent = botBrainDodge(room, p);
-      mv.x = intent.x; mv.y = intent.y;
+      mv.x = intent.x; mv.y = intent.y; mv.jump = !!intent.jump;
     }
     moves[p.seat] = mv;
   });
@@ -928,6 +963,9 @@ function simulateDodgeTick(room) {
     const b = g.blobs[p.seat]; const mv = moves[p.seat];
     if (!b || !b.alive || !mv) return;
     if (g.dashCd[p.seat] > 0) g.dashCd[p.seat] -= 1;
+    if (g.jumpCd[p.seat] > 0) g.jumpCd[p.seat] -= 1;
+    if ((b.air || 0) > 0) b.air -= 1;
+    if (mv.jump && (b.air || 0) <= 0 && g.jumpCd[p.seat] <= 0) { b.air = JUMP_TICKS; g.jumpCd[p.seat] = JUMP_CD_TICKS; }
     if ((g.dashBoost[p.seat] || 0) > 0) g.dashBoost[p.seat] -= 1;
     let stepMul = 1;
     if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
@@ -936,32 +974,37 @@ function simulateDodgeTick(room) {
     clampRect(b); // the wide field's walls stop you
   });
   trackEnd(room, trk);
-  // Cannonballs: spawn on a cadence that tightens as the match goes on
-  // (same wall-clock cadence as before the retune: gap starts at 3.5s,
-  // shrinks 0.25s every 12s, floor 1.5s). 16:9 wave: they enter from
-  // the wide field's four edges and their velocity components scale
-  // with the field map, so crossing times are unchanged.
+  // Lasers: spawn on a cadence that tightens as the match goes on
+  // (gap starts ~2.1s, floor ~1.06s; late match can double up). Each
+  // beam telegraphs for LASER_WARN_TICKS, then fires for
+  // LASER_FIRE_TICKS and is gone.
   g.spawnIn -= 1;
   if (g.spawnIn <= 0) {
-    const side = randInt(0, 3);
-    let x = 0, y = 0;
-    if (side === 0) { x = -17.5; y = rand(-8.5, 8.5); } else if (side === 1) { x = 17.5; y = rand(-8.5, 8.5); }
-    else if (side === 2) { x = rand(-15.5, 15.5); y = -10.5; } else { x = rand(-15.5, 15.5); y = 10.5; }
-    const tx = rand(-8, 8), ty = rand(-4.5, 4.5);
-    const dx = tx - x, dy = ty - y; const dd = Math.hypot(dx, dy) || 1;
-    g.balls.push({ x, y, vx: (dx / dd) * BALL_SPEED * (4 / 3), vy: (dy / dd) * BALL_SPEED * (3 / 4) });
-    g.spawnIn = Math.max(24, 56 - 2 * Math.floor(g.tickCount / 192));
+    spawnLaser(room);
+    if (g.tickCount > 400 && Math.random() < 0.35) spawnLaser(room);
+    g.spawnIn = Math.max(17, 34 - 2 * Math.floor(g.tickCount / 192));
   }
-  g.balls.forEach((b) => { b.x += b.vx; b.y += b.vy; });
-  g.balls = g.balls.filter((b) => Math.abs(b.x) <= 19 && Math.abs(b.y) <= 12);
-  // Hits.
+  g.lasers.forEach((L) => { L.tLeft -= 1; });
+  g.lasers = g.lasers.filter((L) => {
+    if (L.tLeft > 0) return true;
+    if (L.state === 'warn') { L.state = 'fire'; L.tLeft = LASER_FIRE_TICKS; return true; }
+    return false;
+  });
+  // Hits: only firing beams bite. LOW hits grounded players (jump
+  // it), HIGH hits airborne players (stay down). One hit per player
+  // per tick at most; a hit grants the usual 2s of invulnerability.
   room.players.forEach((p) => {
     const b = g.blobs[p.seat];
     if (!b || !b.alive) return;
     if (g.invuln[p.seat] > 0) { g.invuln[p.seat] -= 1; return; }
-    const idx = g.balls.findIndex((ball) => Math.hypot(ball.x - b.x, ball.y - b.y) < BALL_HIT_DIST);
-    if (idx < 0) return;
-    g.balls.splice(idx, 1);
+    const airborne = (b.air || 0) > 0;
+    const hit = g.lasers.some((L) => {
+      if (L.state !== 'fire') return false;
+      const inLine = L.axis === 'h' ? Math.abs(b.y - L.pos) < LASER_HIT : Math.abs(b.x - L.pos) < LASER_HIT;
+      if (!inLine) return false;
+      return L.kind === 'low' ? !airborne : airborne;
+    });
+    if (!hit) return;
     b.lives -= 1;
     g.invuln[p.seat] = INVULN_TICKS;
     if (b.lives <= 0) { b.alive = false; g.elimOrder.push(p.seat); g.elimTick[p.seat] = g.tickCount; }
@@ -4476,9 +4519,9 @@ function gameView(room, role, seat, t) {
     v.blobs = {};
     room.players.forEach((p) => {
       const b = g.blobs ? g.blobs[p.seat] : null;
-      if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
+      if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, air: (b.air || 0) > 0, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
-    v.balls = (g.balls || []).map((b) => ({ x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, vx: Math.round(b.vx * 100) / 100, vy: Math.round(b.vy * 100) / 100 }));
+    v.lasers = (g.lasers || []).map((L) => ({ id: L.id, axis: L.axis, pos: L.pos, kind: L.kind, state: L.state }));
   } else if (g.id === 'keo-co') {
     v.teams = g.teams;
     v.presses = g.presses;

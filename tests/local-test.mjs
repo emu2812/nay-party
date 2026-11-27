@@ -6,7 +6,7 @@
 // - Uses a fake clock (Date.now patched) so timed phases run instantly.
 // - Plays a full match: lobby/bots -> Đố Vui (streak + ×2 verified exactly)
 //   -> Đẩy Ra Khỏi Sàn (gamepad held-state arena)
-//   -> Né Đạn (tick arena survival) -> Kéo Co (team knot math, exact)
+//   -> Né Laze (laser survival) -> Kéo Co (team knot math, exact)
 //   -> Chia Hay Cướp (secret choices, rotating pairs, exact totals)
 //   -> podium/final, and checks cumulative totals == sum of per-game points.
 // Run: node tests/local-test.mjs
@@ -219,12 +219,12 @@ async function playArena() {
 }
 
 async function playDodge() {
-  console.log('Game: Né Đạn (tick arena survival, walled arena)');
+  console.log('Game: Né Laze (laser survival, walled arena)');
   await toGame('ne-dan');
   let v = await pump(125, (s) => s.game && s.game.phase === 'dodge', 'dodge begins');
   const start = v.game.blobs[P1.seat];
   assert(start && start.alive && start.lives === 3, 'dodge: human blob spawns alive with 3 lives');
-  assert(Array.isArray(v.game.balls), 'dodge: cannonball field is exposed in the host view');
+  assert(Array.isArray(v.game.lasers), 'dodge: laser field is exposed in the host view');
   await pAct({ action: 'pad', pad: { l: true } }); // hold D-pad left
   await advanceMs(hState, 3000);
   v = await hState();
@@ -377,7 +377,7 @@ async function main() {
   const home = await call('GET', '/');
   assert(home.status === 200 && home.text.indexOf('Nảy Party') >= 0, 'GET / serves the game page');
   assert(home.text.indexOf('Đố Vui Tốc Độ') >= 0 && home.text.indexOf('Đẩy Ra Khỏi Sàn') >= 0, 'page lists all games incl. the arena');
-  assert(home.text.indexOf('Né Đạn') >= 0 && home.text.indexOf('Kéo Co') >= 0 && home.text.indexOf('Chia Hay Cướp') >= 0, 'page lists the 3 new games (Né Đạn, Kéo Co, Chia Hay Cướp)');
+  assert(home.text.indexOf('Né Laze') >= 0 && home.text.indexOf('Kéo Co') >= 0 && home.text.indexOf('Chia Hay Cướp') >= 0, 'page lists the 3 new games (Né Laze, Kéo Co, Chia Hay Cướp)');
   assert(home.text.indexOf('Cướp Sao') >= 0 && home.text.indexOf('Giữ Vương Miện') >= 0 && home.text.indexOf('Sơn Sàn') >= 0 && home.text.indexOf('Cao Bồi') >= 0, 'page lists the 4 newest games (Cướp Sao, Giữ Vương Miện, Sơn Sàn, Cao Bồi)');
   assert(home.text.indexOf('Đấu với nhau') >= 0 && home.text.indexOf('Hợp tác') >= 0 && home.text.indexOf('Sắp ra mắt') < 0, 'game chooser is grouped by category: Đấu với nhau + Hợp tác, placeholder tile GONE (co-op wave shipped)');
   assert(home.text.indexOf('Chung Một Thân') >= 0 && home.text.indexOf('Đẩy Hộp Về Đích') >= 0 && home.text.indexOf('Chèo Thuyền') >= 0, 'page lists the 3 co-op games (Chung Một Thân, Đẩy Hộp Về Đích, Chèo Thuyền)');
