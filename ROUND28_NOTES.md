@@ -32,3 +32,16 @@ MEASURED (weak profile, local mode, 1 local seat + 5 bots fighting, 20 s per gam
 local-test 694 ✓ · laser 21/21 ✓ · discrim PASS ✓ · deep-drive 462/0 ✓ · rig-local-all FLAGGED 0 (20/20) ✓ · rig-ui-shot 26 cards (20 + 6 featured), 26/26 controls ✓ · live byte-identical ✓ · live probe: ma-soi correctly rejected ("Không có game này."), quickStart xe-tank → playing ✓.
 
 Not changed: do-vui/tien-len/cao-boi/can-goc signatures (turn-based; their rebuilds land on natural beats — question reveal, card play, boom pause). Soccer goals still flip phase to 'goal' (celebration beat, ball reset) — one rebuild at a pause, not mid-motion.
+
+## ADDENDUM — ROUND 28b: RESTORE WOLF + LUDO, REMOVE 3 MORE (2026-11-27 21:35–21:52)
+
+Deployment 08676fa8, build 202c430822, commit 7d787d1. Live byte-identical (sha256 f9326bce…).
+
+User corrections after the Round 28 report: (1) 21:34 "Ma sói và cờ cá ngựa phải giữ lại chứ" — RESTORED; (2) 21:35 "Sơn sàn, kéo co, cao bồi bỏ đi" — REMOVED.
+**Final removed set (6): Chia Hay Cướp, Kẻ Giả Mạo, Giải Mã Chung, Sơn Sàn, Kéo Co, Cao Bồi. Final catalog: 19 games (13 versus + 6 co-op).**
+
+Method: rebuilt from the Round 27 sources (git d7bc300) rather than patching the Round 28 tree — re-ran excisions for ONLY the 6 removed games (tools-excise3.py engines for 3 + chat/vote sub-branch cleanup by hand; tools-excise4.py for splat/tug/duel), then re-applied the Round 28 judder fix verbatim (recovered exactly from commit b124af0, incl. patchScoreboard).
+Collateral caught this time by a FUNCTION-LIST DIFF (post-excision vs pre-excision): **botBrainShared + spawnSharedStar** (Chung Một Thân) sat inside the duel span [stepDuel, stepShared) — restored verbatim; the J1 shared-game pump timeout exposed them. Also the padNudge son-san branch deletion left an orphan `}` (fixed by hand). Lesson reinforced: after ANY span excision, diff the function list.
+Tests: local-test **702** (wolf/ngua sections back; splat/tug/duel/chia/impostor/decode sections out; playlist runtime-skip re-based to the Tiến Lên max-gate — no min-3 game exists in the catalog; the "final crowns" assertion now crowns the verified leader instead of seat 1 — with 4 scripted playthroughs gone, bot variance in steal/crown can legitimately outscore the scripted human ~1 run in 5), laser 21/21, discrim PASS, deep-drive 462/0 (ma-soi Part E + D5 back).
+Rigs: local-all 19/19 FLAGGED 0 (natural-end re-based to day-ra, sync 200/300); event-hitch rb:2 on all 6 arena games with deaths flowing; chooser 25 cards (19 + 6 featured) all with controls lines.
+Live probes: ma-soi quickStart → playing/countdown 4 players ✓; ca-ngua quickStart → playing/countdown ✓; son-san → "Không có game này." ✓.
