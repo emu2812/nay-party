@@ -896,7 +896,7 @@ async function main() {
       await tDrv.act({ action: 'startGame', game: 'chung-mot-than' });
       await pumpD(tDrv, 125, (s) => s.game && s.game.phase === 'shared', 'shared begins (tier ' + need + ')');
       await driveShared(tDrv, t1.playerToken, t2.playerToken, () => ({ x: 12, y: 0 }), { until: (s) => s.game.checks >= need });
-      tick(61000);
+      tick(91000);
       const res = await tDrv.state();
       const tr = res.lastGame && res.lastGame.teamResult;
       assert(res.phase === 'results' && tr && tr.score === need && tr.tier === tier && tr.pointsEach === pts,
@@ -1063,7 +1063,7 @@ async function main() {
     && delivered.game.goal.x === 8 && delivered.game.goal.y === 2.6,
     'box: layout 1 loads its own crate (-8.7,-3.75) and goal (8,2.6), got crate ' + JSON.stringify(delivered.game.crate));
   await bothTicks(bxDrv, bx1.playerToken, {}, bx2.playerToken, {}, 0);
-  tick(76000);
+  tick(106000);
   const bres = await bxDrv.state();
   const btr = bres.lastGame && bres.lastGame.teamResult;
   assert(bres.phase === 'results' && btr && btr.score === 1 && btr.tier === 'dong' && btr.pointsEach === 100
@@ -1096,38 +1096,38 @@ async function main() {
     rv = await d.state();
     assert(rv.game.splash[1] === 1 && rv.game.distance === 15,
       'row: an off-window press splashes (miss counted, 0 advance), got splash ' + rv.game.splash[1] + ' / ' + rv.game.distance + 'm');
-    for (let k = 2; k <= 40; k++) { await pressAt(d, h1.playerToken, rowStart + k * 1000); await pressAt(d, h2.playerToken, rowStart + k * 1000); }
-    tick(rowStart + 45000 - now);
+    for (let k = 2; k <= 54; k++) { await pressAt(d, h1.playerToken, rowStart + k * 1000); await pressAt(d, h2.playerToken, rowStart + k * 1000); }
+    tick(rowStart + 60000 - now);
     rv = await d.state();
     const tr = rv.lastGame && rv.lastGame.teamResult;
-    // 10 + 5 + 39*10 = 405m = exactly 90.0% of the 450m perfect distance.
-    assert(rv.phase === 'results' && tr && tr.score === 405 && tr.tier === 'vang' && tr.pointsEach === 300,
-      'row: 405m = 90% of perfect -> Vàng, +300 each, got ' + JSON.stringify(tr));
+    // 10 + 5 + 53*10 = 545m = 90.8% of the 600m perfect distance (60 beats).
+    assert(rv.phase === 'results' && tr && tr.score === 545 && tr.tier === 'vang' && tr.pointsEach === 300,
+      'row: 545m = 91% of perfect -> Vàng, +300 each, got ' + JSON.stringify(tr));
     assert(rv.lastGame.points[1] === 300 && rv.lastGame.points[2] === 300, 'row: Vàng banks 300/300');
   }
   {
     const { d, h1, h2, rowStart } = await rowRoom();
-    for (let k = 0; k <= 31; k++) { await pressAt(d, h1.playerToken, rowStart + k * 1000); await pressAt(d, h2.playerToken, rowStart + k * 1000); }
-    tick(rowStart + 45000 - now);
+    for (let k = 0; k <= 43; k++) { await pressAt(d, h1.playerToken, rowStart + k * 1000); await pressAt(d, h2.playerToken, rowStart + k * 1000); }
+    tick(rowStart + 60000 - now);
     const rv = await d.state();
     const tr = rv.lastGame && rv.lastGame.teamResult;
-    // 32 beats x 10m = 320m = 71.1% -> Bạc.
-    assert(tr && tr.score === 320 && tr.tier === 'bac' && tr.pointsEach === 200,
-      'row: 320m = 71% of perfect -> Bạc, +200 each, got ' + JSON.stringify(tr));
+    // 44 beats x 10m = 440m = 73.3% of 600m -> Bạc.
+    assert(tr && tr.score === 440 && tr.tier === 'bac' && tr.pointsEach === 200,
+      'row: 440m = 73% of perfect -> Bạc, +200 each, got ' + JSON.stringify(tr));
   }
   {
     const { d, h1, rowStart } = await rowRoom();
-    for (let k = 0; k <= 40; k++) await pressAt(d, h1.playerToken, rowStart + k * 1000);
-    tick(rowStart + 45000 - now);
+    for (let k = 0; k <= 55; k++) await pressAt(d, h1.playerToken, rowStart + k * 1000);
+    tick(rowStart + 60000 - now);
     const rv = await d.state();
     const tr = rv.lastGame && rv.lastGame.teamResult;
-    // One player alone: 41 strokes x 5m = 205m = 45.6% -> Đồng.
-    assert(tr && tr.score === 205 && tr.tier === 'dong' && tr.pointsEach === 100,
-      'row: 205m = 46% of perfect -> Đồng, +100 each, got ' + JSON.stringify(tr));
+    // One player alone: 56 strokes x 5m = 280m = 46.7% of 600m -> Đồng.
+    assert(tr && tr.score === 280 && tr.tier === 'dong' && tr.pointsEach === 100,
+      'row: 280m = 47% of perfect -> Đồng, +100 each, got ' + JSON.stringify(tr));
   }
   {
     const { d, rowStart } = await rowRoom();
-    tick(rowStart + 45000 - now);
+    tick(rowStart + 60000 - now);
     const rv = await d.state();
     const tr = rv.lastGame && rv.lastGame.teamResult;
     assert(tr && tr.score === 0 && tr.tier === 'none' && tr.pointsEach === 50

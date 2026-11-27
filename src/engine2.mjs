@@ -487,8 +487,9 @@ function beginRound(room) {
 // ---------------------------------------------------------------------------
 function advance(room) {
   playlistAutoStart(room);
-  let guard = 0;
-  while (guard++ < 40) { if (!step(room)) break; }
+  let guard = 0, stepped = 0;
+  while (guard++ < 40) { if (!step(room)) break; stepped++; }
+  return stepped;
 }
 // Playlist intermission: the results screen is showing and the gap has
 // elapsed — start the next queued game with NO host action. Entries
@@ -887,8 +888,8 @@ function simulateDodgeTick(room) {
   g.spawnIn -= 1;
   if (g.spawnIn <= 0) {
     spawnLaser(room);
-    if (g.tickCount > 400 && Math.random() < 0.35) spawnLaser(room);
-    g.spawnIn = Math.max(17, 34 - 2 * Math.floor(g.tickCount / 192));
+    if (g.tickCount > 320 && Math.random() < 0.4) spawnLaser(room);
+    g.spawnIn = Math.max(13, 30 - 2 * Math.floor(g.tickCount / 160));
   }
   g.lasers.forEach((L) => { L.tLeft -= 1; });
   g.lasers = g.lasers.filter((L) => {

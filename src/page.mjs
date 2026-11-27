@@ -75,6 +75,45 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 button.tlcard { background: #FFFDF5; color: #26314A; border: none; border-radius: 9px; min-width: 50px; padding: 10px 4px 8px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 19px; line-height: 1.05; cursor: pointer; box-shadow: 0 2px 0 rgba(0,0,0,.3); transition: transform .07s; }
 button.tlcard.red { color: #D81F3C; }
 button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; box-shadow: 0 2px 0 rgba(0,0,0,.3); background: #FFF3C4; }
+button.tlcard b { display: block; font-size: 21px; }
+button.tlcard i { display: block; font-style: normal; font-size: 18px; }
+.tlstage { background: #7C4A21; border-radius: 230px; padding: 13px; max-width: 940px; margin: 10px auto; }
+.tlfelt { position: relative; height: 440px; border-radius: 200px; background: #0B6E39; border: 3px solid #E9C46A; overflow: hidden; }
+.tlfelt::before { content: ''; position: absolute; left: 6%; right: 6%; top: 9%; bottom: 9%; border: 2px solid rgba(255,255,255,.16); border-radius: 30px; }
+.tlseat { position: absolute; transform: translate(-50%, -50%); text-align: center; width: 132px; z-index: 2; }
+.tlava { width: 60px; height: 60px; border-radius: 50%; border: 3px solid #E9C46A; background: #173F2C; display: flex; align-items: center; justify-content: center; margin: 0 auto; overflow: hidden; }
+.tlseat.turn .tlava { border: 4px solid #FFC93D; background: #7A5410; }
+.tlname { display: inline-block; margin-top: 4px; background: #0B0E1A; color: #fff; border: 2px solid #fff; border-radius: 999px; padding: 1px 10px; font-weight: 800; font-size: 14px; max-width: 128px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlseat.turn .tlname { background: #FFC93D; color: #4A2503; border-color: #FFC93D; }
+.tlfan { position: relative; height: 42px; margin-top: 3px; }
+.tlfan i { position: absolute; left: 50%; top: 0; width: 27px; height: 39px; margin-left: -13px; border-radius: 4px; border: 2px solid #fff; background: #2B6CB0 repeating-linear-gradient(45deg, rgba(255,255,255,.28) 0 4px, rgba(255,255,255,0) 4px 8px); }
+.tlfan i:nth-child(1) { transform: rotate(-17deg); transform-origin: 50% 100%; }
+.tlfan i:nth-child(3) { transform: rotate(17deg); transform-origin: 50% 100%; }
+.tlcnt { position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); background: #0B0E1A; color: #FFC93D; border: 2px solid #FFC93D; border-radius: 999px; padding: 0 8px; font-weight: 800; font-size: 13px; }
+.tlbadge { display: inline-block; margin-top: 9px; background: #5B6472; color: #fff; border-radius: 999px; padding: 1px 10px; font-weight: 800; font-size: 13px; }
+.tlbadge.gold { background: #FFC93D; color: #4A2503; }
+.tlcenter { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; width: 76%; z-index: 1; }
+.tlwho { color: #DFF5E5; font-weight: 800; font-size: 17px; margin-bottom: 9px; }
+.tlbig { display: inline-block; background: #FFFDF5; color: #26314A; border: 2px solid #D8DEE9; border-radius: 10px; width: 58px; height: 84px; padding-top: 6px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 25px; line-height: 1.05; margin: 0 -7px; vertical-align: top; }
+.tlbig i { display: block; font-style: normal; font-size: 22px; }
+.tlbig.red { color: #D81F3C; }
+.tlkind { display: inline-block; margin-top: 12px; background: #FFC93D; color: #4A2503; border-radius: 999px; padding: 2px 16px; font-weight: 800; font-size: 16px; }
+.wolfscene { position: relative; height: 480px; border-radius: 26px; overflow: hidden; background: #16264C; border: 3px solid #0B0E1A; margin: 10px auto; max-width: 940px; }
+.wolfscene.day { background: #7FB2E0; }
+.worb { position: absolute; right: 38px; top: 24px; width: 62px; height: 62px; border-radius: 50%; background: #F5F0D8; }
+.wolfscene.day .worb { background: #FFD93D; }
+.whouses { position: absolute; left: 0; right: 0; bottom: 0; height: 92px; display: flex; align-items: flex-end; gap: 7px; padding: 0 12px; }
+.whouse { flex: 1; background: #0D1526; clip-path: polygon(0 100%, 0 34%, 50% 0, 100% 34%, 100% 100%); }
+.wolfscene.day .whouse { background: #3D5A80; }
+.wseat { position: absolute; transform: translate(-50%, -50%); text-align: center; width: 118px; z-index: 2; }
+.wava { width: 56px; height: 56px; border-radius: 50%; border: 3px solid #E9C46A; background: #1D3557; display: flex; align-items: center; justify-content: center; margin: 0 auto; overflow: hidden; }
+.wseat.dead .wava { border-color: #5B6472; background: #101623; }
+.wname { display: inline-block; margin-top: 3px; background: #0B0E1A; color: #fff; border: 2px solid #fff; border-radius: 999px; padding: 0 9px; font-weight: 800; font-size: 13px; max-width: 114px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wstat { display: inline-block; margin-top: 2px; background: rgba(11,14,26,.78); color: #DFF5E5; border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 700; }
+.wstat.role { background: #7A1F2B; color: #FFE9EC; }
+.wcenter { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); text-align: center; z-index: 1; }
+.wemblem { font-size: 62px; line-height: 1; }
+.wctext { display: inline-block; margin-top: 6px; background: rgba(11,14,26,.8); color: #fff; border-radius: 999px; padding: 3px 16px; font-weight: 800; font-size: 16px; }
 .tlp { display: inline-block; padding: 1px 5px; margin: 1px 1px; border-radius: 6px; background: rgba(255,255,255,.1); font-weight: 700; }
 .tlp.red { color: #FF9DB0; }
 .tlp.sel { background: #FFC93D; color: #26314A; }
@@ -209,7 +248,7 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
 .fcrate { position: absolute; width: 3.75%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 2; pointer-events: none; transition: left .18s linear, top .18s linear; display: flex; align-items: center; justify-content: center; font-size: 22px; background: #8A5518; border: 3px solid #E8B96A; border-radius: 8px; }
 .artwrap { position: absolute; inset: 0; }
 .artwrap svg { width: 100%; height: 100%; display: block; }
-.boomflash { position: absolute; border-radius: 50%; z-index: 5; pointer-events: none; transform: translate(-50%, -50%); background: rgba(255,180,80,.8); animation: boomPop .5s ease-out; }
+.boomflash { position: absolute; border-radius: 50%; z-index: 5; pointer-events: none; transform: translate(-50%, -50%); background: rgba(255,180,80,.8); width: 13%; padding-top: 13%; opacity: .85; animation: boomPop .5s ease-out; }
 @keyframes boomPop { from { width: 4%; padding-top: 4%; opacity: 1; } to { width: 19%; padding-top: 19%; opacity: 0; } }
 .aframe { position: absolute; border: 3px solid #78DCFF; border-radius: 14px; pointer-events: none; }
 .ablock { position: absolute; z-index: 1; pointer-events: none; border-radius: 6px; background: #22392E; border: 2px solid #8CFFC8; }
@@ -262,8 +301,9 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
 .alaser.v.high i { top: 0; bottom: 0; width: 38%; }
 .alaser.v.high i:first-child { left: 0; }
 .alaser.v.high i:last-child { right: 0; }
-.alaser.warn { opacity: .45; animation: laserBlink .28s steps(2) infinite; }
-.alaser.high.warn { animation-duration: .55s; }
+.alaser.warn { opacity: .8; }
+.alaser.low.warn { background: repeating-linear-gradient(45deg, #FF4757 0 10px, rgba(255,71,87,.25) 10px 20px); }
+.alaser.high.warn i { background: repeating-linear-gradient(45deg, #B565FF 0 10px, rgba(181,101,255,.25) 10px 20px); }
 .alaser.fire { opacity: 1; }
 @keyframes laserBlink { 50% { opacity: .12; } }
 .ablob.air svg { transform: scale(1.3) translateY(-7px); }
@@ -276,7 +316,31 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
 .chatrow { display: flex; gap: 8px; align-items: center; background: rgba(255,255,255,.22); border-radius: 14px; padding: 7px 12px; margin: 6px 0; font-weight: 700; text-align: left; }
 .afield { position: relative; width: min(100%, max(340px, calc((100vh - 190px) * 16 / 9))); width: min(100%, max(340px, calc((100dvh - 190px) * 16 / 9))); aspect-ratio: 16 / 9; margin: 6px auto; border-radius: 18px;
   background: rgba(255,255,255,.06);
-  box-shadow: inset 0 0 0 2px rgba(255,255,255,.18); }
+  border: 5px solid #241A12;
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,.22), inset 0 0 0 7px rgba(0,0,0,.16); }
+/* Arena floors (visual pass, references: real arena/party games):
+   every field gets its own flat floor tone plus a faint static
+   checker so the surface reads as a designed pitch, not an empty
+   box. Static backgrounds only — nothing here repaints per frame. */
+.g-day-ra .afield, .g-xe-tank .afield, .g-dat-bom .afield, .g-cuop-sao .afield,
+.g-giu-vuong-mien .afield, .g-chung-mot-than .afield, .g-day-hop .afield,
+.g-thu-thanh .afield, .g-nguoi-que .afield, .g-ech-op .afield {
+  background-image: linear-gradient(45deg, rgba(255,255,255,.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.05) 75%), linear-gradient(45deg, rgba(255,255,255,.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.05) 75%);
+  background-size: 46px 46px; background-position: 0 0, 23px 23px; }
+.g-day-ra .afield { background-color: #23235C; }
+.g-xe-tank .afield { background-color: #4A4A28; }
+.g-dat-bom .afield { background-color: #1E4634; }
+.g-cuop-sao .afield { background-color: #2A1A4E; }
+.g-giu-vuong-mien .afield { background-color: #3A2A10; }
+.g-chung-mot-than .afield { background-color: #0E4A44; }
+.g-day-hop .afield { background-color: #4A3220; }
+.g-thu-thanh .afield { background-color: #26314A; }
+.g-nguoi-que .afield { background-color: #3A2A4E; }
+.g-ech-op .afield { background-color: #14424E; }
+.g-ne-dan .afield { background-color: #0D1526; background-image: linear-gradient(rgba(120,220,255,.08) 2px, transparent 2px), linear-gradient(90deg, rgba(120,220,255,.08) 2px, transparent 2px); background-size: 46px 46px; }
+.g-da-bong .afield { background-color: #2E8B47; background-image: repeating-linear-gradient(90deg, rgba(255,255,255,.055) 0 64px, rgba(255,255,255,0) 64px 128px); }
+.g-da-bong .afield::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; background: rgba(255,255,255,.45); transform: translateX(-50%); pointer-events: none; }
+.g-da-bong .afield::after { content: ''; position: absolute; left: 50%; top: 50%; width: 17%; aspect-ratio: 1; border: 3px solid rgba(255,255,255,.45); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 .aring { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%;
   background: transparent;
   border: 3px solid #78DCFF; }
@@ -507,7 +571,7 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
    the field itself can span the TV (16:9, ~91% of a 1920px width). */
 #app.playhud .stage { padding: 8px 10px; }
 #app.playhud .stage > h2 { position: absolute; top: 12px; left: 18px; z-index: 8; margin: 0; pointer-events: none; font-size: 22px; }
-@media (min-width: 1100px) { #app.playhud .stage:has(> #afield) > .baloo { position: absolute; top: 12px; left: 300px; right: 300px; z-index: 8; margin: 0; text-align: center; pointer-events: none; } }
+@media (min-width: 1100px) { #app.playhud .stage:has(> #afield) > .baloo { position: absolute; top: 12px; left: 300px; right: 300px; z-index: 8; margin: 0; text-align: center; pointer-events: none; background: rgba(11,14,26,.72); border-radius: 12px; padding: 3px 14px; } }
 #app.playhud .stage > .scorebar { position: absolute; top: 10px; right: 14px; z-index: 8; margin: 0; max-width: 62%; justify-content: flex-end; pointer-events: none; }
 #app.playhud .stage > .tbar { position: absolute; top: 0; left: 0; right: 0; height: 6px; margin: 0; border-radius: 0; z-index: 9; }
 #app.playhud .stage > p.center { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 8; margin: 0; max-width: 94%; padding: 5px 16px; border-radius: 999px; background: rgba(10,8,20,.55); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -549,7 +613,7 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
    crown holder's last drop-shadow exception goes too. Flat fills
    and solid borders only, so a weak machine only ever composites
    flat shapes. Effects return untouched outside play. */
-#app.perf *, #app.perf *::before, #app.perf *::after { box-shadow: none !important; filter: none !important; text-shadow: none !important; backdrop-filter: none !important; }
+#app.perf *, #app.perf *::before, #app.perf *::after { box-shadow: none !important; filter: none !important; text-shadow: none !important; backdrop-filter: none !important; animation: none !important; }
 /* LITE MODE (Round 22: toggle removed from rafLoop — Round 21 FLAT
    already shed the heavy paint everywhere, and toggling mid-game cost
    a full style recalc per switch. Rules stay, unused, for a future
@@ -607,6 +671,17 @@ var TL_KIND_NAMES = { single: 'Đơn', pair: 'Đôi', triple: 'Ba con', quad: 'T
 var TL_IW_NAMES = { dragon: 'SẢNH RỒNG', sixpairs: 'SÁU ĐÔI', quad3: 'TỨ QUÝ 3', dseq4: 'BỐN ĐÔI THÔNG' };
 function tlCardLabel(id) { return TL_RANKS[id % 13] + TL_SUITS[Math.floor(id / 13)]; }
 function tlCardRed(id) { var s = Math.floor(id / 13); return s === 2 || s === 3; }
+function tlCardsBigHTML(cards) {
+  var h = '';
+  var mid = (cards.length - 1) / 2;
+  for (var i = 0; i < cards.length; i++) {
+    var lab = tlCardLabel(cards[i]);
+    var rot = ((i - mid) * 7).toFixed(0);
+    var lift = Math.abs(i - mid) * 3;
+    h += '<span class="tlbig' + (tlCardRed(cards[i]) ? ' red' : '') + '" style="transform: rotate(' + rot + 'deg) translateY(' + lift + 'px)">' + lab.slice(0, -1) + '<i>' + lab.slice(-1) + '</i></span>';
+  }
+  return h;
+}
 function tlChipsHTML(cards, sm) {
   var h = '';
   for (var i = 0; i < cards.length; i++) h += '<span class="tlcard2' + (sm ? ' sm' : '') + (tlCardRed(cards[i]) ? ' red' : '') + '">' + tlCardLabel(cards[i]) + '</span>';
@@ -1084,7 +1159,24 @@ function localTick() {
   // a timer any more. One clock drives sim + render in local mode.
   if (!L.active || !L.room) return;
   var E = window.__NP_ENGINE;
-  try { E.advance(L.room); localApply(); } catch (e) { localAbort(); return; }
+  try {
+    var stepped = E.advance(L.room);
+    // Apply when the sim actually changed something, not once per
+    // frame: steppers return true only when they acted, and rAF runs
+    // 4x faster than the 16 Hz sim — rebuilding the entire view
+    // (players, standings, the game view, one private view per
+    // keyboard seat) on every frame was pure allocation churn whose
+    // GC pauses land as periodic judder even though the average
+    // frame rate reads a clean 60. Phase changes (playlist
+    // auto-start, results, lobby) apply too, and non-playing phases
+    // re-apply once a second for their countdown labels. Actions
+    // still apply instantly through localDispatch; rafLoop keeps
+    // interpolating mover positions between the stepped applies.
+    var lg = L.room.game;
+    var akey = L.room.phase + '|' + (lg ? lg.id + '|' + lg.phase : '')
+      + (L.room.phase === 'playing' ? '' : '|' + Math.floor(Date.now() / 1000));
+    if (stepped > 0 || akey !== L._applyKey) { L._applyKey = akey; localApply(); }
+  } catch (e) { localAbort(); return; }
   // The local engine ticking proves this page is alive. Server contact
   // is gated off while local (poll/tick/pump, Round 22), so without
   // this stamp the stale-view watchdog would reload the page mid-game
@@ -1393,7 +1485,8 @@ function tlHandHTML(hand, sel, pfx) {
   var h = '<div class="tlhand">';
   for (var i = 0; i < hand.length; i++) {
     var cid = hand[i];
-    h += '<button class="tlcard' + (tlCardRed(cid) ? ' red' : '') + (sel.indexOf(cid) >= 0 ? ' sel' : '') + '" data-cmd="' + pfx + 'Card" data-i="' + cid + '">' + tlCardLabel(cid) + '</button>';
+    var lab2 = tlCardLabel(cid);
+    h += '<button class="tlcard' + (tlCardRed(cid) ? ' red' : '') + (sel.indexOf(cid) >= 0 ? ' sel' : '') + '" data-cmd="' + pfx + 'Card" data-i="' + cid + '"><b>' + lab2.slice(0, -1) + '</b><i>' + lab2.slice(-1) + '</i></button>';
   }
   return h + '</div>';
 }
@@ -1941,6 +2034,30 @@ function hostStage(v) {
     if (g.deadList) for (var dL = 0; dL < g.deadList.length; dL++) deadRole[g.deadList[dL].seat] = g.deadList[dL].role;
     var wbanner = { night: '🌙 ĐÊM ' + (g.night || 1) + ' — LÀNG ĐANG NGỦ…', dawn: '☀️ BÌNH MINH ĐÊM ' + (g.night || 1), discuss: '🗣️ BÀN LUẬN — AI LÀ SÓI?', vote: '🗳️ BỎ PHIẾU TREO CỔ', execute: '⚖️ KẾT QUẢ BỎ PHIẾU', wolfEnd: '🏁 TRỜI SÁNG HẲN — KẾT THÚC!' };
     h += '<div class="center baloo" style="font-size:27px">' + (wbanner[g.phase] || '') + '</div>';
+    var wNight = g.phase === 'night';
+    var wEmb = { night: '🌙', dawn: '🌅', discuss: '🗣️', vote: '🗳️', execute: '⚖️', wolfEnd: '🏁' }[g.phase] || '🐺';
+    var wTxt = { night: 'Cả làng đang ngủ…', dawn: 'Trời sáng rồi!', discuss: 'Ai là sói trong làng?', vote: 'Làng treo cổ ai?', execute: 'Kết quả bỏ phiếu', wolfEnd: (g.winner === 'soi' ? '🐺 Bầy sói thắng!' : '🎉 Dân làng thắng!') }[g.phase] || '';
+    h += '<div class="wolfscene' + (wNight ? '' : ' day') + '"><div class="worb"></div><div class="whouses">'
+      + '<div class="whouse" style="height:64px"></div><div class="whouse" style="height:84px"></div><div class="whouse" style="height:56px"></div><div class="whouse" style="height:78px"></div><div class="whouse" style="height:62px"></div><div class="whouse" style="height:88px"></div><div class="whouse" style="height:58px"></div></div>'
+      + '<div class="wcenter"><div class="wemblem">' + wEmb + '</div><div><span class="wctext">' + wTxt + '</span></div></div>';
+    var nW = v.players.length;
+    for (var wS = 0; wS < nW; wS++) {
+      var wp2 = v.players[wS];
+      var aliveW = !g.aliveMap || g.aliveMap[wp2.seat];
+      var angW = (-90 + wS * 360 / nW) * Math.PI / 180;
+      var wx = 50 + 43 * Math.cos(angW), wy = 47 + 34 * Math.sin(angW);
+      var roleW = deadRole[wp2.seat] || (g.phase === 'wolfEnd' && g.roles ? g.roles[wp2.seat] : null);
+      h += '<div class="wseat' + (aliveW ? '' : ' dead') + '" style="left:' + wx.toFixed(1) + '%;top:' + wy.toFixed(1) + '%">'
+        + '<div class="wava">' + blobSVG(wp2.color, aliveW ? wp2.mood : 'buon', 44) + '</div>'
+        + '<div class="wname">' + esc(wp2.name) + '</div><div>';
+      if (!aliveW) h += '<span class="wstat role">💀 ' + (WOLF_ROLE_NAMES[roleW] || 'Đã chết') + '</span>';
+      else if (g.phase === 'night') h += '<span class="wstat">😴 đang ngủ</span>';
+      else if (g.phase === 'vote') h += '<span class="wstat">' + (g.voted && g.voted[wp2.seat] ? '✓ đã bỏ phiếu' : 'đang nghĩ…') + '</span>';
+      else if (g.phase === 'wolfEnd' && roleW) h += '<span class="wstat role">' + (WOLF_ROLE_NAMES[roleW] || '') + '</span>';
+      else h += '<span class="wstat">còn sống</span>';
+      h += '</div></div>';
+    }
+    h += '</div>';
     if (g.phase === 'night') {
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 45000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
       h += '<p class="center">Sói đang săn mồi · Bảo Vệ đang canh giữ · Tiên Tri đang soi · Phù Thủy đang cân nhắc hai lọ thuốc — tất cả bí mật trên điện thoại của từng người!</p>';
@@ -1975,14 +2092,6 @@ function hostStage(v) {
       h += '<div class="center baloo" style="font-size:30px">' + (g.winner === 'soi' ? '🐺 BẦY SÓI THẮNG! Làng đã bị sói ăn mòn…' : '🎉 DÂN LÀNG THẮNG! Sói đã bị quét sạch!') + '</div>';
       h += '<div class="rows">';
       for (var wI = 0; wI < v.players.length; wI++) { var wp = v.players[wI]; var wr = g.roles ? g.roles[wp.seat] : null; h += '<div class="rrow">' + blobSVG(wp.color, wp.mood, 34) + ' ' + esc(wp.name) + (wr ? '<span class="chip ' + (wr === 'soi' ? 'hot' : 'cool') + '">' + WOLF_ROLE_NAMES[wr] + '</span>' : '') + '<span class="pts">+' + fmt(g.points[wp.seat] || 0) + '</span></div>'; }
-      h += '</div>';
-    } else {
-      h += '<div class="wolfgrid">';
-      for (var gI2 = 0; gI2 < v.players.length; gI2++) {
-        var gp3 = v.players[gI2]; var alive3 = !g.aliveMap || g.aliveMap[gp3.seat];
-        h += '<div class="wolfcard' + (alive3 ? '' : ' dead') + '">' + blobSVG(gp3.color, alive3 ? gp3.mood : 'buon', 54) + '<div>' + esc(gp3.name) + '</div>'
-          + (alive3 ? '<div class="small muted">😴 đang yên giấc / còn sống</div>' : '<div class="rolechip">💀 ' + (WOLF_ROLE_NAMES[deadRole[gp3.seat]] || '') + '</div>') + '</div>';
-      }
       h += '</div>';
     }
   } else if (g.id === 'ca-ngua') {
@@ -2028,26 +2137,33 @@ function hostStage(v) {
       var turnT = g.turn ? playerOf(v, g.turn) : null;
       h += '<div class="center baloo" style="font-size:24px">Lượt của: ' + (turnT ? esc(turnT.name) : '') + (g.table ? ' · cần chặn bài trên bàn' : ' · đang cầm cái') + '</div>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 30000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
-      h += '<div class="tltable">';
-      if (g.table) {
-        var tabP = playerOf(v, g.table.seat);
-        h += '<div class="center baloo" style="font-size:19px">' + esc(tabP ? tabP.name : '') + ' vừa đánh · ' + (TL_KIND_NAMES[g.table.kind] || '') + '</div>';
-        h += '<div class="tlchips">' + tlChipsHTML(g.table.cards, false) + '</div>';
-      } else {
-        h += '<div class="center baloo" style="font-size:20px">🃏 Bàn trống — ' + (turnT ? esc(turnT.name) : '') + ' cầm cái, đánh bộ bất kỳ!</div>';
-      }
-      h += '</div>';
-      h += '<div class="scorebar">';
-      for (var pI9 = 0; pI9 < v.players.length; pI9++) {
+      h += '<div class="tlstage"><div class="tlfelt">';
+      var nP9 = v.players.length;
+      for (var pI9 = 0; pI9 < nP9; pI9++) {
         var pp9 = v.players[pI9];
         var fin9 = (g.finished || []).indexOf(pp9.seat);
-        h += '<span class="scorechip"' + (g.turn === pp9.seat ? ' style="outline:3px solid #FFC93D"' : '') + '>' + blobSVG(pp9.color, pp9.mood, 28) + ' ' + esc(pp9.name)
-          + ' · 🂠 × ' + (g.counts ? (g.counts[pp9.seat] || 0) : 0)
-          + (g.leader === pp9.seat ? ' · <b>Cái</b>' : '')
-          + (g.passed && g.passed[pp9.seat] ? ' · ✋ Bỏ' : '')
-          + (fin9 >= 0 ? ' · 🏆 ' + (fin9 + 1) : '') + '</span>';
+        var ang9 = (90 + pI9 * 360 / nP9) * Math.PI / 180;
+        var sx9 = 50 + 43 * Math.cos(ang9), sy9 = 50 + 33 * Math.sin(ang9);
+        var cnt9 = g.counts ? (g.counts[pp9.seat] || 0) : 0;
+        h += '<div class="tlseat' + (g.turn === pp9.seat ? ' turn' : '') + '" style="left:' + sx9.toFixed(1) + '%;top:' + sy9.toFixed(1) + '%">'
+          + '<div class="tlava">' + blobSVG(pp9.color, pp9.mood, 46) + '</div>'
+          + '<div class="tlname">' + esc(pp9.name) + '</div>';
+        if (fin9 >= 0) h += '<div><span class="tlbadge gold">🏆 Hạng ' + (fin9 + 1) + '</span></div>';
+        else if (cnt9 > 0) h += '<div class="tlfan"><i></i><i></i><i></i><span class="tlcnt">×' + cnt9 + '</span></div>';
+        if (g.leader === pp9.seat && fin9 < 0) h += '<div><span class="tlbadge gold">Cái</span></div>';
+        else if (g.passed && g.passed[pp9.seat] && fin9 < 0) h += '<div><span class="tlbadge">✋ Bỏ lượt</span></div>';
+        h += '</div>';
       }
-      h += '</div>';
+      h += '<div class="tlcenter">';
+      if (g.table) {
+        var tabP = playerOf(v, g.table.seat);
+        h += '<div class="tlwho">' + esc(tabP ? tabP.name : '') + ' vừa đánh</div>';
+        h += '<div>' + tlCardsBigHTML(g.table.cards) + '</div>';
+        h += '<div><span class="tlkind">' + (TL_KIND_NAMES[g.table.kind] || '') + '</span></div>';
+      } else {
+        h += '<div class="tlwho" style="font-size:20px">🃏 Bàn trống — ' + (turnT ? esc(turnT.name) : '') + ' cầm cái, đánh bộ bất kỳ!</div>';
+      }
+      h += '</div></div></div>';
       if (g.log && g.log.length) { h += '<div style="margin-top:8px">'; for (var lI9 = 0; lI9 < g.log.length; lI9++) h += '<div class="chatrow">🃏 ' + esc(g.log[lI9]) + '</div>'; h += '</div>'; }
       h += '<p class="center">Chặt heo: tứ quý & đôi thông chặt được lá 2; đôi heo chỉ bị chặt bởi tứ quý và 4 đôi thông. Hết bài trước là thắng!</p>';
     }
@@ -2896,7 +3012,16 @@ function moveEl(node, x, y, fam, vx, vy) {
   }
   var newAtS = (S._anchorT || serverNow());
   if (newAtS < e.atS) return; // stale / out-of-order view: anchors never run backward
-  if (newAtS === e.atS && x === e.tx && y === e.ty) { e.vx = vx || 0; e.vy = vy || 0; e.fam = fam; return; } // the same view re-applied by tick/render is not a new anchor
+  if (x === e.tx && y === e.ty) { e.vx = vx || 0; e.vy = vy || 0; e.fam = fam; return; }
+  // ^ The same target position is not a new anchor, EVEN when the
+  // view carrying it is fresher. In local play the view is rebuilt
+  // every animation frame (60 Hz) while the simulation steps at
+  // 16 Hz, so 3 of 4 views repeat the position — re-anchoring on
+  // each repeat collapsed the interpolation window to one frame
+  // and the render moved in 16 ms bursts with 46 ms freezes
+  // between them: motion judder at a steady 60 fps, worst on the
+  // host's own big screen. Keeping the window makes it span the
+  // real step interval again.
   // Keep the previous anchor: non-predicted movers are rendered by
   // interpolating between the last two anchors on the server clock,
   // which is what makes their motion immune to delivery jitter.

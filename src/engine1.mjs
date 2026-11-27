@@ -159,7 +159,7 @@ const CLAMP_X = FIELD_HW - 0.8, CLAMP_Y = FIELD_HH - 0.8; // blob rect clamp (0.
 const DASH_BOOST_TICKS = 4;
 const SHOVE_RANGE = 2.7, SHOVE_FORCE = 2.7;
 // Né Đạn: same tick engine + walled arena (no shrinking, no ring-out).
-const DODGE_MS = 75000, DODGE_LIVES = 3, BALL_SPEED = 0.14375, BALL_HIT_DIST = 1.35, INVULN_TICKS = 32;
+const DODGE_MS = 105000, DODGE_LIVES = 3, BALL_SPEED = 0.14375, BALL_HIT_DIST = 1.35, INVULN_TICKS = 32;
 // Né Laze (ne-dan, redesigned 2026-11-27 on the user's order): beams
 // telegraph (warn) then fire across the whole arena. A LOW beam hits
 // grounded players — jump it (A). A HIGH beam hits airborne players —
@@ -171,11 +171,11 @@ const TALK_MS = 60000, CHOOSE_MS = 15000, POT = 400;
 // one banked point loose as a fresh star (unpickable for DROP_LOCK_TICKS
 // ticks so the victim cannot instantly re-grab it). A golden star worth
 // 3 spawns every GOLD_EVERY_TICKS ticks (12s) while none is on the field.
-const STEAL_MS = 45000, STEAL_SHOVE_FORCE = 4.5, GOLD_EVERY_TICKS = 192, DROP_LOCK_TICKS = 8;
+const STEAL_MS = 75000, STEAL_SHOVE_FORCE = 4.5, GOLD_EVERY_TICKS = 192, DROP_LOCK_TICKS = 8;
 // Giữ Vương Miện: hold the crown for +1 point per 250ms; the holder moves
 // at HOLDER_SPEED of normal speed; a shove drops the crown, which then
 // cannot be picked up for CROWN_LOCK_TICKS ticks (1s).
-const CROWN_MS = 45000, HOLDER_SPEED = 0.9, CROWN_LOCK_TICKS = 16;
+const CROWN_MS = 75000, HOLDER_SPEED = 0.9, CROWN_LOCK_TICKS = 16;
 // Hợp tác (co-op): no per-player placement. Each co-op game ends with a
 // TEAM result: a tier (Vàng/Bạc/Đồng/none) and every player banks the
 // same pointsEach (300/200/100/50). See finishCoop().
@@ -184,21 +184,21 @@ const TIER_POINTS = { vang: 300, bac: 200, dong: 100, none: 50 };
 // Chung Một Thân: ONE shared blob steered by split direction ownership;
 // checkpoint stars score for the team, cannonballs (slower + sparser
 // than Né Đạn) cost shared hearts.
-const SHARED_MS = 60000, SHARED_HEARTS = 3, STAR_STALE_TICKS = 240;
+const SHARED_MS = 90000, SHARED_HEARTS = 3, STAR_STALE_TICKS = 240;
 const SHARED_BALL_SPEED = 0.1;
 // Tiers by checkpoints: >=8 Vàng, >=5 Bạc, >=3 Đồng.
 const SHARED_TIERS = [[8, 'vang'], [5, 'bac'], [3, 'dong']];
 // Đẩy Hộp Về Đích: crate = circle of radius BOX_CRATE_R; it only moves
 // when >=2 distinct players push it with a summed intent of magnitude
 // >= BOX_PUSH_MIN. Crate step = MOVE_STEP * BOX_STEP_MUL per tick.
-const BOX_MS = 75000, BOX_CRATE_R = 1.6, BOX_STEP_MUL = 0.6, BOX_PUSH_MIN = 1.2;
+const BOX_MS = 105000, BOX_CRATE_R = 1.6, BOX_STEP_MUL = 0.6, BOX_PUSH_MIN = 1.2;
 // Tiers by deliveries: >=3 Vàng, 2 Bạc, 1 Đồng.
 const BOX_TIERS = [[3, 'vang'], [2, 'bac'], [1, 'dong']];
 // Chèo Thuyền: ROW_BEATS beats every ROW_BEAT_MS; a press within
 // +-ROW_WINDOW_MS of a beat is an in-window stroke. A perfect team
 // (every player stroking every beat) advances ROW_FULL_STROKE per beat,
 // covering ROW_COURSE in ROW_BEATS - 5 beats (pace margin built in).
-const ROW_BEATS = 45, ROW_BEAT_MS = 1000, ROW_WINDOW_MS = 260;
+const ROW_BEATS = 60, ROW_BEAT_MS = 1000, ROW_WINDOW_MS = 260;
 const ROW_FULL_STROKE = 10, ROW_COURSE = 400;
 const ROW_PERFECT = ROW_BEATS * ROW_FULL_STROKE; // 450 m
 // Tiers by % of the perfect-team distance: >=90% Vàng, >=70% Bạc, >=45% Đồng.
@@ -210,7 +210,7 @@ const ROW_ERR = { kho: 120, vua: 220, de: 380 };
 // (1s) cooldown, and a player hit costs 1 life + INVULN_TICKS (2s) of
 // cover. Xe Tăng cover blocks are arena rects in {x,y,w,h} top-left
 // form, kept off the spawn axes so every spawn lane starts clear.
-const TANK_MS = 75000, TANK_LIVES = 3, SHELL_SPEED = 0.3, SHELL_CD_TICKS = 16, SHELL_HIT_DIST = 1.0;
+const TANK_MS = 105000, TANK_LIVES = 3, SHELL_SPEED = 0.3, SHELL_CD_TICKS = 16, SHELL_HIT_DIST = 1.0;
 const TANK_BLOCKS = [
   { x: 2.9, y: -2.4, w: 2.7, h: 1.1 }, { x: -5.6, y: 1.35, w: 2.7, h: 1.1 },
   { x: -5.6, y: -2.4, w: 2.7, h: 1.1 }, { x: 2.9, y: 1.35, w: 2.7, h: 1.1 },
@@ -218,7 +218,7 @@ const TANK_BLOCKS = [
 // Đặt Bom: 15x9 grid of 2-unit cells over the wide arena; hard pillars sit
 // on odd/odd cells (classic bomber layout), soft blocks are dealt per
 // match with Math.random so tests can queue the exact layout.
-const BOM_MS = 75000, BOM_LIVES = 2, BOM_COLS = 15, BOM_ROWS = 9, BOM_FUSE_TICKS = 32, BOM_SOFT_P = 0.62;
+const BOM_MS = 105000, BOM_LIVES = 2, BOM_COLS = 15, BOM_ROWS = 9, BOM_FUSE_TICKS = 32, BOM_SOFT_P = 0.62;
 // Kẻ Giả Mạo: one secret impostor per round secretly gets the variant
 // Ma Sói: hidden-role deduction. One night = wolves hunt + guard /
 // seer / witch act in the same window (the witch sees the wolves'
@@ -295,7 +295,7 @@ export const NGUA_STABLE = [
   [[1, 10], [4, 10], [1, 13], [4, 13]],
 ];
 // Thủ Thành: the crystal's remaining HP decides the tier on survival.
-const DEF_MS = 60000, DEF_CRYSTAL_HP = 10;
+const DEF_MS = 90000, DEF_CRYSTAL_HP = 10;
 const DEF_TIERS = [[7, 'vang'], [4, 'bac'], [1, 'dong']];
 // ---------------------------------------------------------------------------
 // Wave 4: the two PLATFORMER games (Người Que Đại Chiến + Đền Lửa & Nước)
@@ -475,7 +475,7 @@ const TEMP_GEMS_TOTAL = 10;
 // Control map (phone + APK): disc/stick = run, U or Y = jump,
 // A = SÚT (kick), B = LƯỚT (dash). A goal pauses the match clock for a
 // 2.5s celebration, then everyone resets to the kickoff formation.
-const SOCCER_MS = 90000, SOCCER_GOAL_MS = 2500;
+const SOCCER_MS = 120000, SOCCER_GOAL_MS = 2500;
 // SMOOTH3: SOCCER_JUMP = 14.5 * SOCCER_GRAV - 0.0003 (apex ~3.50,
 // air 28 ticks); ball gravity follows the x0.25 discrete rule.
 const SOCCER_RUN = 0.18, SOCCER_JUMP = 0.5175571;
