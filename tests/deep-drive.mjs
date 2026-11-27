@@ -245,6 +245,14 @@ async function nguaDriveStep(drv, tok) {
   });
   if (best != null) await drv.pAct(tok, { action: 'move', horse: best });
 }
+async function chessDriveStep(drv, tok) {
+  const hv = await drv.pState(tok);
+  if (!hv || !hv.game || hv.game.id !== 'co-vua' || hv.game.phase !== 'chess') return;
+  const legal = hv.game.myLegal || [];
+  if (!legal.length) return;
+  const m = legal[Math.floor(Math.random() * legal.length)];
+  await drv.pAct(tok, { action: 'chessMove', from: m.from, to: m.to, promo: m.promo || 'Q' });
+}
 let coopCheckDone = false;
 async function driveMatch(gameId, seats) {
   const meta = GAMES[gameId];
@@ -257,6 +265,7 @@ async function driveMatch(gameId, seats) {
   const cap = gameId === 'ma-soi' ? 30000 : 24000;
   for (let i = 0; i < cap; i++) {
     if (gameId === 'ca-ngua') await nguaDriveStep(drv, tok);
+    else if (gameId === 'co-vua') await chessDriveStep(drv, tok);
     else if (gameId === 'tien-len') await tlDriveStep(drv, tok);
     else if (gameId === 'ech-op' && i % 24 === 0) await drv.pAct(tok, { action: 'pad', pad: { r: true } });
     const v = await drv.state();

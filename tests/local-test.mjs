@@ -270,7 +270,7 @@ async function main() {
   assert(home.text.indexOf('Cướp Sao') >= 0 && home.text.indexOf('Giữ Vương Miện') >= 0, 'page lists Cướp Sao + Giữ Vương Miện');
   assert(home.text.indexOf('Đấu với nhau') >= 0 && home.text.indexOf('Hợp tác') >= 0 && home.text.indexOf('Sắp ra mắt') < 0, 'game chooser is grouped by category: Đấu với nhau + Hợp tác, placeholder tile GONE (co-op wave shipped)');
   assert(home.text.indexOf('Chung Một Thân') >= 0 && home.text.indexOf('Đẩy Hộp Về Đích') >= 0 && home.text.indexOf('Chèo Thuyền') >= 0, 'page lists the 3 co-op games (Chung Một Thân, Đẩy Hộp Về Đích, Chèo Thuyền)');
-  assert(home.text.indexOf('19 game') >= 0, 'homepage footer counts all 19 games');
+  assert(home.text.indexOf('21 game') >= 0, 'homepage footer counts all 19 games');
   assert(home.text.indexOf('astar') >= 0 && home.text.indexOf('acrown') >= 0, 'new-game renderers ship in the page (star / crown)');
   assert(home.text.indexOf('sharedblob') >= 0 && home.text.indexOf('acrate') >= 0 && home.text.indexOf('agoal') >= 0 && home.text.indexOf('aboat') >= 0 && home.text.indexOf('teambanner') >= 0 && home.text.indexOf('function sharedOrbSVG(') >= 0, 'co-op renderers ship in the page (shared orb / crate / goal / boat / team banner)');
   assert(home.text.indexOf('id="recon"') >= 0 && home.text.indexOf('Đang kết nối lại') >= 0, 'stale-view watchdog badge ships in the page (recon element + label)');
@@ -327,8 +327,8 @@ async function main() {
   P1 = { seat: joined.seat, token: joined.playerToken };
   v = await hState();
   assert(v.players.length === 3, 'room has 3 filled seats (1 human + 2 bots)');
-  assert(v.games && v.games.length === 19, 'lobby game list carries all 19 games');
-  assert(v.games.filter((gm) => gm.cat === 'versus').length === 13, 'exactly 13 games are categorized versus');
+  assert(v.games && v.games.length === 21, 'lobby game list carries all 21 games');
+  assert(v.games.filter((gm) => gm.cat === 'versus').length === 15, 'exactly 15 games are categorized versus');
   assert(v.games.filter((gm) => gm.cat === 'coop').map((gm) => gm.id).sort().join(',') === 'cheo-thuyen,chung-mot-than,day-hop,den-lua-nuoc,ech-op,thu-thanh', 'co-op group is exactly the 6 co-op games (chung-mot-than, day-hop, cheo-thuyen, thu-thanh, den-lua-nuoc, ech-op)');
   assert(v.players.every((p) => typeof p.mood === 'string' && p.mood.length > 0), 'every player blob carries a mood/expression');
 
@@ -1204,7 +1204,7 @@ async function main() {
   assert(tv.game.blobs[1].x === 7.33 && tv.game.blobs[1].y === 0 && tv.game.blobs[2].x === -7.33 && tv.game.blobs[2].y === 0,
     'tank: spawns face each other across the arena');
   assert(tv.game.facing[1].x === -1 && tv.game.facing[1].y === 0, 'tank: seat 1 starts aimed at the centre');
-  assert(tv.game.blocks.length === 4, 'tank: four cover blocks stand on the field');
+  assert(tv.game.blocks.length === [4, 8, 6][tv.game.tankLayout || 0], 'tank: cover blocks match the dealt layout (' + (tv.game.tankLayout || 0) + ')');
   // Fire once down the clear spawn lane: the shell leaves at
   // (6.13,0), flies 1.2/tick, and the target at -7.33 is first
   // within the 1.0 hit radius on tick ~11.
@@ -1280,7 +1280,7 @@ async function main() {
     await withRandomQueue(q, async () => {
       await bmDrv.act({ action: 'startGame', game: 'dat-bom' });
       let bv = await pumpD(bmDrv, 125, (s) => s.game && s.game.phase === 'bomber', 'bomber begins');
-      assert(bv.game.hard.length === 28, 'bomber: 28 hard pillars on the odd/odd cells of the 15x9 grid');
+      assert(bv.game.hard.length === [28, 28, 9][bv.game.bomLayout || 0], 'bomber: hard cells match the dealt layout (' + (bv.game.bomLayout || 0) + ')');
       assert(JSON.stringify(bv.game.soft) === JSON.stringify([[4, 0]]),
         'bomber: the queued layout deals exactly one soft block at (4,0), got ' + JSON.stringify(bv.game.soft));
       assert(bv.game.blobs[1].x === -14 && bv.game.blobs[1].y === -8 && bv.game.blobs[3].x === 14 && bv.game.blobs[3].y === -8,
@@ -1342,8 +1342,14 @@ async function main() {
       }
       assert(!!blast, 'bomber B: the blast was rendered for the TV');
       const keys = blast.cells.map(([c, r]) => c + ',' + r).sort().join(' ');
-      assert(keys === '2,0 2,1 2,2 2,3',
-        'bomber B: blast cross is exactly the bomb column — hard pillars at (1,1) and (3,1) cut both side arms, got ' + keys);
+      if ((hv.game.bomLayout || 0) === 0) {
+        assert(keys === '2,0 2,1 2,2 2,3',
+          'bomber B: blast cross is exactly the bomb column — hard pillars at (1,1) and (3,1) cut both side arms, got ' + keys);
+      } else {
+        const hardSet = new Set(hv.game.hard.map(([c, r]) => c + ',' + r));
+        assert(keys.split(' ').indexOf('2,1') >= 0 && keys.split(' ').every((k) => !hardSet.has(k)),
+          'bomber B (layout ' + hv.game.bomLayout + '): blast covers the bomb cell and never a hard cell, got ' + keys);
+      }
     });
   }
 
@@ -2572,7 +2578,7 @@ async function main() {
   // a 4-bot match completes on the placement table.
   console.log('Audit U: wave 5 — soccer teams, frog swallow-carry, artillery ballistics');
   {
-    assert(home.text.indexOf('19 game') >= 0 && home.text.indexOf('bigHeadSVG') >= 0 && home.text.indexOf('frogSVG') >= 0
+    assert(home.text.indexOf('21 game') >= 0 && home.text.indexOf('bigHeadSVG') >= 0 && home.text.indexOf('frogSVG') >= 0
       && home.text.indexOf('sball') >= 0 && home.text.indexOf('goalbanner') >= 0,
       'page ships the wave-5 renderers (big heads, frogs, ball, goal banner)');
     const lvU = await (await newDrv()).state();
@@ -3761,7 +3767,7 @@ async function main() {
     const pj = await pd.join('Perf');
     await pd.act({ action: 'addBot', seat: 2 });
     const pLobby = await pd.state();
-    assert(pLobby.games && pLobby.games.length === 19, 'perf: lobby view carries the full 19-game catalog');
+    assert(pLobby.games && pLobby.games.length === 21, 'perf: lobby view carries the full 21-game catalog');
     await pd.act({ action: 'startGame', game: 'do-vui' });
     const pHost = await pd.state();
     assert(pHost.phase === 'playing' && Array.isArray(pHost.games) && pHost.games.length === 0,
@@ -3771,7 +3777,7 @@ async function main() {
       'perf: playing-phase player view ships an empty games catalog');
     await pd.act({ action: 'quitToChoosing' });
     const pBack = await pd.state();
-    assert(pBack.phase === 'choosing' && pBack.games && pBack.games.length === 19,
+    assert(pBack.phase === 'choosing' && pBack.games && pBack.games.length === 21,
       'perf: catalog returns as soon as the phase leaves playing');
   }
 

@@ -92,6 +92,8 @@ export const GAMES = {
   'ma-soi': { name: 'Ma Sói', desc: 'Suy luận xã hội: sói trà trộn trong làng — bảo vệ dân, tìm và treo cổ sói trước khi quá muộn!', rounds: 1, cat: 'versus', min: 4, max: 12 },
   'ca-ngua': { name: 'Cờ Cá Ngựa', desc: 'Thảy xúc xắc, xuất chuồng, đá ngựa đối thủ — đưa cả 4 ngựa về chuồng trước!', rounds: 1, cat: 'versus', min: 2, max: 4 },
   'tien-len': { name: 'Tiến Lên Miền Nam', desc: 'Đánh bài miền Nam: chặn bài, chặt heo bằng tứ quý & đôi thông — hết bài trước thắng!', rounds: 1, cat: 'versus', min: 2, max: 4 },
+  'co-vua': { name: 'Cờ Vua', desc: 'Cờ vua chuẩn quốc tế: chiếu hết vua đối thủ — nhập thành, bắt tốt qua đường, phong cấp đủ cả!', rounds: 1, cat: 'versus', min: 2, max: 2 },
+  'dua-may-bay': { name: 'Đua Máy Bay', desc: 'Gamepad: lái máy bay xuyên cổng vòng theo màu của bạn — tăng tốc, né mây giông, về đích 10 cổng trước!', rounds: 1, cat: 'versus', min: 2, max: 8 },
   'chung-mot-than': { name: 'Chung Một Thân', desc: 'Hợp tác: cả đội lái chung một quả bóng, mỗi người giữ một hướng!', rounds: 1, cat: 'coop', min: 2, max: 8 },
   'day-hop': { name: 'Đẩy Hộp Về Đích', desc: 'Hợp tác: cùng đẩy hộp qua mê cung về ô đích!', rounds: 1, cat: 'coop', min: 2, max: 6 },
   'cheo-thuyen': { name: 'Chèo Thuyền', desc: 'Hợp tác: chèo thuyền theo nhịp, cả đội cùng trúng nhịp mới đi xa!', rounds: 1, cat: 'coop', min: 2, max: 12 },
@@ -215,6 +217,22 @@ const TANK_BLOCKS = [
   { x: 2.9, y: -2.4, w: 2.7, h: 1.1 }, { x: -5.6, y: 1.35, w: 2.7, h: 1.1 },
   { x: -5.6, y: -2.4, w: 2.7, h: 1.1 }, { x: 2.9, y: 1.35, w: 2.7, h: 1.1 },
 ];
+// Tank arena variants (Round 33): layout 0 is the classic four-block
+// field; 1 adds a centre cross + far corners (Tank-Trouble-like maze);
+// 2 is a broken fortress around the centre. All keep the right-hand
+// spawn corridor (x > 8, |y| < 1.5) clear — discrim's drive lives there.
+const TANK_LAYOUTS = [
+  TANK_BLOCKS,
+  TANK_BLOCKS.concat([
+    { x: -1.35, y: -3.4, w: 2.7, h: 1.1 }, { x: -1.35, y: 2.3, w: 2.7, h: 1.1 },
+    { x: -11, y: 3.4, w: 2.7, h: 1.1 }, { x: 8.3, y: -4.5, w: 2.7, h: 1.1 },
+  ]),
+  [
+    { x: -3.4, y: -1.7, w: 1.1, h: 3.4 }, { x: 2.3, y: -1.7, w: 1.1, h: 3.4 },
+    { x: -1.7, y: -3.9, w: 3.4, h: 1.1 }, { x: -1.7, y: 2.8, w: 3.4, h: 1.1 },
+    { x: -13.5, y: -4.5, w: 2.7, h: 1.1 }, { x: 10.8, y: 3.4, w: 2.7, h: 1.1 },
+  ],
+];
 // Đặt Bom: 15x9 grid of 2-unit cells over the wide arena; hard pillars sit
 // on odd/odd cells (classic bomber layout), soft blocks are dealt per
 // match with Math.random so tests can queue the exact layout.
@@ -263,6 +281,8 @@ const WOLF_CHAT_LINES = [
 // No blockade rule: passing over any horse is always allowed.
 // Three sixes in a row forfeit the third roll's move (classic rule).
 const NGUA_TURN_MS = 30000, NGUA_BOT_MS = 900, NGUA_BEAT_MS = 1500, NGUA_WIN_MS = 4000;
+const CHESS_TURN_MS = 120000, CHESS_BOT_MS = 900, CHESS_END_MS = 5000;
+const FLY_MS = 90000, FLY_GATES_WIN = 10, FLY_GATE_R = 6.5;
 // Tiến Lên Miền Nam: 30s per turn (wall clock, like Cá Ngựa); bots act
 // ~1s into their turn; the winner banner holds 5s before results.
 const TL_TURN_MS = 30000, TL_BOT_MS = 900, TL_WIN_MS = 5000;
@@ -335,6 +355,7 @@ const FIGHT_ATK_CD = 12, FIGHT_DMG = 10, FIGHT_HITSTUN = 12;
 // force of a normal hit at the same resulting damage; the attacker's
 // recovery (hvyT, the big-swing pose) runs 12 ticks.
 const FIGHT_HVY_CD = 20, FIGHT_HVY_DMG = 16, FIGHT_HVY_ATK_T = 12;
+const WPN_SPAWN_TICKS = 144, WPN_MAX_FIELD = 2, GUN_AMMO = 6, GUN_CD = 14, GUN_HVY_CD = 26, BULLET_SPEED = 1.6, SWORD_DMG = 14, SWORD_HVY_DMG = 22, GUN_DMG = 8;
 const FIGHT_DASH_CD = 32, FIGHT_DASH_TICKS = 12, FIGHT_DASH_SPEED = 0.475;
 // 16:9 WAVE: platforms are the old layout under the arena map
 // (x*4/3, y*3/4). Vertical gaps SHRINK (4.0 -> 3.0 < jump apex 4.2)
@@ -345,6 +366,25 @@ const FIGHT_PLATFORMS = [
   { x: -10.67, y: 1.5, w: 6, h: 0.5, oneWay: true },
   { x: 4.67, y: 1.5, w: 6, h: 0.5, oneWay: true },
   { x: -3.33, y: -1.13, w: 6.67, h: 0.5, oneWay: true },
+];
+// Stick-fight stage variants (Round 33): same ground and same heights
+// everywhere (the jump arc is a measured invariant); only the floating
+// platforms move. Every layout keeps the x = -2.7 column clear at mid
+// height so a straight jump from spawn 2 runs the full arc.
+const FIGHT_LAYOUTS = [
+  FIGHT_PLATFORMS,
+  [
+    { x: -11.33, y: 4.5, w: 22.67, h: 1.9 },
+    { x: -13.8, y: 1.5, w: 6, h: 0.5, oneWay: true },
+    { x: 3.4, y: 1.5, w: 6, h: 0.5, oneWay: true },
+    { x: -8.5, y: -1.13, w: 5, h: 0.5, oneWay: true },
+  ],
+  [
+    { x: -11.33, y: 4.5, w: 22.67, h: 1.9 },
+    { x: -6.4, y: 1.5, w: 3.2, h: 0.5, oneWay: true },
+    { x: 0.6, y: 1.5, w: 3.2, h: 0.5, oneWay: true },
+    { x: -1.8, y: -1.13, w: 3.6, h: 0.5, oneWay: true },
+  ],
 ];
 // First four are the original 4-player spawns (x*4/3); players 5-8
 // fill the gaps so an 8-fighter match never stacks two fighters on
