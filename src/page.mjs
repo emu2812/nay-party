@@ -97,8 +97,8 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .tlbadge.gold { background: #FFC93D; color: #4A2503; }
 .tlcenter { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; width: 76%; z-index: 1; }
 .tlwho { color: #DFF5E5; font-weight: 800; font-size: 17px; margin-bottom: 9px; }
-.tlbig { display: inline-block; background: #FFFDF5; color: #26314A; border: 2px solid #D8DEE9; border-radius: 10px; width: 58px; height: 84px; padding-top: 6px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 25px; line-height: 1.05; margin: 0 -7px; vertical-align: top; }
-.tlbig i { display: block; font-style: normal; font-size: 22px; }
+.tlbig { display: inline-block; background: #FFFDF5; color: #26314A; border: 2px solid #D8DEE9; border-radius: 12px; width: 82px; height: 118px; padding-top: 9px; font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 35px; line-height: 1.05; margin: 0 -9px; vertical-align: top; }
+.tlbig i { display: block; font-style: normal; font-size: 31px; }
 .tlbig.red { color: #D81F3C; }
 .tlkind { display: inline-block; margin-top: 12px; background: #FFC93D; color: #4A2503; border-radius: 999px; padding: 2px 16px; font-weight: 800; font-size: 16px; }
 .wolfscene { position: relative; height: 480px; border-radius: 26px; overflow: hidden; background-color: #0C1830; background-image: radial-gradient(2px 2px at 22px 30px, rgba(255,255,255,.85) 50%, transparent 51%), radial-gradient(1.5px 1.5px at 70px 84px, rgba(255,255,255,.55) 50%, transparent 51%), radial-gradient(1.5px 1.5px at 118px 44px, rgba(255,255,255,.7) 50%, transparent 51%); background-size: 150px 120px, 210px 170px, 260px 200px; border: 3px solid #0B0E1A; margin: 10px auto; max-width: 940px; }
@@ -122,7 +122,7 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .wcenter { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); text-align: center; z-index: 1; }
 .wemblem { font-size: 62px; line-height: 1; }
 .wctext { display: inline-block; margin-top: 6px; background: rgba(11,14,26,.8); color: #fff; border-radius: 999px; padding: 3px 16px; font-weight: 800; font-size: 16px; }
-.tlp { display: inline-block; padding: 1px 5px; margin: 1px 1px; border-radius: 6px; background: rgba(255,255,255,.1); font-weight: 700; }
+.tlp { display: inline-block; padding: 3px 8px; margin: 2px 1px; border-radius: 8px; background: rgba(255,255,255,.13); font-weight: 800; font-size: 17px; }
 .tlp.red { color: #FF9DB0; }
 .tlp.sel { background: #FFC93D; color: #26314A; }
 .tlp.sel.red { color: #B3122F; }
@@ -677,7 +677,7 @@ body.lite .aball, body.lite .ashell, body.lite .aring, body.lite .ablob { box-sh
    pointer-events none — because input arrives via window keyboard
    handlers, and peek/cursor state lives in the LK object, not the DOM. */
 #localpanels { position: fixed; inset: 0; pointer-events: none; z-index: 55; }
-.lpanel { position: absolute; width: 302px; max-width: 44vw; background: rgba(17,12,30,.9); color: #FFF3DC; border: 2px solid rgba(255,255,255,.16); border-radius: 14px; padding: 9px 12px 10px; font-size: 14.5px; line-height: 1.35; }
+.lpanel { position: absolute; width: 326px; max-width: 44vw; background: rgba(17,12,30,.9); color: #FFF3DC; border: 2px solid rgba(255,255,255,.16); border-radius: 14px; padding: 9px 12px 10px; font-size: 14.5px; line-height: 1.35; }
 .lpanel.lp0 { left: 10px; bottom: 10px; }
 .lpanel.lp1 { right: 10px; bottom: 10px; }
 .lpanel.lp2 { left: 10px; top: 66px; }
@@ -2229,7 +2229,7 @@ function hostStage(v) {
         var pp9 = v.players[pI9];
         var fin9 = (g.finished || []).indexOf(pp9.seat);
         var ang9 = (90 + pI9 * 360 / nP9) * Math.PI / 180;
-        var sx9 = 50 + 43 * Math.cos(ang9), sy9 = 50 + 33 * Math.sin(ang9);
+        var sx9 = 50 + 43 * Math.cos(ang9), sy9 = 50 + 28 * Math.sin(ang9);
         var cnt9 = g.counts ? (g.counts[pp9.seat] || 0) : 0;
         h += '<div class="tlseat' + (g.turn === pp9.seat ? ' turn' : '') + '" style="left:' + sx9.toFixed(1) + '%;top:' + sy9.toFixed(1) + '%">'
           + '<div class="tlava">' + blobSVG(pp9.color, pp9.mood, 46) + '</div>'
@@ -5211,12 +5211,6 @@ function lkPanelBody(v, seat) {
     var handL = lkTlSync(seat, lv);
     var stl = lkState(seat);
     var th = '';
-    if (g.table) {
-      var tpL = playerOf(v, g.table.seat);
-      th += '<div class="lpline">Trên bàn: ' + tlChipsHTML(g.table.cards, true) + ' <span class="lpfoot">(' + esc(tpL ? tpL.name : '') + ' · ' + (TL_KIND_NAMES[g.table.kind] || '') + ')</span></div>';
-    } else {
-      th += '<div class="lpline">🃏 Bàn trống</div>';
-    }
     th += '<div class="lpline">';
     for (var tci = 0; tci < handL.length; tci++) {
       var tcd = handL[tci];
