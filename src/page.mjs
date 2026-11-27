@@ -2525,7 +2525,11 @@ function render() {
   var v = S.view;
   if (!v) { app.innerHTML = '<div class="card center"><h2>Đang nối phòng…</h2><p class="muted">Nếu chờ lâu vẫn không vào được, phòng có thể đã đóng hoặc hết hạn.</p><p><button class="btn ghost" data-cmd="reload">Về trang chính</button></p></div>'; return; }
   if (app.classList) app.classList.toggle('playhud', !!(S.role === 'host' && v.phase === 'playing' && v.game && FIELD_GAMES[v.game.id]));
-  if (app.classList) app.classList.toggle('perf', !!(v.phase === 'playing' && v.game && FIELD_GAMES[v.game.id]));
+  // PERF (the Round 23 effect strip) covers EVERY game while playing
+  // — the user ordered the strip for all games, not just field games
+  // (2026-11-27). playhud stays field-only: it is a layout mode for
+  // the big arena, not an effects mode.
+  if (app.classList) app.classList.toggle('perf', !!(v.phase === 'playing' && v.game));
   var sig = viewSig(v);
   if (sig === S.sig) return;
   var transplant = null;
