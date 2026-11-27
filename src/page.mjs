@@ -130,7 +130,7 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .wolfcard.dead { opacity: .62; filter: grayscale(.8); }
 .wolfcard .rolechip { display: inline-block; margin-top: 4px; padding: 2px 10px; border-radius: 999px; background: #312E81; color: #fff; font-size: 13px; }
 .ngrow { display: flex; gap: 14px; align-items: stretch; margin-top: 6px; }
-.ngrow .ngmid { flex: 0 0 auto; min-width: 0; width: calc(100vh - 215px); width: calc(100dvh - 215px); max-width: 46%; margin: 0 auto; }
+.ngrow .ngmid { flex: 0 0 auto; min-width: 0; width: calc(100vh - 215px); width: calc(100dvh - 215px); max-width: 50%; margin: 0 auto; }
 .ngside { flex: 1 1 0; min-width: 0; background: rgba(255,255,255,.14); border-radius: 16px; padding: 10px 12px; overflow: hidden; }
 .ngside h3 { margin: 0 0 8px; font-size: 17px; }
 .ngside .rrow { margin: 5px 0; padding: 6px 10px; font-size: 14.5px; }
@@ -249,7 +249,7 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .ffly { position: absolute; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; border-radius: 50%; z-index: 2; pointer-events: none; transition: left .18s linear, top .18s linear; background: #14141C; box-shadow: 0 0 0 3px rgba(255,255,255,.28); }
 .ffly.taken { opacity: 0; }
 .afrog { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 3; pointer-events: none; }
-.afrog svg { display: block; margin: 0 auto; }
+.afrog svg { display: block; margin: 0 auto; width: 58px; height: 58px; }
 .afrog.carry svg { filter: none; }
 .fcrate { position: absolute; width: 3.75%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 2; pointer-events: none; transition: left .18s linear, top .18s linear; display: flex; align-items: center; justify-content: center; font-size: 22px; background: #8A5518; border: 3px solid #E8B96A; border-radius: 8px; }
 .artwrap { position: absolute; inset: 0; }
@@ -331,8 +331,8 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .g-day-ra .afield, .g-xe-tank .afield, .g-dat-bom .afield, .g-cuop-sao .afield,
 .g-giu-vuong-mien .afield, .g-chung-mot-than .afield, .g-day-hop .afield,
 .g-thu-thanh .afield, .g-nguoi-que .afield, .g-ech-op .afield {
-  background-image: linear-gradient(45deg, rgba(255,255,255,.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.05) 75%), linear-gradient(45deg, rgba(255,255,255,.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.05) 75%);
-  background-size: 46px 46px; background-position: 0 0, 23px 23px; }
+  background-image: linear-gradient(45deg, rgba(255,255,255,.026) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.026) 75%), linear-gradient(45deg, rgba(255,255,255,.026) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.026) 75%);
+  background-size: 68px 68px; background-position: 0 0, 34px 34px; }
 .g-day-ra .afield { background-color: #23235C; }
 .g-xe-tank .afield { background-color: #4A4A28; }
 .g-dat-bom .afield { background-color: #1E4634; }
@@ -352,7 +352,7 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .bhard { border-top: 3px solid #637691; }
 .aring { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%;
   background: transparent;
-  border: 3px solid #78DCFF; }
+  border: 2px solid rgba(120,220,255,.5); }
 /* The day-ra / ne-dan ring is resized by patchPositions via transform
    scale on a fixed full-field basis (compositor work) instead of
    width/height (a full repaint of this giant bordered circle on every
@@ -408,9 +408,9 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .mydirs { display: flex; gap: 8px; justify-content: center; align-items: center; margin: 6px 0; font-weight: 800; }
 .mydirs .dirarrow { display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 14px;
   background: #FFB03A; color: #4A2503; font-size: 28px; box-shadow: 0 3px 0 rgba(120,70,0,.55); }
-.water { position: relative; height: 150px; border-radius: 18px; margin: 14px 0; overflow: hidden;
+.water { position: relative; height: 300px; border-radius: 18px; margin: 14px 0; overflow: hidden;
   background: rgba(2,80,130,.4); }
-.aboat { position: absolute; bottom: 26px; font-size: 56px; line-height: 1; transform: translateX(-50%); transition: left .4s ease; }
+.aboat { position: absolute; bottom: 60px; font-size: 88px; line-height: 1; transform: translateX(-50%); transition: left .4s ease; }
 .buoy { position: absolute; right: 6px; bottom: 22px; font-size: 44px; line-height: 1; }
 .beating { position: absolute; left: 50%; top: 44%; width: 118px; height: 118px; margin: -59px 0 0 -59px; border-radius: 50%; pointer-events: none;
   border: 5px solid rgba(255,224,102,.9); opacity: 0; }
@@ -581,7 +581,7 @@ input[type=text], input[type=tel] { font-family: 'Quicksand', sans-serif; font-w
 #app.playhud .stage { padding: 8px 10px; }
 #app.playhud .stage > h2 { position: absolute; top: 12px; left: 18px; z-index: 8; margin: 0; pointer-events: none; font-size: 22px; }
 @media (min-width: 1100px) { #app.playhud .stage:has(> #afield) > .baloo { position: absolute; top: 12px; left: 300px; right: 300px; z-index: 8; margin: 0; text-align: center; pointer-events: none; background: rgba(11,14,26,.72); border-radius: 12px; padding: 3px 14px; } }
-#app.playhud .stage > .scorebar { position: absolute; top: 10px; right: 14px; z-index: 8; margin: 0; max-width: 62%; justify-content: flex-end; pointer-events: none; }
+#app.playhud .stage > .scorebar { position: absolute; top: 10px; right: 14px; z-index: 8; margin: 0; max-width: 300px; row-gap: 4px; justify-content: flex-end; pointer-events: none; }
 #app.playhud .stage > .tbar { position: absolute; top: 0; left: 0; right: 0; height: 6px; margin: 0; border-radius: 0; z-index: 9; }
 #app.playhud .stage > p.center { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 8; margin: 0; max-width: 94%; padding: 5px 16px; border-radius: 999px; background: rgba(10,8,20,.55); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #app.playhud .afield:not(.wide) { width: min(100%, calc((100vh - 104px) * 16 / 9)); width: min(100%, calc((100dvh - 104px) * 16 / 9)); margin: 0 auto; }
