@@ -315,6 +315,9 @@ button.tlcard.sel { transform: translateY(-11px); outline: 3px solid #FFC93D; bo
 .aring.danger { border-color: #FF4757; border-width: 5px; }
 /* FLAT: ringPulse removed — danger ring is a thicker solid border now. */
 .ablob { position: absolute; transform: translate(-50%, -50%); transition: left .18s linear, top .18s linear; text-align: center; z-index: 2; }
+/* Every frame-moved element gets its own compositor layer so the
+   GPU moves it without repainting (Round 26 render diet). */
+.ablob, .aball, .ashell, .aring, .astar, .acrown, .acrate, .abomb, .aslime, .tgem, .ffly, .alaser { will-change: transform; }
 .ablob svg { display: block; margin: 0 auto; }
 .ablob.holder svg { filter: none; }
 .astar { position: absolute; transform: translate(-50%, -50%); z-index: 1; font-size: 34px; line-height: 1; color: #FFE066;
@@ -2585,6 +2588,7 @@ function render() {
     S.ctrlKey = key;
   } else S.ctrlKey = '';
   S.sig = sig;
+  S.fieldRect = null; // stage DOM is new: any cached field size is stale
   app.innerHTML = S.role === 'host' ? hostHTML(v) : playerHTML(v);
   if (transplant && transplant.length) {
     var fresh = clusterNodes(app);
@@ -3151,8 +3155,16 @@ function rafLoop(ts) {
     var parent = e.el.parentElement;
     if (!parent) continue;
     var rect = null;
-    for (var ci = 0; ci < rectCache.length; ci++) if (rectCache[ci][0] === parent) { rect = rectCache[ci][1]; break; }
-    if (!rect) { rect = parent.getBoundingClientRect(); rectCache.push([parent, rect]); }
+    // The field rect comes from the cross-frame cache (S.fieldRect,
+    // dropped on resize and on every stage rebuild in render()):
+    // measuring it here forced a FULL PAGE REFLOW once per frame —
+    // the single biggest JS cost of local play on weak machines
+    // (profiled Round 26: ~15% of all main-thread time).
+    if (parent.id === 'afield' && S.fieldRect) rect = S.fieldRect;
+    if (!rect) {
+      for (var ci = 0; ci < rectCache.length; ci++) if (rectCache[ci][0] === parent) { rect = rectCache[ci][1]; break; }
+      if (!rect) { rect = parent.getBoundingClientRect(); rectCache.push([parent, rect]); if (parent.id === 'afield' && rect.width) S.fieldRect = rect; }
+    }
     var pp = predPadFor(id);
     if (pp) {
       // Own character — client-side prediction by INTEGRATION: each
