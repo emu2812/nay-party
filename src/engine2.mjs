@@ -229,6 +229,7 @@ function beginRound(room) {
     g.phase = 'dodge';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + DODGE_MS;
     g.blobs = {}; g.lasers = []; g.laserSeq = 0; g.spawnIn = 20; g.elimOrder = []; g.elimTick = {};
+    g.dodgeVar = layoutPick(room, 'ne-dan', 3); g.laserWarn = g.dodgeVar === 2 ? 9 : LASER_WARN_TICKS;
     g.botIntent = {}; g.dashCd = {}; g.jumpCd = {}; g.shoveCd = {}; preservePads(room); g.invuln = {};
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
@@ -244,6 +245,7 @@ function beginRound(room) {
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + STEAL_MS;
     g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room);
     g.stars = []; g.starSeq = 0; g.goldIn = GOLD_EVERY_TICKS; g.banked = {};
+    g.stealVar = layoutPick(room, 'cuop-sao', 3); g.showerIn = 420;
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
@@ -259,6 +261,7 @@ function beginRound(room) {
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + CROWN_MS;
     g.blobs = {}; g.botIntent = {}; g.dashCd = {}; g.shoveCd = {}; preservePads(room);
     g.hold = {}; g.crown = { holder: null, x: 0, y: 0, lockTicks: 0, acc: 0 };
+    g.crownVar = layoutPick(room, 'giu-vuong-mien', 3);
     room.players.forEach((p, i) => {
       const ang = (i / Math.max(1, room.players.length)) * Math.PI * 2;
       g.blobs[p.seat] = {
@@ -321,7 +324,7 @@ function beginRound(room) {
       g.dashCd[p.seat] = 0; g.shoveCd[p.seat] = 0; g.invuln[p.seat] = 0;
     });
     g.hardCells = []; g.softCells = []; g.bombs = []; g.bombSeq = 0; g.blasts = [];
-    g.bomLayout = layoutPick(room, 'dat-bom', 3);
+    g.bomLayout = layoutPick(room, 'dat-bom', 4);
     const softP = g.bomLayout === 2 ? BOM_SOFT_P + 0.18 : BOM_SOFT_P;
     for (let r = 0; r < BOM_ROWS; r++) {
       for (let c = 0; c < BOM_COLS; c++) {
@@ -337,6 +340,7 @@ function beginRound(room) {
     initGuns(room);
     g.crystal = { hp: DEF_CRYSTAL_HP };
     g.slimes = []; g.slimeSeq = 0; g.kills = 0; g.spawnIn = 16;
+    g.defVar = layoutPick(room, 'thu-thanh', 3);
   } else if (g.id === 'nguoi-que') {
     g.layout = layoutPick(room, 'nguoi-que', FIGHT_LAYOUTS.length);
     g.plats = FIGHT_LAYOUTS[g.layout];
@@ -346,6 +350,7 @@ function beginRound(room) {
     g.vel = {}; g.dmg = {}; g.face = {}; g.jumps = {}; g.atkCd = {}; g.hitT = {}; g.atkT = {}; g.dashT = {}; g.dashDir = {};
     g.dashCd = {}; g.hvyCd = {}; g.hvyT = {};
     g.weapon = {}; g.weapons = []; g.bullets = []; g.bulletSeq = 0; g.wpnIn = 80; g.wpnSeq = 0;
+    g.wpnEvery = [WPN_SPAWN_TICKS, 110, 84][g.layout || 0] || WPN_SPAWN_TICKS;
     room.players.forEach((p, i) => {
       const sx = FIGHT_SPAWN_X[i % FIGHT_SPAWN_X.length];
       g.blobs[p.seat] = { x: sx, y: (g.plats || FIGHT_PLATFORMS)[0].y - PLAT_HH, vx: 0, vy: 0, ground: true, lives: FIGHT_LIVES, alive: true };
@@ -418,7 +423,9 @@ function beginRound(room) {
     g.phase = 'fly';
     g.tickCount = 0; g.nextTickAt = t + TICK_MS; g.endsAt = t + FLY_MS;
     g.blobs = {}; g.botIntent = {}; g.fly = { gates: {}, clouds: [], finOrder: [] };
-    for (let ci = 0; ci < 5; ci++) g.fly.clouds.push({ x: Math.round((Math.random() * 24 - 12) * 10) / 10, y: Math.round((Math.random() * 12 - 6) * 10) / 10, r: 3.6 });
+    g.flyVar = layoutPick(room, 'dua-may-bay', 3);
+    const nClouds = g.flyVar === 1 ? 8 : g.flyVar === 2 ? 7 : 5;
+    for (let ci = 0; ci < nClouds; ci++) g.fly.clouds.push({ x: Math.round((Math.random() * 24 - 12) * 10) / 10, y: Math.round((Math.random() * 12 - 6) * 10) / 10, r: 3.6 });
     room.players.forEach((p, i) => {
       g.blobs[p.seat] = { x: -12 + i * (24 / Math.max(1, room.players.length - 1 || 1)), y: 7.6, vx: 0, vy: 0, gates: 0, boost: 100, stun: 0, fin: 0, alive: true };
       if (room.players.length === 1) g.blobs[p.seat].x = 0;
@@ -465,6 +472,7 @@ function beginRound(room) {
     preservePads(room);
     g.score = { do: 0, xanh: 0 };
     g.lastTouch = null; g.goalInfo = null;
+    g.soccerVar = layoutPick(room, 'da-bong', 2); g.ice = g.soccerVar === 1;
     room.players.forEach((p) => {
       g.blobs[p.seat] = { x: 0, y: 7.1, vx: 0, vy: 0, ground: true, lives: 0, alive: true };
       g.face[p.seat] = p.seat % 2 === 1 ? 1 : -1;
@@ -888,7 +896,7 @@ function spawnLaser(room) {
     pos = axis === 'h' ? rand(-8, 8) : rand(-15, 15);
   }
   pos = Math.round(Math.max(axis === 'h' ? -8.2 : -15.2, Math.min(axis === 'h' ? 8.2 : 15.2, pos)) * 100) / 100;
-  g.lasers.push({ id: ++g.laserSeq, axis, pos, kind, state: 'warn', tLeft: LASER_WARN_TICKS });
+  g.lasers.push({ id: ++g.laserSeq, axis, pos, kind, state: 'warn', tLeft: g.laserWarn || LASER_WARN_TICKS });
 }
 function simulateDodgeTick(room) {
   const g = room.game;
@@ -933,8 +941,16 @@ function simulateDodgeTick(room) {
   g.spawnIn -= 1;
   if (g.spawnIn <= 0) {
     spawnLaser(room);
-    if (g.tickCount > 320 && Math.random() < 0.4) spawnLaser(room);
-    g.spawnIn = Math.max(13, 30 - 2 * Math.floor(g.tickCount / 160));
+    // Variant boards (Round 34): 1 "Dồn dập" ramps faster and doubles
+    // earlier; 2 "Chớp nhoáng" keeps the classic cadence but its beams
+    // telegraph for only 9 ticks (see laserWarn at setup).
+    const dv = g.dodgeVar || 0;
+    const dblAt = dv === 1 ? 192 : dv === 2 ? 256 : 320;
+    const dblP = dv === 1 ? 0.5 : 0.4;
+    if (g.tickCount > dblAt && Math.random() < dblP) spawnLaser(room);
+    g.spawnIn = dv === 1
+      ? Math.max(10, 24 - 2 * Math.floor(g.tickCount / 128))
+      : Math.max(13, 30 - 2 * Math.floor(g.tickCount / 160));
   }
   g.lasers.forEach((L) => { L.tLeft -= 1; });
   g.lasers = g.lasers.filter((L) => {
@@ -1022,7 +1038,7 @@ function applyMoves(room, moves, opts) {
     if (g.dashCd[p.seat] > 0) g.dashCd[p.seat] -= 1;
     if ((g.dashBoost[p.seat] || 0) > 0) g.dashBoost[p.seat] -= 1;
     let stepMul = 1;
-    if (opts.holderSeat === p.seat) stepMul = HOLDER_SPEED;
+    if (opts.holderSeat === p.seat) stepMul = HOLDER_SPEED * (opts.holderMul || 1);
     if (mv.dash && (mv.x || mv.y) && g.dashCd[p.seat] <= 0) { g.dashBoost[p.seat] = DASH_BOOST_TICKS; g.dashCd[p.seat] = DASH_CD_TICKS; }
     if ((g.dashBoost[p.seat] || 0) > 0) stepMul = 3;
     b.x += mv.x * STEP_X * stepMul; b.y += mv.y * STEP_Y * stepMul;
@@ -1165,7 +1181,11 @@ function spawnStar(room, gold) {
     if (ok) break;
   }
   g.starSeq += 1;
-  g.stars.push({ id: g.starSeq, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, gold: !!gold, pickAt: g.tickCount });
+  const st = { id: g.starSeq, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, gold: !!gold, pickAt: g.tickCount };
+  // Variant 1 "Sao Bay": the gold star drifts in a slow circle around
+  // its spawn point — worth 3, but you have to chase it.
+  if (st.gold && g.stealVar === 1) { st.ax = st.x; st.ay = st.y; st.da = rand(0, Math.PI * 2); }
+  g.stars.push(st);
 }
 function botBrainSteal(room, p) {
   const g = room.game;
@@ -1228,6 +1248,21 @@ function simulateStealTick(room) {
       gg.stars.push({ id: gg.starSeq, x: Math.round(vx * 100) / 100, y: Math.round(vy * 100) / 100, gold: false, pickAt: gg.tickCount + DROP_LOCK_TICKS, dropped: true });
     }
   });
+  // Variant drift + showers (Round 34).
+  if (g.stealVar === 1) {
+    (g.stars || []).forEach((s) => {
+      if (s.gold && s.ax != null) {
+        s.x = Math.round((s.ax + Math.cos(s.da + g.tickCount * 0.021) * 1.6) * 100) / 100;
+        s.y = Math.round((s.ay + Math.sin(s.da + g.tickCount * 0.021) * 1.6) * 100) / 100;
+      }
+    });
+  } else if (g.stealVar === 2) {
+    g.showerIn -= 1;
+    if (g.showerIn <= 0) {
+      g.showerIn = 420;
+      if ((g.stars || []).length <= 6) { spawnStar(room, false); spawnStar(room, false); }
+    }
+  }
   // Pickups: the nearest blob in range banks the star (ties -> the
   // earlier seat, which is room.players order).
   const remaining = [];
@@ -1311,7 +1346,7 @@ function simulateCrownTick(room) {
   g.tickCount += 1;
   const trk = trackStart(room);
   const moves = collectMoves(room, botBrainCrown);
-  applyMoves(room, moves, { holderSeat: g.crown.holder });
+  applyMoves(room, moves, { holderSeat: g.crown.holder, holderMul: g.crownVar === 1 ? 0.85 : 1 });
   separateBlobs(room);
   applyShoves(room, moves, SHOVE_FORCE, (rm, attackerSeat, victimSeat, vx, vy) => {
     const gg = rm.game;
@@ -1324,7 +1359,7 @@ function simulateCrownTick(room) {
       gg.crown.holder = null;
       gg.crown.acc = 0;
       gg.crown.x = Math.round(crownPos.x * 100) / 100; gg.crown.y = Math.round(crownPos.y * 100) / 100;
-      gg.crown.lockTicks = CROWN_LOCK_TICKS;
+      gg.crown.lockTicks = gg.crownVar === 2 ? CROWN_LOCK_TICKS * 2 : CROWN_LOCK_TICKS;
     }
   });
   trackEnd(room, trk);
@@ -1741,7 +1776,14 @@ function stepShells(room, opts) {
     s.x += s.vx; s.y += s.vy;
     let dead = Math.abs(s.x) > 16.5 || Math.abs(s.y) > 9.5; // out of the wide field
     if (!dead && opts.walls) {
-      dead = opts.walls.some((w) => s.x >= w.x - 0.1 && s.x <= w.x + w.w + 0.1 && s.y >= w.y - 0.1 && s.y <= w.y + w.h + 0.1);
+      const wi = opts.walls.findIndex((w) => s.x >= w.x - 0.1 && s.x <= w.x + w.w + 0.1 && s.y >= w.y - 0.1 && s.y <= w.y + w.h + 0.1);
+      if (wi >= 0) {
+        dead = true;
+        // Wooden crates (tank layout 3) are destroyed by the hit; the
+        // walls array IS the game's live block list, so the view and
+        // the bots' line-of-sight update on their own.
+        if (opts.walls[wi].soft) opts.walls.splice(wi, 1);
+      }
     }
     if (!dead && opts.hitPlayers) {
       for (const q of room.players) {
@@ -1855,6 +1897,11 @@ function bomColOf(x) { return Math.max(0, Math.min(BOM_COLS - 1, Math.floor((x +
 function bomRowOf(y) { return Math.max(0, Math.min(BOM_ROWS - 1, Math.floor((y + 9) / 2))); }
 function bomIsHard(g, c, r) {
   const lay = g && g.bomLayout ? g.bomLayout : 0;
+  if (lay === 3) {
+    // "Vòng Vây": a hard ring around the centre (rows 2/6, cols 3..11
+    // plus the side posts) — the middle is an arena, the outside a loop.
+    return ((r === 2 || r === 6) && c >= 3 && c <= 11) || ((c === 3 || c === 11) && r >= 3 && r <= 5);
+  }
   if (lay === 1) return c % 2 === 0 && r % 2 === 1 && c > 0 && r > 0;
   if (lay === 2) {
     const mc = (BOM_COLS - 1) / 2, mr = (BOM_ROWS - 1) / 2;
@@ -2703,7 +2750,7 @@ function flyGatePos(room, seat) {
   for (let tries = 0; tries < 12; tries++) {
     const x = Math.round((Math.random() * 27 - 13.5) * 10) / 10;
     const y = Math.round((Math.random() * 15 - 7.5) * 10) / 10;
-    if (!b || Math.hypot(x - b.x, y - b.y) >= 13) return { x, y };
+    if (!b || Math.hypot(x - b.x, y - b.y) >= (g.flyVar === 2 ? 17 : 13)) return { x, y };
   }
   return { x: 0, y: 0 };
 }
@@ -3244,14 +3291,15 @@ function simulateDefendTick(room) {
     // they arrive along every edge; speeds scale ~x1.1 so the average
     // march time to the crystal matches the old game's.
     const ang = rand(0, Math.PI * 2);
-    const big = g.tickCount >= 320 && Math.random() < 0.3;
+    const big = g.tickCount >= (g.defVar === 1 ? 240 : 320) && Math.random() < (g.defVar === 2 ? 0.5 : 0.3);
     g.slimeSeq += 1;
     g.slimes.push({
       id: g.slimeSeq,
       x: Math.round(Math.cos(ang) * 10.6 * (4 / 3) * 100) / 100, y: Math.round(Math.sin(ang) * 10.6 * (3 / 4) * 100) / 100,
-      hp: big ? 3 : 1, maxHp: big ? 3 : 1, r: big ? 1.05 : 0.7, speed: big ? 0.045 : 0.07, big,
+      hp: big ? (g.defVar === 2 ? 4 : 3) : 1, maxHp: big ? (g.defVar === 2 ? 4 : 3) : 1, r: big ? 1.05 : 0.7, speed: big ? 0.045 : 0.07, big,
     });
-    g.spawnIn = Math.max(20, Math.round(48 - 28 * (g.tickCount / (DEF_MS / TICK_MS))));
+    const spBase = Math.max(20, Math.round(48 - 28 * (g.tickCount / (DEF_MS / TICK_MS))));
+    g.spawnIn = g.defVar === 1 ? Math.max(14, Math.round(spBase * 0.78)) : spBase;
   }
   let crystalDown = false;
   g.slimes.forEach((sl) => {
@@ -3436,7 +3484,7 @@ function fightBulletsTick(room) {
 function fightWeaponsTick(room) {
   const g = room.game;
   if ((g.wpnIn -= 1) <= 0) {
-    g.wpnIn = WPN_SPAWN_TICKS;
+    g.wpnIn = g.wpnEvery || WPN_SPAWN_TICKS;
     const onField = (g.weapons || []).filter((w) => !w.taken).length;
     if (onField < WPN_MAX_FIELD) {
       const plats = g.plats || FIGHT_PLATFORMS;
@@ -3921,7 +3969,7 @@ function stepSoccerBall(room) {
   if (ball.y >= 8 - SOCCER_BALL_R - 0.03 && Math.abs(ball.vy) < 0.05) {
     ball.vy = 0;
     ball.y = 8 - SOCCER_BALL_R;
-    ball.vx *= 0.9695; // sqrt(0.94): same decay per second at 62.5ms
+    ball.vx *= g.ice ? 0.992 : 0.9695; // ice board: the ball rolls far longer
     if (Math.abs(ball.vx) < 0.01) ball.vx = 0;
   }
 }
@@ -4583,6 +4631,7 @@ function gameView(room, role, seat, t) {
       if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, air: (b.air || 0) > 0, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
     v.lasers = (g.lasers || []).map((L) => ({ id: L.id, axis: L.axis, pos: L.pos, kind: L.kind, state: L.state }));
+    v.layoutName = ['Cổ điển', 'Dồn dập', 'Chớp nhoáng'][g.dodgeVar || 0];
   } else if (g.id === 'cuop-sao') {
     v.arenaR = ARENA_R0;
     v.blobs = {};
@@ -4591,6 +4640,7 @@ function gameView(room, role, seat, t) {
       if (b) { v.blobs[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, lives: b.lives, alive: b.alive, vx: b.vx || 0, vy: b.vy || 0 }; if (p.type === 'human') v.blobs[p.seat].pm = padMask(g.pad && g.pad[p.seat]); }
     });
     v.stars = (g.stars || []).map((s) => ({ id: s.id, x: s.x, y: s.y, gold: s.gold }));
+    v.layoutName = ['Cổ điển', 'Sao bay', 'Mưa sao'][g.stealVar || 0];
     v.banked = g.banked;
     if (seat) v.mine = g.banked[seat] || 0;
   } else if (g.id === 'giu-vuong-mien') {
@@ -4602,6 +4652,7 @@ function gameView(room, role, seat, t) {
     });
     v.hold = g.hold;
     v.crown = g.crown ? { holder: g.crown.holder, x: Math.round(g.crown.x * 100) / 100, y: Math.round(g.crown.y * 100) / 100 } : null;
+    v.layoutName = ['Cổ điển', 'Vương miện nặng', 'Khóa lâu'][g.crownVar || 0];
     if (seat) { v.mine = g.hold[seat] || 0; v.myCrown = !!g.crown && g.crown.holder === seat; }
   } else if (g.id === 'chung-mot-than') {
     v.arenaR = ARENA_R0;
@@ -4642,6 +4693,7 @@ function gameView(room, role, seat, t) {
     v.blobs = blobsView(room);
     v.facing = facingView(room);
     v.blocks = g.tankBlocks || TANK_BLOCKS;
+    v.layoutName = ['Cổ điển', 'Mê cung', 'Pháo đài', 'Kho gỗ'][g.tankLayout || 0];
     v.tankLayout = g.tankLayout || 0;
     v.shells = shellsView(room);
   } else if (g.id === 'dat-bom') {
@@ -4649,6 +4701,7 @@ function gameView(room, role, seat, t) {
     v.blobs = blobsView(room);
     v.hard = g.hardCells;
     v.bomLayout = g.bomLayout || 0;
+    v.layoutName = ['Cổ điển', 'Lệch cột', 'Sân mở', 'Vòng vây'][g.bomLayout || 0];
     v.soft = g.softCells;
     v.bombs = (g.bombs || []).map((b) => ({ id: b.id, x: b.x, y: b.y, left: Math.max(0, (b.boomTick - g.tickCount) * TICK_MS) }));
     v.blasts = (g.blasts || []).filter((bl) => bl.until > t).map((bl) => ({ cells: bl.cells }));
@@ -4727,6 +4780,7 @@ function gameView(room, role, seat, t) {
     }
   } else if (g.id === 'dua-may-bay') {
     v.planes = {}; v.gatesMap = {}; v.gatesDone = {};
+    v.layoutName = ['Cổ điển', 'Nhiều mây', 'Cổng xa'][g.flyVar || 0];
     if (g.blobs) room.players.forEach((p) => { const b = g.blobs[p.seat]; if (b) { v.planes[p.seat] = { x: Math.round(b.x * 100) / 100, y: Math.round(b.y * 100) / 100, vx: b.vx || 0, vy: b.vy || 0, gates: b.gates, boost: Math.round(b.boost), stun: b.stun || 0, fin: b.fin || 0 }; v.gatesDone[p.seat] = b.gates; } });
     if (g.fly) { v.clouds = g.fly.clouds; room.players.forEach((p) => { if (g.fly.gates[p.seat]) v.gatesMap[p.seat] = g.fly.gates[p.seat]; }); v.finOrder = g.fly.finOrder; }
     v.blobs = v.planes;
@@ -4782,6 +4836,7 @@ function gameView(room, role, seat, t) {
     v.facing = facingView(room);
     v.shells = shellsView(room);
     v.slimes = (g.slimes || []).map((s) => ({ id: s.id, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, hp: s.hp, maxHp: s.maxHp, big: s.big, vx: Math.round((s.vx || 0) * 100) / 100, vy: Math.round((s.vy || 0) * 100) / 100 }));
+    v.layoutName = ['Cổ điển', 'Slime nhanh', 'Slime khổng lồ'][g.defVar || 0];
     v.crystal = g.crystal ? { hp: g.crystal.hp, max: DEF_CRYSTAL_HP } : null;
     v.kills = g.kills;
   } else if (g.id === 'nguoi-que') {
@@ -4803,6 +4858,7 @@ function gameView(room, role, seat, t) {
       };
     });
     v.weapons = (g.weapons || []).filter((w) => !w.taken).map((w) => ({ id: w.id, kind: w.kind, x: w.x, y: w.y }));
+    v.layoutName = ['Cổ điển', 'Sàn lệch', 'Sàn hẹp'][g.layout || 0];
     v.bullets = (g.bullets || []).map((bl) => ({ id: bl.id, x: Math.round(bl.x * 100) / 100, y: Math.round(bl.y * 100) / 100, vx: bl.vx, vy: bl.vy }));
     if (seat != null) v.myDmg = g.dmg[seat] || 0;
   } else if (g.id === 'den-lua-nuoc') {
@@ -4842,6 +4898,7 @@ function gameView(room, role, seat, t) {
     });
     v.ball = g.ball ? { x: Math.round(g.ball.x * 100) / 100, y: Math.round(g.ball.y * 100) / 100, vx: Math.round(g.ball.vx * 100) / 100, vy: Math.round(g.ball.vy * 100) / 100 } : null;
     v.scoreboard = { do: (g.score && g.score.do) || 0, xanh: (g.score && g.score.xanh) || 0 };
+    v.ice = !!g.ice; v.layoutName = g.ice ? 'Sân băng' : 'Cổ điển';
     v.goalInfo = g.phase === 'goal' ? g.goalInfo : null;
     if (seat != null) v.myTeam = soccerTeam(seat);
   } else if (g.id === 'ech-op') {

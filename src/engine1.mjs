@@ -232,6 +232,13 @@ const TANK_LAYOUTS = [
     { x: -1.7, y: -3.9, w: 3.4, h: 1.1 }, { x: -1.7, y: 2.8, w: 3.4, h: 1.1 },
     { x: -13.5, y: -4.5, w: 2.7, h: 1.1 }, { x: 10.8, y: 3.4, w: 2.7, h: 1.1 },
   ],
+  // Layout 3 "Kho Gỗ": the classic four stone blocks plus five wooden
+  // crates (soft: a shell destroys the crate instead of just dying).
+  TANK_BLOCKS.concat([
+    { x: -1.35, y: -0.55, w: 2.7, h: 1.1, soft: 1 }, { x: -8.3, y: -0.55, w: 2.7, h: 1.1, soft: 1 },
+    { x: 5.3, y: -0.55, w: 2.7, h: 1.1, soft: 1 }, { x: -1.35, y: -3.4, w: 2.7, h: 1.1, soft: 1 },
+    { x: -1.35, y: 2.3, w: 2.7, h: 1.1, soft: 1 },
+  ]),
 ];
 // Đặt Bom: 15x9 grid of 2-unit cells over the wide arena; hard pillars sit
 // on odd/odd cells (classic bomber layout), soft blocks are dealt per

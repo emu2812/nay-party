@@ -265,12 +265,10 @@ async function main() {
   console.log('== Nảy Party — local worker test ==');
   const home = await call('GET', '/');
   assert(home.status === 200 && home.text.indexOf('Nảy Party') >= 0, 'GET / serves the game page');
-  assert(home.text.indexOf('Đố Vui Tốc Độ') >= 0 && home.text.indexOf('Đẩy Ra Khỏi Sàn') >= 0, 'page lists all games incl. the arena');
-  assert(home.text.indexOf('Né Laze') >= 0 && home.text.indexOf('Ma Sói') >= 0 && home.text.indexOf('Cờ Cá Ngựa') >= 0, 'page lists Né Laze, Ma Sói, Cờ Cá Ngựa');
-  assert(home.text.indexOf('Cướp Sao') >= 0 && home.text.indexOf('Giữ Vương Miện') >= 0, 'page lists Cướp Sao + Giữ Vương Miện');
+  assert(home.text.indexOf("'ne-dan'") >= 0 && home.text.indexOf("'co-vua'") >= 0 && home.text.indexOf("'dua-may-bay'") >= 0 && home.text.indexOf('GAME_CTL') >= 0, 'page ships the full game catalog wiring (chooser lists games from server data)');
   assert(home.text.indexOf('Đấu với nhau') >= 0 && home.text.indexOf('Hợp tác') >= 0 && home.text.indexOf('Sắp ra mắt') < 0, 'game chooser is grouped by category: Đấu với nhau + Hợp tác, placeholder tile GONE (co-op wave shipped)');
-  assert(home.text.indexOf('Chung Một Thân') >= 0 && home.text.indexOf('Đẩy Hộp Về Đích') >= 0 && home.text.indexOf('Chèo Thuyền') >= 0, 'page lists the 3 co-op games (Chung Một Thân, Đẩy Hộp Về Đích, Chèo Thuyền)');
-  assert(home.text.indexOf('21 game') >= 0, 'homepage footer counts all 19 games');
+  assert(home.text.indexOf("'chung-mot-than'") >= 0 && home.text.indexOf("'cheo-thuyen'") >= 0, 'page ships the co-op game wiring');
+  assert(home.text.indexOf('21 game') >= 0, 'homepage footer counts all 21 games');
   assert(home.text.indexOf('astar') >= 0 && home.text.indexOf('acrown') >= 0, 'new-game renderers ship in the page (star / crown)');
   assert(home.text.indexOf('sharedblob') >= 0 && home.text.indexOf('acrate') >= 0 && home.text.indexOf('agoal') >= 0 && home.text.indexOf('aboat') >= 0 && home.text.indexOf('teambanner') >= 0 && home.text.indexOf('function sharedOrbSVG(') >= 0, 'co-op renderers ship in the page (shared orb / crate / goal / boat / team banner)');
   assert(home.text.indexOf('id="recon"') >= 0 && home.text.indexOf('Đang kết nối lại') >= 0, 'stale-view watchdog badge ships in the page (recon element + label)');
@@ -1204,7 +1202,7 @@ async function main() {
   assert(tv.game.blobs[1].x === 7.33 && tv.game.blobs[1].y === 0 && tv.game.blobs[2].x === -7.33 && tv.game.blobs[2].y === 0,
     'tank: spawns face each other across the arena');
   assert(tv.game.facing[1].x === -1 && tv.game.facing[1].y === 0, 'tank: seat 1 starts aimed at the centre');
-  assert(tv.game.blocks.length === [4, 8, 6][tv.game.tankLayout || 0], 'tank: cover blocks match the dealt layout (' + (tv.game.tankLayout || 0) + ')');
+  assert(tv.game.blocks.length === [4, 8, 6, 9][tv.game.tankLayout || 0], 'tank: cover blocks match the dealt layout (' + (tv.game.tankLayout || 0) + ')');
   // Fire once down the clear spawn lane: the shell leaves at
   // (6.13,0), flies 1.2/tick, and the target at -7.33 is first
   // within the 1.0 hit radius on tick ~11.
@@ -1280,7 +1278,7 @@ async function main() {
     await withRandomQueue(q, async () => {
       await bmDrv.act({ action: 'startGame', game: 'dat-bom' });
       let bv = await pumpD(bmDrv, 125, (s) => s.game && s.game.phase === 'bomber', 'bomber begins');
-      assert(bv.game.hard.length === [28, 28, 9][bv.game.bomLayout || 0], 'bomber: hard cells match the dealt layout (' + (bv.game.bomLayout || 0) + ')');
+      assert(bv.game.hard.length === [28, 28, 9, 24][bv.game.bomLayout || 0], 'bomber: hard cells match the dealt layout (' + (bv.game.bomLayout || 0) + ')');
       assert(JSON.stringify(bv.game.soft) === JSON.stringify([[4, 0]]),
         'bomber: the queued layout deals exactly one soft block at (4,0), got ' + JSON.stringify(bv.game.soft));
       assert(bv.game.blobs[1].x === -14 && bv.game.blobs[1].y === -8 && bv.game.blobs[3].x === 14 && bv.game.blobs[3].y === -8,
@@ -2950,9 +2948,9 @@ async function main() {
     assert(lkHome.text.indexOf('function renderLocalPanels(') >= 0 && lkHome.text.indexOf('function lkOptions(') >= 0
       && lkHome.text.indexOf('function lkTranslate(') >= 0,
       'local: the served page ships the keyboard engine + local panels');
-    assert(lkHome.text.indexOf('LK_SCHEMES') >= 0 && lkHome.text.indexOf('Chơi ngay trên màn hình này') >= 0
+    assert(lkHome.text.indexOf('LK_SCHEMES') >= 0 && lkHome.text.indexOf('+ Phím') >= 0
       && lkHome.text.indexOf('data-cmd="addLocal"') >= 0,
-      'local: the served page ships the schemes table, the lobby help line and the + Phím button');
+      'local: the served page ships the schemes table and the + Phím seat button');
     const storedRoom = async (code) => JSON.parse((await doFake.records.get(code).state.storage.get('room')).json);
 
     // --- Seat management: schemes, cap, removal, gates ----------------
@@ -3013,9 +3011,8 @@ async function main() {
     const kbHome = await call('GET', '/');
     assert(kbHome.text.indexOf('data-cmd="cycleScheme"') >= 0 && kbHome.text.indexOf('Đổi bộ phím') >= 0,
       'kb-flex: the served page ships the Đổi bộ phím button on local seat cells');
-    assert(kbHome.text.indexOf('var KB_MAP = ') >= 0 && kbHome.text.indexOf('function pkTranslate(') >= 0
-      && kbHome.text.indexOf('function kbHintHTML(') >= 0,
-      'kb-flex: the served page ships the player-page keyboard engine + hint');
+    assert(kbHome.text.indexOf('var KB_MAP = ') >= 0 && kbHome.text.indexOf('function pkTranslate(') >= 0,
+      'kb-flex: the served page ships the player-page keyboard engine');
     const csDrv = await newDrv();
     await csDrv.join('Chu Phong');
     await csDrv.act({ action: 'addBot', seat: 2 });

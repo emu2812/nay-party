@@ -40,8 +40,6 @@ h1, h2, h3, .baloo { font-family: 'Baloo 2', cursive; }
 .seat.filled { border: 3px solid #FFE3B3; background: #fff; }
 .seat .nm { font-family: 'Baloo 2', cursive; font-weight: 800; font-size: 19px; margin-top: 4px; }
 .seat .sc { font-weight: 700; color: #9C744C; }
-.bubble { position: absolute; top: -14px; left: 50%; transform: translateX(-50%) rotate(-2deg); background: #fff; border: 3px solid #FFD98E;
-  color: #4A3226; font-weight: 700; font-size: 14px; padding: 6px 12px; border-radius: 16px; white-space: nowrap; z-index: 3; }
 .blobbob { display: inline-block; }
 /* FLAT: bob removed — blobs stay still, no idle motion. */
 .chip { display: inline-block; background: #FFF1DE; color: #8A5A33; font-weight: 700; font-size: 14px; padding: 4px 12px; border-radius: 999px; margin: 2px; }
@@ -296,6 +294,7 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 @keyframes boomPop { from { width: 4%; padding-top: 4%; opacity: 1; } to { width: 19%; padding-top: 19%; opacity: 0; } }
 .aframe { position: absolute; border: 3px solid #78DCFF; border-radius: 14px; pointer-events: none; }
 .ablock { position: absolute; z-index: 1; pointer-events: none; border-radius: 5px; background: #5B6470; border: 2px solid #2E3440; border-top: 6px solid #8A94A6; }
+.ablock.soft { background: #8A5A33; border-color: #5B3A1E; border-top-color: #C98F4E; background-image: repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 2px, transparent 2px 12px); }
 .orbwrap { position: relative; display: inline-block; }
 .abarrel { position: absolute; left: 50%; top: 50%; width: 42px; height: 11px; margin-top: -5.5px; transform-origin: 0 50%; border-radius: 4px; background: #FFC93D; pointer-events: none; }
 .ashell { position: absolute; width: 17px; height: 17px; margin: -8.5px 0 0 -8.5px; border-radius: 50%; z-index: 3; pointer-events: none; transition: left .18s linear, top .18s linear; background: #FFC93D; border: 2px solid #FF7A1A; }
@@ -383,6 +382,7 @@ button.tlcard i { display: block; font-style: normal; font-size: 18px; }
 .g-ech-op .afield { background-color: #14424E; }
 .g-ne-dan .afield { background-color: #0D1526; background-image: linear-gradient(rgba(120,220,255,.08) 2px, transparent 2px), linear-gradient(90deg, rgba(120,220,255,.08) 2px, transparent 2px); background-size: 46px 46px; }
 .g-da-bong .afield { background-color: #2E8B47; background-image: repeating-linear-gradient(90deg, rgba(255,255,255,.055) 0 64px, rgba(255,255,255,0) 64px 128px); }
+.g-da-bong .afield.ice { background-color: #6FA8C8; background-image: repeating-linear-gradient(90deg, rgba(255,255,255,.14) 0 64px, rgba(255,255,255,0) 64px 128px); }
 .g-da-bong .afield::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; background: rgba(255,255,255,.45); transform: translateX(-50%); pointer-events: none; }
 .g-da-bong .afield::after { content: ''; position: absolute; left: 50%; top: 50%; width: 17%; aspect-ratio: 1; border: 3px solid rgba(255,255,255,.45); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 .g-dat-bom .afield { background-color: #2E7D3B; background-image: linear-gradient(45deg, #379548 25%, transparent 25%, transparent 75%, #379548 75%), linear-gradient(45deg, #379548 25%, transparent 25%, transparent 75%, #379548 75%); background-size: 92px 92px; background-position: 0 0, 46px 46px; }
@@ -1151,6 +1151,12 @@ function localEligible() {
 function localMirror() {
   var E = window.__NP_ENGINE; var v = S.view; if (!E || !v) return null;
   var room = E.newRoom(v.code, 'local');
+  // Round 34: board rotation (the engine's layoutPick) counts matches
+  // per room object — a fresh mirror per match would deal the classic
+  // board forever, so the counters live on the page and are shared
+  // into each mirror by reference (picks mutate them in place).
+  if (!S._laySeed) S._laySeed = {};
+  room._lay = S._laySeed;
   room.phase = v.phase;
   room.lastGame = v.lastGame || null;
   room.players = [];
@@ -1589,7 +1595,6 @@ function renderMySeat() {
   var sig = MYSEAT_INTER[g.id]
     ? g.id + '|' + g.phase + '|' + JSON.stringify(v.myView) + '|' + (S.myTlSel || []).join(',') + '|ch' + (S.chSel == null ? '' : S.chSel) + ':' + (S.chSelFor || '')
     : g.id + '|' + g.phase;
-  sig += '|bub:' + (v.bubble ? v.bubble.seat + ':' + v.bubble.text : '');
   if (sig === S.mySeatSig) return;
   var ci = el('myChatText');
   var cval = ci ? ci.value : null;
@@ -1769,7 +1774,6 @@ function seatCard(v, seat) {
     return h + '</div>';
   }
   var h2 = '<div class="seat filled">';
-  if (v.bubble && v.bubble.seat === seat) h2 += '<div class="bubble">' + esc(v.bubble.text) + '</div>';
   h2 += '<span class="blobbob">' + blobSVG(p.color, p.mood, 84) + '</span>';
   h2 += '<div class="nm">' + esc(p.name) + '</div>';
   h2 += '<div class="sc">P' + seat + ' · ' + fmt(p.score) + ' điểm</div>';
@@ -1827,7 +1831,6 @@ function hostHTML(v) {
     else if (v.players.length < 2) h += '<span class="chip hot">Thêm Máy hoặc rủ thêm bạn để đủ 2 người</span>';
     else h += '<span class="chip cool">Sẵn sàng! Chọn một game bên dưới để bắt đầu</span>';
     h += '</p>';
-    h += '<p class="center small muted" style="margin:8px 0 0">Chơi ngay trên màn hình này: mỗi ghế trống cũng có nút + Phím / + Máy riêng.</p>';
     h += '</div>';
     // Game chooser, grouped by category: versus games race for
     // placement points; co-op games score the whole team one tier.
@@ -1856,21 +1859,19 @@ function hostHTML(v) {
           + head
           + (lockWhy ? '<p class="small foot">' + lockWhy + '</p>' : '<p class="small foot">' + (qi >= 0 ? 'Đã chọn · chạm để bỏ khỏi hàng chờ' : 'Chạm để thêm vào hàng chờ') + '</p></button>');
       }
-      var small = gm.cat === 'coop' ? '1 trận hợp tác · Cả đội cùng nhận điểm theo hạng' : (gm.rounds > 1 ? gm.rounds + ' vòng · Vòng cuối ×2 điểm' : '1 trận sống còn · 300/200/100/50');
       if (lockWhy) {
         if (gm.min && nP < gm.min) {
           return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="quickStart" data-game="' + gm.id + '">' + head + '<p class="small foot">▶ Thiếu ' + (gm.min - nP) + ' người — chạm để thêm Máy và chơi ngay</p></button>';
         }
         return '<button class="gamecard pllock" style="background:' + GCOLORS[gm.id] + '" data-cmd="startLocked" data-game="' + gm.id + '">' + head + '<p class="small foot">' + lockWhy + '</p></button>';
       }
-      return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '">' + head + '<p class="small foot">' + small + '</p></button>';
+      return '<button class="gamecard" style="background:' + GCOLORS[gm.id] + '" data-cmd="start" data-game="' + gm.id + '">' + head + '</button>';
     }
     // Playlist builder: arm the mode, tap cards to queue them, then
     // start the chain — or take a preset (random 5 / everything).
     h += '<div class="card center" style="margin-top:12px">';
     if (!S.plMode) {
       h += '<button class="btn purple" data-cmd="plMode">🔁 Chế độ liên hoàn</button>';
-      h += '<p class="small muted" style="margin:8px 0 0">Chọn sẵn nhiều game để chơi nối tiếp nhau — hết game này tự sang game kia, cả phòng không phải chọn lại.</p>';
     } else {
       h += '<div class="baloo" style="font-size:21px">🔁 Chế độ liên hoàn</div>';
       h += '<p style="margin:6px 0">Chạm vào các game bên dưới để xếp hàng chờ · đã chọn ' + S.plQueue.length + ' game</p>';
@@ -1884,14 +1885,6 @@ function hostHTML(v) {
       h += '<button class="btn orange" data-cmd="plAll">🏆 Tất cả game</button> ';
       h += '<button class="btn ghost" data-cmd="plMode">Tắt liên hoàn</button></p>';
     }
-    h += '</div>';
-    // Featured row first (portal standard: the best games sit in
-    // the first screenful, nobody scrolls to find them). The same
-    // games also appear in their category below — portals repeat
-    // their hits across rows the same way.
-    h += '<div class="cathead">⭐ Hay nhất</div><div class="games">';
-    var FEAT = ['ne-dan', 'xe-tank', 'dat-bom', 'cuop-sao', 'da-bong', 'do-vui'];
-    for (var kf = 0; kf < FEAT.length; kf++) { var gmf = gameMeta(v, FEAT[kf]); if (gmf) h += gameCard(gmf); }
     h += '</div>';
     h += '<div class="cathead">🏆 Đấu với nhau</div><div class="games">';
     for (var k = 0; k < v.games.length; k++) if (v.games[k].cat !== 'coop') h += gameCard(v.games[k]);
@@ -1916,6 +1909,7 @@ function hostHTML(v) {
 function countdownHTML(g) {
   var title = g.id === 'ma-soi' ? 'Đêm ' + g.round : (g.id === 'ca-ngua' || g.id === 'tien-len') ? 'Bắt đầu nào!' : 'Vòng ' + g.round + '/' + g.totalRounds + (g.finalRound && !noX2(g.id) ? ' · VÒNG QUYẾT ĐỊNH ×2' : '');
   return '<div class="cdwrap"><div class="baloo" style="font-size:30px">' + title + '</div>'
+    + (g.layoutName && g.layoutName !== 'Cổ điển' ? '<div class="baloo" style="font-size:21px;color:#FFC93D">🗺️ Bàn: ' + esc(g.layoutName) + '</div>' : '')
     + '<div class="cdnum" id="cdnum">3</div><div class="baloo" style="font-size:24px">Chuẩn bị…</div></div>';
 }
 // Shared client helpers for the two platformer games (wave 4): rect
@@ -2009,7 +2003,6 @@ function hostStage(v) {
       if (g.star) h += '<div class="astar gold" id="cstar" style="left:' + PX(g.star.x) + '%;top:' + PY(g.star.y) + '%">★</div>';
       h += '<div class="ablob" id="sharedblob" style="left:50%;top:50%">' + sharedOrbSVG(v, 66) + '<div class="aname">CẢ ĐỘI</div></div>';
       h += '</div>';
-      h += '<p class="center">Một quả bóng, bốn người lái — mỗi người giữ một hướng! Chạm sao ⭐ là +1 điểm kiểm tra · Trúng đạn là cả đội mất 1 tim</p>';
     }
   } else if (g.id === 'day-hop') {
     if (g.phase === 'box') {
@@ -2021,7 +2014,6 @@ function hostStage(v) {
       h += '<div class="acrate" id="acrate" style="left:50%;top:50%">📦</div>';
       for (var pI3 = 0; pI3 < v.players.length; pI3++) { var pp3 = v.players[pI3]; h += '<div class="ablob" id="ablob-' + pp3.seat + '" style="left:50%;top:50%;color:' + COLORS[pp3.color] + '">' + orbSVG(pp3.color, 58) + '<div class="aname">' + esc(pp3.name) + '</div></div>'; }
       h += '</div>';
-      h += '<p class="center">Một người đẩy không nhúc nhích — phải từ 2 người cùng đẩy mới đi! Đưa hộp vào ô ĐÍCH xanh lá</p>';
     }
   } else if (g.id === 'cheo-thuyen') {
     if (g.phase === 'row') {
@@ -2038,10 +2030,9 @@ function hostStage(v) {
     if (g.phase === 'tank') {
       h += '<div class="baloo" style="font-size:25px">Lái xe tăng, bắn hạ đối thủ! Núp sau thùng chắn — đạn không xuyên qua được</div>';
       h += '<div class="afield" id="afield"><div class="aframe" style="left:2.5%;top:4.44%;width:95%;height:91.11%"></div><div class="ko-banner" id="kobanner"><div class="ko-txt">K.O.!</div><div><span class="ko-sub" id="kosub"></span></div></div>';
-      if (g.blocks) for (var kI = 0; kI < g.blocks.length; kI++) { var kb = g.blocks[kI]; h += '<div class="ablock" style="' + rectStyle(kb) + '"></div>'; }
+      if (g.blocks) for (var kI = 0; kI < g.blocks.length; kI++) { var kb = g.blocks[kI]; h += '<div class="ablock' + (kb.soft ? ' soft' : '') + '" style="' + rectStyle(kb) + '"></div>'; }
       for (var tI2 = 0; tI2 < v.players.length; tI2++) { var tp2 = v.players[tI2]; var fc = g.facing ? g.facing[tp2.seat] : null; var deg = fc ? Math.round(Math.atan2(fc.y, fc.x) * 180 / Math.PI) : 0; h += '<div class="ablob" id="ablob-' + tp2.seat + '" style="left:50%;top:50%;color:' + COLORS[tp2.color] + '"><span class="orbwrap">' + tankSVG(tp2.color, 62) + '<span class="abarrel" id="barrel-' + tp2.seat + '" style="transform:rotate(' + deg + 'deg)"></span></span><div class="aname">' + esc(tp2.name) + '</div><div class="alives" id="alives-' + tp2.seat + '"></div></div>'; }
       h += '</div>';
-      h += '<p class="center">Trúng đạn mất 1 mạng · Hết 3 mạng là bị loại · A: bắn · B: lướt nhanh</p>';
     }
   } else if (g.id === 'dat-bom') {
     if (g.phase === 'bomber') {
@@ -2051,7 +2042,6 @@ function hostStage(v) {
       if (g.soft) for (var sI4 = 0; sI4 < g.soft.length; sI4++) h += '<div class="bsoft" id="bsoft-' + g.soft[sI4][0] + ',' + g.soft[sI4][1] + '" style="left:' + (g.soft[sI4][0] * 6.25) + '%;top:' + (g.soft[sI4][1] * 11.1111) + '%;width:6.25%;height:11.1111%"></div>';
       for (var bI4 = 0; bI4 < v.players.length; bI4++) { var bp4 = v.players[bI4]; h += '<div class="ablob" id="ablob-' + bp4.seat + '" style="left:50%;top:50%;color:' + COLORS[bp4.color] + '">' + orbSVG(bp4.color, 56) + '<div class="aname">' + esc(bp4.name) + '</div><div class="alives" id="alives-' + bp4.seat + '"></div></div>'; }
       h += '</div>';
-      h += '<p class="center">Tường xám không phá được · Tường gỗ phá được · Nổ dây chuyền khi lửa chạm bom khác · Trúng nổ mất 1 mạng (có 2 mạng)</p>';
     }
   } else if (g.id === 'thu-thanh') {
     if (g.phase === 'defend') {
@@ -2060,7 +2050,6 @@ function hostStage(v) {
       h += '<div class="acrystal">💎<div class="chp" id="crystalhearts">' + (g.crystal ? '❤'.repeat(Math.max(0, g.crystal.hp)) : '') + '</div></div>';
       for (var dI4 = 0; dI4 < v.players.length; dI4++) { var dp4 = v.players[dI4]; var fc2 = g.facing ? g.facing[dp4.seat] : null; var deg2 = fc2 ? Math.round(Math.atan2(fc2.y, fc2.x) * 180 / Math.PI) : 0; h += '<div class="ablob" id="ablob-' + dp4.seat + '" style="left:50%;top:50%;color:' + COLORS[dp4.color] + '"><span class="orbwrap">' + orbSVG(dp4.color, 62) + '<span class="abarrel" id="barrel-' + dp4.seat + '" style="transform:rotate(' + deg2 + 'deg)"></span></span><div class="aname">' + esc(dp4.name) + '</div></div>'; }
       h += '</div>';
-      h += '<p class="center">Đừng để slime chạm vào pha lê! Sống sót hết giờ: pha lê còn ≥7 tim = hạng VÀNG · ≥4 = BẠC · ≥1 = ĐỒNG</p>';
     }
   } else if (g.id === 'nguoi-que') {
     if (g.phase === 'fight') {
@@ -2075,7 +2064,6 @@ function hostStage(v) {
           + '<div class="aname">' + esc(fp.name) + '</div></div>';
       }
       h += '</div>';
-      h += '<p class="center">Đánh đối thủ tích % sát thương — % càng cao văng càng xa! Nhặt 🗡️ GƯƠM (tầm xa, đau hơn) và 🔫 SÚNG (6 đạn, X = bắn loạt) rơi trên sàn để áp đảo!</p>';
     }
   } else if (g.id === 'den-lua-nuoc') {
     if (g.phase === 'temple') {
@@ -2093,7 +2081,6 @@ function hostStage(v) {
         h += '<div class="achar' + (tc.home ? ' home' : '') + '" id="achar-' + tp.seat + '" style="left:' + PX(tc.x) + '%;top:' + PY(tc.y) + '%">' + charSVG(tc.el, tp.color) + '<div class="aname">' + esc(tp.name) + '</div></div>';
       }
       h += '</div>';
-      h += '<p class="center">Hồ đỏ chỉ Lửa qua được, hồ xanh chỉ Nước, hồ xanh lá hại cả hai! Đứng lên nút vàng để mở cổng cho đồng đội, rồi về đúng cửa của mình.</p>';
     }
   } else if (g.id === 'ma-soi') {
     var deadRole = {};
@@ -2190,7 +2177,6 @@ function hostStage(v) {
     if (g.log && g.log.length) for (var lI = 0; lI < g.log.length; lI++) h += '<div class="chatrow">🎲 ' + esc(g.log[lI]) + '</div>';
     else h += '<p class="muted">Chưa có diễn biến nào…</p>';
     h += '</div></div>';
-    h += '<p class="center">Ô vàng là ô an toàn — ngựa đứng đó không bị đá. Thảy 6 được đi tiếp; 6 ba lần liên tiếp thì mất lượt!</p>';
   } else if (g.id === 'co-vua') {
     if (g.phase === 'chessEnd' && g.result) {
       var rwC = g.result.winner ? playerOf(v, g.result.winner) : null;
@@ -2210,7 +2196,6 @@ function hostStage(v) {
       }
     }
     h += '<div class="chrow"><div style="flex:0 0 auto;width:min(100%,590px)">' + chessBoardHTML(g, playSeatC, legalC, false, false) + '</div>' + chessSideHTML(v, g) + '</div>';
-    h += '<p class="center">Trắng đi trước. Ghế phím / chủ phòng: chạm quân rồi chạm ô đích ngay trên bàn này. Phong cấp mặc định thành Hậu.</p>';
   } else if (g.id === 'tien-len') {
     if (g.phase === 'tlWin' && g.winner) {
       var winT = playerOf(v, g.winner);
@@ -2252,7 +2237,6 @@ function hostStage(v) {
       }
       h += '</div></div></div>';
       if (g.log && g.log.length) { h += '<div style="margin-top:8px">'; for (var lI9 = 0; lI9 < g.log.length; lI9++) h += '<div class="chatrow">🃏 ' + esc(g.log[lI9]) + '</div>'; h += '</div>'; }
-      h += '<p class="center">Chặt heo: tứ quý & đôi thông chặt được lá 2; đôi heo chỉ bị chặt bởi tứ quý và 4 đôi thông. Hết bài trước là thắng!</p>';
     }
   } else if (g.id === 'dua-may-bay') {
     h += '<div class="scorebar">';
@@ -2266,11 +2250,10 @@ function hostStage(v) {
       h += '<div class="aplane" id="aplane-' + fp5.seat + '" style="left:' + PX(fb.x) + '%;top:' + PY(fb.y) + '%"><span class="aplaneIc" id="aplaneIc-' + fp5.seat + '" style="color:' + COLORS[fp5.color] + '">\u2708</span><div class="aname">' + esc(fp5.name) + '</div><div class="aboost"><i id="aboost-' + fp5.seat + '" style="width:' + (fb.boost || 0) + '%"></i></div></div>';
     }
     h += '</div>';
-    h += '<p class="center">Bay xuyên vòng cổng MÀU CỦA BẠN (số cổng hiện trên vòng) — đủ 10 cổng là về đích! ⛈️ Mây giông làm máy bay chậm hẳn · A: tăng tốc · B: phanh cua gấp.</p>';
   } else if (g.id === 'da-bong') {
     var sb = g.scoreboard || { do: 0, xanh: 0 };
     h += '<div class="scorebar"><span class="scorechip" style="background:#FBD5D5">🔴 Đội Đỏ: <b id="scoredo">' + sb.do + '</b></span><span class="scorechip" style="background:#CFE8FB">🔵 Đội Xanh: <b id="scorexanh">' + sb.xanh + '</b></span></div>';
-    h += '<div class="afield wide" id="afield">';
+    h += '<div class="afield wide' + (g.ice ? ' ice' : '') + '" id="afield">';
     (g.solids || []).forEach(function (s) { h += '<div class="spitch' + (s.w > 20 ? '' : ' wall') + '" style="' + rectStyleS(s) + '"></div>'; });
     h += '<div class="sgoalbox" style="' + rectStyleS({ x: -19, y: 5.4, w: 3, h: 2.6 }) + '"></div>';
     h += '<div class="sgoalbox" style="' + rectStyleS({ x: 16, y: 5.4, w: 3, h: 2.6 }) + '"></div>';
@@ -2286,7 +2269,6 @@ function hostStage(v) {
       h += '<div class="center baloo" style="font-size:21px;position:relative;z-index:6">' + (gp8 ? esc(gp8.name) + (g.goalInfo.ownGoal ? ' đá phản lưới nhà! 😱' : ' ghi bàn!') : 'Vào rồi!') + '</div>';
     }
     h += '</div>';
-    h += '<p class="center">Đội Đỏ (ghế lẻ) tấn công sang phải, Đội Xanh (ghế chẵn) sang trái. A = SÚT (giữ ▲ = bổng, ▼ = sệt) · B = lướt · ▲/Y = nhảy đánh đầu!</p>';
   } else if (g.id === 'ech-op') {
     h += '<div class="scorebar"><span class="scorechip">Màn <b id="frogcham">' + (g.chamber || 1) + '</b>/' + (g.chambersTotal || 3) + '</span><span class="scorechip">Tim đội: <b id="froghearts">' + '❤'.repeat(Math.max(0, g.hearts || 0)) + '</b></span><span class="scorechip">🪰 Ruồi: <b id="frogflies">' + (g.fliesEaten || 0) + '</b>/' + (g.fliesTotal || 9) + '</span></div>';
     if (g.phase === 'frogClear') h += '<div class="center baloo" style="font-size:29px">🎉 QUA MÀN ' + (g.chamber || 1) + '! Chuẩn bị màn tiếp theo…</div>';
@@ -2303,7 +2285,6 @@ function hostStage(v) {
       h += '<div class="afrog' + (ff.state === 'carry' ? ' carry' : '') + '" id="afrog-' + fp3.seat + '" data-st="' + ff.state + ':' + (ff.bellySeat || '') + '" style="left:' + PX(ff.x) + '%;top:' + PY(ff.y) + '%' + (ff.state === 'in' ? ';display:none' : '') + '">' + frogSVG(fp3.color, bellyP ? bellyP.color : null) + '<div class="aname">' + esc(fp3.name) + '</div></div>';
     }
     h += '</div>';
-    h += '<p class="center">Đứng cạnh đồng đội rồi bấm B/X để NUỐT bạn vào bụng — ếch đang vác nhảy xa và cao hơn hẳn! Sang bờ an toàn thì bấm B/X lần nữa để nhả ra. Cả đội cùng đứng vào cửa xanh là qua màn.</p>';
   } else if (g.id === 'can-goc') {
     var turnP3 = g.turn ? playerOf(v, g.turn) : null;
     var windTxt = !g.wind ? 'không gió' : (g.wind > 0 ? '→ ' + g.wind : '← ' + (-g.wind));
@@ -2342,7 +2323,6 @@ function hostStage(v) {
     if (g.shell) h += '<div class="ashell" id="shellpt" style="left:' + PX(g.shell.x) + '%;top:' + PY(g.shell.y) + '%"></div>';
     if (g.boom) h += '<div class="boomflash" style="left:' + PX(g.boom.x) + '%;top:' + PY(g.boom.y) + '%"></div>';
     h += '</div>';
-    h += '<p class="center">Căn góc như Gunny: ▲▼ chỉnh góc · ◀▶ chỉnh lực · X đổi hướng · A bắn. Không có đường đạn mẫu đâu — gió còn đổi mỗi lượt nữa!</p>';
   }
   return h;
 }
@@ -3806,10 +3786,9 @@ function homeHTML() {
   h += '<p class="tagline">Game tiệc trên màn hình lớn — điện thoại là tay cầm</p>';
   h += '<p><button class="btn blue" data-cmd="create" style="font-size:23px">Mở trên màn hình lớn (TV)</button></p>';
   if (!('ontouchstart' in window) || (window.matchMedia && matchMedia('(pointer:fine)').matches)) h += '<p><button class="btn green" data-cmd="createKb" style="font-size:20px">⌨️ Mở màn hình lớn & chủ phòng chơi bằng bàn phím</button></p>';
-  h += '<p class="muted">Màn hình lớn tạo phòng và hiện mã 6 số. Bạn bè mở trang này trên điện thoại, nhập mã là chơi — không cần cài app, không cần tài khoản.</p>';
   h += '</div>';
   h += '<div class="card center" style="margin-top:16px"><h2 style="margin:0 0 8px">📱 Tạo phòng chơi trên điện thoại</h2>';
-  h += '<p class="muted" style="margin:4px 0">Không cần TV — mỗi người chơi ngay trên điện thoại của mình. Bạn tạo phòng, ngồi vào một ghế chơi luôn, rồi gửi link mời cho bạn bè.</p>';
+  h += '<p class="muted" style="margin:4px 0">Không cần TV — chơi ngay trên điện thoại, gửi link mời bạn bè.</p>';
   h += '<p><input type="text" id="pmName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
   h += '<p><button class="btn green" data-cmd="createPhone" style="font-size:22px">Tạo phòng điện thoại</button></p></div>';
   var rec = npRecents();
@@ -3825,7 +3804,7 @@ function homeHTML() {
   h += '<p><input type="text" id="joinName" maxlength="14" placeholder="Tên của bạn" style="text-align:center"></p>';
   h += '<p id="idNote" class="small" style="display:none;margin:2px 0 0"></p>';
   h += '<p><button class="btn pink" data-cmd="join" style="font-size:22px">Vào phòng</button></p></div>';
-  h += '<p class="center muted small" style="margin-top:14px">21 game: Đố Vui Tốc Độ · Đẩy Ra Khỏi Sàn · Né Laze · Cướp Sao · Giữ Vương Miện · Xe Tăng Đấu Trường · Đặt Bom · Ma Sói · Cờ Cá Ngựa · Tiến Lên Miền Nam · Cờ Vua · Đua Máy Bay · Người Que Đại Chiến · Đá Bóng Đầu To · Đại Bác Căn Góc · Chung Một Thân · Đẩy Hộp Về Đích · Chèo Thuyền · Thủ Thành · Đền Lửa & Nước · Ếch Ộp Phiêu Lưu — 15 game đấu + 6 game hợp tác! Phòng chứa tới 12 người chơi.</p>';
+  h += '<p class="center muted small" style="margin-top:14px">21 game — 15 đấu · 6 hợp tác · phòng tới 12 người</p>';
   return h;
 }
 function playerHTML(v) {
@@ -3839,7 +3818,7 @@ function playerHTML(v) {
     h += '</p></div>';
     return h;
   }
-  if (v.phase === 'playing' && v.game) return h + playerGame(v) + kbHintHTML();
+  if (v.phase === 'playing' && v.game) return h + playerGame(v);
   if (v.phase === 'results') return h + resultsHTML(v, false);
   if (v.phase === 'podium') return h + podiumHTML(v, false);
   if (v.phase === 'final') return h + finalHTML(v, false);
@@ -4974,10 +4953,6 @@ window.addEventListener('blur', function () {
   KB_DOWN = {};
   for (var ki = 0; ki < KB_BITS.length; ki++) kbSync(KB_BITS[ki]);
 });
-function kbHintHTML() {
-  if ('ontouchstart' in window) return '';
-  return '<p class="center small muted" style="margin:8px 0 0">⌨️ WASD hoặc phím mũi tên để di chuyển · F/G/Q/E = A/B/X/Y</p>';
-}
 // ---------------------------------------------------------------------
 // Local keyboard mode (host screen only): up to four players play on
 // THIS screen, each with their own keyboard scheme — no phone needed.
