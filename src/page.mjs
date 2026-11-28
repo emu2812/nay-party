@@ -3168,6 +3168,19 @@ function predPadFor(id) {
   }
   return null;
 }
+// Round 37: is a big one-tick position jump a true teleport or
+// just a hard shove? Measured on the engine: a shove victim moves
+// 2.5-6.2u in ONE tick and lands STILL FLYING (|v| > 0.5/tick) —
+// 67 of 99 big jumps in a Day Ra match and all 56 in a Cuop Sao
+// match were hot shove landings, and the old flat thresholds
+// (3u / 2.5u) snapped every one of them: the victim vanished at
+// the push point and reappeared mid-flight with a jolt. A true
+// teleport (ring-out respawn, kickoff reset) arrives STOPPED
+// (|v| ~ 0), and anything past 8u is beyond any knockback.
+function isTeleportJump(jump, vx, vy) {
+  if (jump > 8) return true;
+  return Math.hypot(vx || 0, vy || 0) <= 0.5;
+}
 function moveEl(node, x, y, fam, vx, vy) {
   if (!node) return;
   fam = fam || 'std';
@@ -3219,11 +3232,13 @@ function moveEl(node, x, y, fam, vx, vy) {
     // instant pull once per push is a 16 Hz step train on the
     // player's own character (reads as vibration). Store the
     // correction; rafLoop applies it as a smooth spring.
-    if (Math.abs(ddx) > 2.5 || Math.abs(ddy) > 2.5) { e.x = projX; e.y = projY; e.corrX = 0; e.corrY = 0; fxPop(node); }
+    if ((Math.abs(ddx) > 2.5 || Math.abs(ddy) > 2.5) && isTeleportJump(Math.max(Math.abs(ddx), Math.abs(ddy)), vx, vy)) { e.x = projX; e.y = projY; e.corrX = 0; e.corrY = 0; fxPop(node); }
     else { e.corrX = ddx; e.corrY = ddy; }
-  } else if (Math.abs(e.tx - e.px) > 3 || Math.abs(e.ty - e.py) > 3) {
+  } else if ((Math.abs(e.tx - e.px) > 3 || Math.abs(e.ty - e.py) > 3) && isTeleportJump(Math.max(Math.abs(e.tx - e.px), Math.abs(e.ty - e.py)), vx, vy)) {
     // Teleport (spawn / respawn): restart the interpolation history
-    // here instead of gliding across the arena.
+    // here instead of gliding across the arena. A HOT landing (a
+    // shove victim still flying) is not a teleport — it takes the
+    // corr branch below and bends smoothly into the new segment.
     e.px = e.tx; e.py = e.ty; e.atP = e.atS; e.x = e.tx; e.y = e.ty; e.corrX = 0; e.corrY = 0;
     fxPop(node);
   } else {
