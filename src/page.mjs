@@ -3200,9 +3200,27 @@ function moveEl(node, x, y, fam, vx, vy) {
     // against "now" is wrong by vx * delay and the render jumps by
     // exactly that error whenever the delay is engaged.
     var rtN = serverNow() - (S._rDelayCur || 0); // _rDelayCur is in ms, like serverNow() — dividing by 1000 made the render delay a no-op (Round 32 fix)
-    var ageN = Math.min(Math.max((rtN - e.atS) / TICK_MS_CLIENT, 0), 400 / TICK_MS_CLIENT);
-    e.corrX = e.x - (e.tx + e.vx * ageN);
-    e.corrY = e.y - (e.ty + e.vy * ageN);
+    // Round 35: measure the gap against the new segment EVALUATED
+    // at the render instant — interpolate inside the window,
+    // extrapolate only past the newest anchor. The old formula
+    // always used the extrapolated endpoint, so whenever the
+    // render sat inside the window (any engaged delay), every
+    // anchor arrival knocked the mover back by up to a full tick
+    // of travel and the spring let it surge forward again: a
+    // 16 Hz sawtooth with the mover's per-tick displacement as
+    // its amplitude (Đẩy Ra bots: 11-15 direction reversals/s,
+    // jerk RMS 8.5-11.5 px, vs a true-path floor of ~4-5 px).
+    var nxN, nyN;
+    if (rtN <= e.atP) { nxN = e.px; nyN = e.py; }
+    else if (rtN >= e.atS) {
+      var ageN = Math.min((rtN - e.atS) / TICK_MS_CLIENT, 400 / TICK_MS_CLIENT);
+      nxN = e.tx + e.vx * ageN; nyN = e.ty + e.vy * ageN;
+    } else {
+      var fN = (rtN - e.atP) / (e.atS - e.atP);
+      nxN = e.px + (e.tx - e.px) * fN; nyN = e.py + (e.ty - e.py) * fN;
+    }
+    e.corrX = e.x - nxN;
+    e.corrY = e.y - nyN;
   }
 }
 function rafLoop(ts) {
@@ -3325,6 +3343,13 @@ function rafLoop(ts) {
     var gapHist = (S._gapWs && S._gapWs.length >= 6) ? S._gapWs : S._gapH;
     var gapP90 = pctOf(gapHist, 0.9) || medOf(gapHist) || 63;
     var rDelayT = gapP90 <= 85 ? 0 : Math.min(240, Math.max(40, (gapP90 - 15) * 0.9));
+    // Round 35 note: local play keeps this same gap-driven delay
+    // (its history is empty, so the delay is 0 and movers render at
+    // the newest anchor). A fixed one-tick local delay was tried
+    // and measured WORSE — the actual judder was the anchor-arrival
+    // correction in moveEl measuring its gap against the wrong
+    // point (see the Round 35 note there); with that fixed, bot
+    // trajectories sit at the true-path floor with delay 0 too.
     // The delay itself must glide toward its target (<=2 ms per
     // frame): the rolling median steps as samples enter and leave,
     // and a stepping delay makes the render clock wobble, which is
