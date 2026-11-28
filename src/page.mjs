@@ -2810,6 +2810,24 @@ function fxFlash(seat) {
   requestAnimationFrame(function () { node.classList.add('hitflash'); });
   setTimeout(function () { node.classList.remove('hitflash'); }, 240);
 }
+// Round 36: a teleport (ring-out respawn, kickoff reset, a star's
+// replacement) used to be a silent pop — the mover vanished at one
+// spot and appeared at another with no event the eye could read,
+// which players reported as "things disappear and reappear by
+// themselves". The strip rules forbid new DOM nodes mid-play, so
+// the materialisation reuses the sanctioned one-shot spawnPop
+// animation (kept alive in perf mode for exactly this purpose):
+// the mover visibly grows/fades in at its new spot.
+function fxPop(node) {
+  if (!node) return;
+  var now = performance.now();
+  if (node._popAt && now - node._popAt < 400) return;
+  node._popAt = now;
+  node.classList.remove('pop');
+  void node.offsetWidth;
+  node.classList.add('pop');
+  setTimeout(function () { node.classList.remove('pop'); }, 360);
+}
 function arenaFX(v, g) {
   var field = el('afield');
   var key = g.id + '|' + g.round + '|' + g.phase;
@@ -2846,6 +2864,29 @@ function arenaFX(v, g) {
   // Pickup bursts, same snapshot pattern: a banked star (Cướp Sao), a
   // crown changing hands (Giữ Vương Miện) and a temple gem being taken
   // each pop a small spark burst in the game's own colour.
+  if (g.id === 'cuop-sao' && g.stars && g.blobs) {
+    // A star that leaves the field was eaten. The pickup had NO
+    // in-play feedback at all (the deposit burst is muted by the
+    // strip), so the star seemed to vanish by itself. Flash the
+    // eater — the sanctioned class-only channel.
+    if (!P.stars) { P.stars = {}; for (var sp0 = 0; sp0 < g.stars.length; sp0++) P.stars[g.stars[sp0].id] = { x: g.stars[sp0].x, y: g.stars[sp0].y }; }
+    else {
+      var nowIds = {};
+      for (var sp1 = 0; sp1 < g.stars.length; sp1++) nowIds[g.stars[sp1].id] = 1;
+      for (var spId in P.stars) {
+        if (nowIds[spId]) continue;
+        var spPrev = P.stars[spId]; var bestSeat = null; var bestD = 2.2;
+        for (var spSeat in g.blobs) {
+          var spB = g.blobs[spSeat]; if (!spB.alive) continue;
+          var spD = Math.hypot(spB.x - spPrev.x, spB.y - spPrev.y);
+          if (spD < bestD) { bestD = spD; bestSeat = spSeat; }
+        }
+        if (bestSeat !== null) fxFlash(+bestSeat);
+      }
+      P.stars = {};
+      for (var sp2 = 0; sp2 < g.stars.length; sp2++) P.stars[g.stars[sp2].id] = { x: g.stars[sp2].x, y: g.stars[sp2].y };
+    }
+  }
   if (g.id === 'cuop-sao' && g.banked && g.blobs) {
     if (!P.banked) { P.banked = {}; for (var bk0 in g.banked) P.banked[bk0] = g.banked[bk0]; }
     for (var bkS in g.banked) {
@@ -3178,12 +3219,13 @@ function moveEl(node, x, y, fam, vx, vy) {
     // instant pull once per push is a 16 Hz step train on the
     // player's own character (reads as vibration). Store the
     // correction; rafLoop applies it as a smooth spring.
-    if (Math.abs(ddx) > 2.5 || Math.abs(ddy) > 2.5) { e.x = projX; e.y = projY; e.corrX = 0; e.corrY = 0; }
+    if (Math.abs(ddx) > 2.5 || Math.abs(ddy) > 2.5) { e.x = projX; e.y = projY; e.corrX = 0; e.corrY = 0; fxPop(node); }
     else { e.corrX = ddx; e.corrY = ddy; }
   } else if (Math.abs(e.tx - e.px) > 3 || Math.abs(e.ty - e.py) > 3) {
     // Teleport (spawn / respawn): restart the interpolation history
     // here instead of gliding across the arena.
     e.px = e.tx; e.py = e.ty; e.atP = e.atS; e.x = e.tx; e.y = e.ty; e.corrX = 0; e.corrY = 0;
+    fxPop(node);
   } else {
     // Non-predicted mover (bots, other players): the new anchor's
     // projection almost never equals the position the render has

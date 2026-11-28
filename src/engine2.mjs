@@ -56,7 +56,7 @@ function createGame(room, gameId) {
     id: gameId, round: 1, totalRounds: meta.rounds, phase: 'countdown', endsAt: now() + 3000,
     points: {}, streaks: {}, inputs: {}, botPlan: {}, reveal: null, lastRound: null, rankMoves: {},
     order: null, current: null, seq: null, greenAt: 0, qStart: 0, raceStart: 0, inputStart: 0,
-    pad: {}, padPrev: {}, blobs: null, arenaR: 0, tickCount: 0, nextTickAt: 0, elimOrder: [], botIntent: {}, dashCd: {}, dashBoost: {}, shoveCd: {},
+    pad: {}, padPrev: {}, padEdge: {}, padPhys: {}, blobs: null, arenaR: 0, tickCount: 0, nextTickAt: 0, elimOrder: [], botIntent: {}, dashCd: {}, dashBoost: {}, shoveCd: {},
     balls: null, spawnIn: 0, invuln: {}, elimTick: {},
     presses: {}, knot: 0, teams: null, winnerTeam: null,
     pair: null, chat: {},
@@ -525,10 +525,37 @@ function beginRound(room) {
 // Advance engine: phases move forward lazily whenever a request touches
 // the room. Bots act from their precomputed plans.
 // ---------------------------------------------------------------------------
+// Round 36 edge latch: a tap-style press (jump, shove, shot, bomb)
+// that goes down AND up between two ticks used to vanish whole —
+// the tick only ever saw the pad already released, so the rising
+// edge never existed (engine probe: sub-tick taps scored 0.00 on
+// temple/dodge/frog jumps where a held press scored full height).
+// The pad handler latches every rising edge; advance() re-raises a
+// latched bit for exactly the first tick that runs after it, then
+// restores the physical state.
+function padEdgeApply(room) {
+  const g = room.game;
+  if (!g || !g.padEdge) return;
+  for (const seat in g.padEdge) {
+    const phys = (g.padPhys && g.padPhys[seat]) || {};
+    const stored = g.pad[seat] || (g.pad[seat] = {});
+    for (const k in g.padEdge[seat]) if (!phys[k]) stored[k] = true;
+  }
+}
+function padEdgeConsume(room) {
+  const g = room.game;
+  if (!g || !g.padEdge) return;
+  for (const seat in g.padEdge) {
+    const phys = (g.padPhys && g.padPhys[seat]) || {};
+    const stored = g.pad[seat];
+    if (stored) for (const k in g.padEdge[seat]) stored[k] = !!phys[k];
+    delete g.padEdge[seat];
+  }
+}
 function advance(room) {
   playlistAutoStart(room);
   let guard = 0, stepped = 0;
-  while (guard++ < 40) { if (!step(room)) break; stepped++; }
+  while (guard++ < 40) { padEdgeApply(room); if (!step(room)) break; stepped++; padEdgeConsume(room); }
   return stepped;
 }
 // Playlist intermission: the results screen is showing and the gap has
@@ -5395,6 +5422,15 @@ function playerAction(room, player, body) {
     // Chia Hay Cướp on the gamepad: A (the X position) = Chia, B = Cướp,
     // rising edge only, and only for the pair during the choose phase.
     g.pad[seat] = np;
+    if (!g.padEdge) g.padEdge = {};
+    if (!g.padPhys) g.padPhys = {};
+    g.padPhys[seat] = np;
+    const pe = g.padEdge[seat] || (g.padEdge[seat] = {});
+    if (np.u && !prev.u) pe.u = 1;
+    if (np.a && !prev.a) pe.a = 1;
+    if (np.b && !prev.b) pe.b = 1;
+    if (np.x && !prev.x) pe.x = 1;
+    if (np.y && !prev.y) pe.y = 1;
     padNudge(room, seat, prev, np, t);
     return null;
   }
