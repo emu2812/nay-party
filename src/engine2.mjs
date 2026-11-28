@@ -1654,11 +1654,18 @@ function simulateBoxTick(room) {
     return b && b.alive && Math.hypot(b.x - c.x, b.y - c.y) <= BOX_CRATE_R + 0.8 + 0.05;
   });
   if (contact.length >= 2) {
-    let sx = 0, sy = 0;
-    contact.forEach((p) => { const mv = moves[p.seat]; if (mv) { sx += mv.x; sy += mv.y; } });
+    // Round 39: the A button is labelled "đẩy mạnh" (push hard) in
+    // this game, but the tick never read mv.shove — the button did
+    // nothing at all. Now a player holding A counts double in the
+    // summed intent and the whole push steps up to 1.5x faster when
+    // the team leans on A together. Bots never set shove, so bot
+    // pushes are unchanged.
+    let sx = 0, sy = 0, wsum = 0;
+    contact.forEach((p) => { const mv = moves[p.seat]; if (mv) { const w = mv.shove ? 2 : 1; sx += mv.x * w; sy += mv.y * w; wsum += w; } });
     const mag = Math.hypot(sx, sy);
     if (mag >= BOX_PUSH_MIN) {
-      slideCircle(c, (sx / mag) * STEP_X * BOX_STEP_MUL, (sy / mag) * STEP_Y * BOX_STEP_MUL,
+      const hardMul = 1 + 0.5 * ((wsum / contact.length) - 1);
+      slideCircle(c, (sx / mag) * STEP_X * BOX_STEP_MUL * hardMul, (sy / mag) * STEP_Y * BOX_STEP_MUL * hardMul,
         BOX_CRATE_R, g.walls, CLAMP_X - BOX_CRATE_R, CLAMP_Y - BOX_CRATE_R);
     }
   }

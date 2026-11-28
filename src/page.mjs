@@ -1488,7 +1488,7 @@ var GAME_CTL = {
   'do-vui': '📱 Điện thoại: chạm đáp án đúng thật nhanh',
   'day-ra': '🎮 D-Pad: chạy · A: đẩy · B: lướt',
   'ne-dan': '🎮 D-Pad: chạy · A: NHẢY · B: lướt',
-  'cuop-sao': '🎮 D-Pad: bay · A: xô rơi sao · B: lướt',
+  'cuop-sao': '🎮 D-Pad: chạy · A: xô rơi sao · B: lướt',
   'giu-vuong-mien': '🎮 D-Pad: chạy · A: xô người giữ · B: lướt',
   'xe-tank': '🎮 D-Pad: lái xe · A: bắn · B: lướt',
   'dat-bom': '🎮 D-Pad: chạy · A: đặt bom · B: lướt',
@@ -1497,13 +1497,13 @@ var GAME_CTL = {
   'co-vua': '📱 Điện thoại: chạm quân của bạn rồi chạm ô đích để đi',
   'dua-may-bay': '🎮 Gamepad: phím hướng lái · A tăng tốc · B phanh cua',
   'tien-len': '📱 Điện thoại: chọn bài & đánh',
-  'chung-mot-than': '🎮 D-Pad: lái hướng của bạn · A: đẩy',
+  'chung-mot-than': '🎮 D-Pad: mỗi người lái một hướng của thân chung',
   'day-hop': '🎮 D-Pad: đẩy hộp · A: đẩy mạnh · B: lướt',
   'cheo-thuyen': '🎮 A: chèo theo nhịp trống',
-  'thu-thanh': '🎮 D-Pad: ngắm · A: bắn slime',
-  'nguoi-que': '🎮 D-Pad: di chuyển · A: đánh/bắn · X: đòn mạnh/loạt đạn · B: lướt · nhặt 🗡️🔫 trên sàn',
+  'thu-thanh': '🎮 D-Pad: di chuyển · A: bắn slime · B: lướt',
+  'nguoi-que': '🎮 D-Pad: di chuyển · A: đánh/bắn · X: đòn mạnh/loạt đạn · B: lướt · Y: nhảy · nhặt 🗡️🔫 trên sàn',
   'den-lua-nuoc': '🎮 D-Pad: chạy · A: nhảy',
-  'da-bong': '🎮 D-Pad: chạy · A: sút · B: lướt',
+  'da-bong': '🎮 D-Pad: chạy · A: sút · B: lướt · Y: nhảy',
   'ech-op': '🎮 D-Pad: chọn hướng · A: nhảy · B: nuốt / nhả',
   'can-goc': '🎮 D-Pad: chỉnh góc & lực · A: bắn'
 };
@@ -4039,15 +4039,18 @@ function playerGame(v) {
       var md = g.myDirs || [];
       for (var dI4 = 0; dI4 < md.length; dI4++) h += '<span class="dirarrow">' + arrowOf[md[dI4]] + '</span>';
       h += '</div>';
-      h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'Đẩy', 'Lướt') + '</div>';
+      // Round 39: this game reads ONLY directions — it has no A/B
+      // actions at all, yet the panel rendered A "Đẩy" and B "Lướt"
+      // buttons that did nothing. Show the disc alone.
+      h += '<div class="padwrap">' + discHTML() + '</div>';
       h += '<p class="center small">Cả đội lái CHUNG một quả bóng — chỉ hướng của bạn mới chạy theo tay bạn. Phối hợp đưa bóng chạm sao ⭐, né đạn!</p>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - 60000) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
   } else if (g.id === 'day-hop') {
     if (g.phase === 'box') {
       h += '<div class="center baloo" style="font-size:22px">📦 Đội đã giao: <span id="delivp">' + (g.deliveries || 0) + '</span> hộp</div>';
-      h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'Đẩy', 'Lướt') + '</div>';
-      h += '<p class="center small">Cùng một đồng đội áp sát hộp và đẩy cùng một hướng — một người đẩy hộp không đi đâu cả!</p>';
+      h += '<div class="padwrap">' + discHTML() + abtnsHTML(g.id, 'ĐẨY MẠNH', 'Lướt') + '</div>';
+      h += '<p class="center small">Cùng một đồng đội áp sát hộp và đẩy cùng một hướng — một người đẩy hộp không đi đâu cả! Giữ A để đẩy mạnh hơn.</p>';
       h += '<div class="tbar"><i data-start="' + (g.endsAt - (g.phaseDur || 75000)) + '" data-end="' + g.endsAt + '" style="width:100%"></i></div>';
     }
   } else if (g.id === 'cheo-thuyen') {
