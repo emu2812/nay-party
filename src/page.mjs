@@ -1093,7 +1093,7 @@ function poll() {
       // home screen instead of polling a dead room forever.
       clearSession();
       toast('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.');
-    } else if (v && v.error && v.error.indexOf('không hợp lệ') >= 0) clearSession();
+    } else if (v && v.error && v.error.indexOf('Phiên ') === 0) clearSession(); // Round 38: only a dead SESSION ('Phiên ... không hợp lệ') may clear the session — generic rejections like 'Hành động không hợp lệ.' / 'Đáp án không hợp lệ.' must not nuke a live room
   });
 }
 var PAGE_V = '__PAGEV__';
@@ -1252,8 +1252,8 @@ function localSyncResults() {
   var bots = [];
   for (var j = 0; j < room.players.length; j++) { var bp = room.players[j]; if (bp.type === 'bot' && !(L.mirrorSeats && L.mirrorSeats[bp.seat])) bots.push({ seat: bp.seat, difficulty: bp.difficulty || 'vua' }); }
   api('/api/rooms/' + S.code + '/action', { role: 'host', token: S.token, action: 'syncLocalResults', deltas: deltas, bots: bots, lastGame: room.lastGame || null }, function (v) {
-    if (v && v.ok) { localStop(); S.view = v; S.sig = ''; render(); }
-    else if (L.active) { L.syncTries++; if (L.syncTries <= 5) { L.synced = false; L.syncNextAt = Date.now() + 3000; } }
+    if (v && v.ok) { localStop(); S.view = v; S.sig = ''; render(); if (L.pendingStart) { var pb = L.pendingStart; L.pendingStart = null; act(pb); } }
+    else if (L.active) { L.syncTries++; if (L.syncTries <= 5) { L.synced = false; L.syncNextAt = Date.now() + 3000; } else if (L.pendingStart) { var pb2 = L.pendingStart; L.pendingStart = null; L.startScores = {}; for (var k = 0; k < room.players.length; k++) L.startScores[room.players[k].seat] = room.players[k].score || 0; L.synced = false; L.syncTries = 0; L.syncNextAt = 0; try { localDispatch(pb2); } catch (e) {} } }
   });
 }
 function localStop() {
@@ -1271,6 +1271,20 @@ function localAbort() {
 }
 function act(body, cb) {
   if (S.localActive && body.action !== 'leave' && body.action !== 'closeRoom') {
+    // Round 38: a start-type tap while the mirror sits at 'results'
+    // with its score sync still outstanding must NOT create the
+    // rematch on the mirror: when the sync lands, its callback calls
+    // localStop() and would tear the new match down with the old
+    // mirror (the tap is silently eaten), and the new match would
+    // inherit match 1's startScores snapshot besides. Defer the tap
+    // instead: it fires the moment the sync lands (fresh mirror,
+    // fresh snapshot), or on the mirror if the sync dies for good.
+    if ((body.action === 'replay' || body.action === 'startGame' || body.action === 'quickStart') && L.room && L.room.phase === 'results') {
+      L.pendingStart = body;
+      if (cb) cb({ ok: true });
+      return;
+    }
+    if (body.action === 'toChoosing' || body.action === 'quitToChoosing') L.pendingStart = null;
     var lerr = null;
     try { lerr = localDispatch(body); } catch (e) { lerr = null; }
     if (lerr) toast(lerr);
@@ -1284,7 +1298,7 @@ function act(body, cb) {
   api('/api/rooms/' + S.code + '/action', body, function (v) {
     if (v && v.ok && !viewStale(v)) { S.view = v; noteServerTime(v.serverNow); S.sig = ''; noteOk(); render(); }
     else if (v && v.error && v.error.indexOf('Không thấy phòng này') >= 0) { clearSession(); toast('Phòng đã đóng hoặc hết hạn, tạo phòng mới nhé.'); }
-    else if (v && v.error && v.error.indexOf('không hợp lệ') >= 0) clearSession();
+    else if (v && v.error && v.error.indexOf('Phiên ') === 0) clearSession(); // Round 38: only a dead SESSION ('Phiên ... không hợp lệ') may clear the session — generic rejections like 'Hành động không hợp lệ.' / 'Đáp án không hợp lệ.' must not nuke a live room
     else if (v && v.error) toast(v.error);
     if (cb) cb(v);
   });
